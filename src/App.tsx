@@ -202,6 +202,23 @@ export default function App() {
     loadSupabaseData();
   }, [dataVersion]);
 
+  // Check-ins arrive from members' own phones, so keep the signed-in
+  // dashboards' attendance and member lists fresh without a manual reload.
+  useEffect(() => {
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const [att, mem] = await Promise.all([fetchAttendanceFromSupabase(), fetchMembersFromSupabase()]);
+      if (att && att.length) setAttendanceRecords(att);
+      if (mem && mem.length) setMembers(mem);
+    };
+    const timer = window.setInterval(refresh, 20000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+
   // Modals
   const [selectedMemberForCard, setSelectedMemberForCard] = useState<Member | null>(null);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
