@@ -403,7 +403,7 @@ export async function fetchAttendanceFromSupabase(): Promise<AttendanceRecord[] 
       memberRole: row.member_role || 'Member',
       serviceType: row.service_type,
       timestamp: row.checked_in_time || '08:30 AM',
-      date: row.checked_in_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      date: row.attendance_date || row.checked_in_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       verifiedBy: row.verified_by,
       status: row.status || 'Confirmed',
       church: row.church_name,
@@ -436,10 +436,20 @@ export async function saveAttendanceToSupabase(record: AttendanceRecord): Promis
       checked_in_time: record.timestamp,
       leader_name: record.leaderName || 'Direct / Self',
       pcf_name: record.pcfName || 'General PCF',
-      checked_in_at: record.date ? new Date(record.date).toISOString() : new Date().toISOString()
+      attendance_date: record.date || new Date().toISOString().slice(0, 10),
+      checked_in_at: new Date().toISOString()
     };
 
-    const { error } = await client.from('attendance_records').upsert(payload, { onConflict: 'id' });
+    // A brand-new member's own record may still be saving when the check-in
+    // arrives, so retry briefly instead of silently dropping the attendance.
+    let error: any = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      ({ error } = await client.from('attendance_records').upsert(payload, { onConflict: 'id' }));
+      if (!error) break;
+      const msg = String(error.message || '').toLowerCase();
+      if (!msg.includes('foreign key') && !msg.includes('violates')) break;
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+    }
     if (error) {
       console.warn('Supabase saveAttendance error:', error.message);
       return false;
