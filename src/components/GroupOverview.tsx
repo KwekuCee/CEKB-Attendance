@@ -1,3 +1,4 @@
+import { setServiceStartTime } from '../lib/supabaseService';
 import React, { useState } from 'react';
 import { ChurchBranch, AuditLogItem, ViewType, ChurchAdminAccount, Member, Leader, AttendanceRecord } from '../types';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
@@ -59,11 +60,16 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
   const [newZone, setNewZone] = useState('Zone 1');
   const [authCode, setAuthCode] = useState('');
   const [formError, setFormError] = useState('');
+  const [newServiceTime, setNewServiceTime] = useState('');
+  const [newServiceGrace, setNewServiceGrace] = useState('15');
 
   const handleAddServiceType = () => {
     if (newServiceInput.trim()) {
-      setServiceTypes([...serviceTypes, newServiceInput.trim()]);
+      const name = newServiceInput.trim();
+      setServiceTypes([...serviceTypes, name]);
+      if (newServiceTime) setTimeout(() => setServiceStartTime(name, newServiceTime, Number(newServiceGrace) || 15), 1500);
       setNewServiceInput('');
+      setNewServiceTime('');
       setShowAddService(false);
     }
   };
@@ -446,6 +452,8 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
                     placeholder="New service name..."
                     className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs flex-1 outline-none focus:border-blue-600"
                   />
+                  <input type="time" value={newServiceTime} onChange={(e) => setNewServiceTime(e.target.value)} title="Service start time" aria-label="Service start time" className="border border-slate-200 rounded-xl px-2 py-1.5 text-xs" />
+                  <input type="number" min={0} value={newServiceGrace} onChange={(e) => setNewServiceGrace(e.target.value.replace(/\D/g, ''))} title="Minutes before marked late" aria-label="Minutes before marked late" className="border border-slate-200 rounded-xl px-2 py-1.5 text-xs w-14" />
                   <button
                     onClick={handleAddServiceType}
                     className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer"

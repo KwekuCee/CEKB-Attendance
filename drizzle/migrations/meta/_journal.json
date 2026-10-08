@@ -15,6 +15,13 @@
       "when": 1791465291508,
       "tag": "0001_app_cron_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791465705895,
+      "tag": "0002_service_start_times_late_flag",
+      "breakpoints": true
     }
   ]
 }
