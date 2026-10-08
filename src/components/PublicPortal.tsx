@@ -583,6 +583,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     }
   };
 
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpInfo, setOtpInfo] = useState('');
+
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -596,11 +600,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         loginPassword,
         loginRole,
         churchAdmins,
-        churches
+        churches,
+        otpCode || undefined
       );
 
       if (!result.success || !result.user) {
-        if ((result.error || '') === 'email_unverified') {
+        if (result.error === 'otp_required') {
+          setOtpStep(true); setOtpCode('');
+          setLoginError('');
+          setOtpInfo(`We emailed a 6-digit sign-in code to ${(result as any).otpEmail || 'your email'}. Enter it below.`);
+        } else if (result.error === 'otp_invalid') {
+          setLoginError('That code is not right. Check the email and try again.');
+        } else if ((result.error || '') === 'email_unverified') {
           setUnverifiedEmail(loginIdentifier.trim());
           setLoginError('Please confirm your email address before signing in. Check your inbox for the confirmation link.');
         } else {

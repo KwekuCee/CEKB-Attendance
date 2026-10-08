@@ -917,7 +917,8 @@ export async function authenticateUserWithDatabase(
   passwordPlain: string,
   selectedRole?: 'Superadmin' | 'Church Admin',
   localFallbackAdmins?: ChurchAdminAccount[],
-  localFallbackChurches?: ChurchBranch[]
+  localFallbackChurches?: ChurchBranch[],
+  otp?: string
 ): Promise<AuthResult> {
   const trimmedId = identifier.trim();
   const trimmedPassword = passwordPlain.trim();
