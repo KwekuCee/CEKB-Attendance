@@ -969,7 +969,9 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_global: boolean | null
+          late_after_minutes: number
           name: string
+          start_time: string | null
           updated_at: string
         }
         Insert: {
@@ -979,7 +981,9 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_global?: boolean | null
+          late_after_minutes?: number
           name: string
+          start_time?: string | null
           updated_at?: string
         }
         Update: {
@@ -989,7 +993,9 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_global?: boolean | null
+          late_after_minutes?: number
           name?: string
+          start_time?: string | null
           updated_at?: string
         }
         Relationships: [
