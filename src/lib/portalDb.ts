@@ -187,6 +187,7 @@ export const portalDb = {
           identifier: params.p_identifier,
           password: params.p_password,
           role: params.p_role,
+          otp: params.p_otp,
         }),
       })
         .then((r) => r.json())
@@ -194,7 +195,7 @@ export const portalDb = {
 
       if (!res) return { data: null, error: { message: 'Could not reach the sign-in service.' } };
       if (res.success && res.token) setPortalToken(res.token);
-      return { data: { success: !!res.success, user: res.user, error: res.error }, error: null };
+      return { data: { success: !!res.success, user: res.user, error: res.error, email: res.email }, error: null };
     }
     return { data: null, error: { message: 'Not available from the browser.' } };
   },

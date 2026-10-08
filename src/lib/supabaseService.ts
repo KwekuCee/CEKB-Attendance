@@ -939,8 +939,9 @@ export async function authenticateUserWithDatabase(
         p_identifier: trimmedId,
         p_password: trimmedPassword,
         p_role: selectedRole || null,
-        p_church_name: null
-      });
+        p_church_name: null,
+        p_otp: otp || undefined
+      } as any);
 
       if (!rpcError && rpcData) {
         if (rpcData.success && rpcData.user) {
@@ -959,7 +960,7 @@ export async function authenticateUserWithDatabase(
           saveStoredSession(authenticatedUser);
           return { success: true, user: authenticatedUser };
         } else if (rpcData.error) {
-          return { success: false, error: rpcData.error };
+          return { success: false, error: rpcData.error, otpEmail: (rpcData as any).email } as any;
         }
       }
 
