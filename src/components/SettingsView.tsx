@@ -25,6 +25,7 @@ import {
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { SUPABASE_SQL_SCHEMA } from '../data/supabase_schema';
 import { ReportCodesPanel } from './ReportCodesPanel';
+import { UshersPanel } from './UshersPanel';
 
 interface SettingsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -615,6 +616,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             ownChurch={user.church}
           />
         )}
+        {activeTab === 'profile' && !isSuperadmin && user.church && <UshersPanel church={user.church} />}
 
         {/* TAB 0: Live Database Configuration */}
         {activeTab === 'supabase' && (

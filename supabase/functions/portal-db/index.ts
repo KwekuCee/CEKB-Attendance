@@ -80,7 +80,11 @@ const BRANCH_SCOPED = new Set([
   'promotion_queue',
   'audit_logs',
   'cell_reports',
+  'user_profiles',
 ]);
+
+/** Ushers can only look people up and record check-ins. */
+const USHER_READ = new Set(['members', 'attendance_records', 'service_types', 'churches', 'leaders']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -186,6 +190,27 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     }
   }
 
+  if (session?.role === 'Usher') {
+    const ok = isRead ? USHER_READ.has(table) : table === 'attendance_records' && (op === 'insert' || op === 'upsert');
+    if (!ok) return json({ error: { message: 'Ushers can only scan and record check-ins.' } }, 403);
+  }
+
+  // Branch accounts may only create or change usher accounts, never group accounts.
+  if (session && session.role !== 'Superadmin' && table === 'user_profiles' && !isRead) {
+    if (op !== 'insert' && op !== 'upsert' && op !== 'delete' && op !== 'update') return json({ error: { message: 'Not allowed.' } }, 403);
+    const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
+    for (const row of rows) {
+      const email = String(row.email || '').toLowerCase();
+      const isOwnProfile = email && email === String(session.user_email || '').toLowerCase();
+      if (isOwnProfile) { row.role = 'Church Admin'; delete row.admin_verified; row.church_name = session.church_name; continue; }
+      if (email && (op === 'insert' || op === 'upsert')) {
+        const { data: existing } = await admin.from('user_profiles').select('role').ilike('email', email).maybeSingle();
+        if (existing && existing.role !== 'Usher') return json({ error: { message: 'This email already belongs to another account.' } }, 409);
+      }
+      row.role = 'Usher'; row.church_name = session.church_name; row.admin_verified = true;
+    }
+  }
+
   if (!isRead && SUPERADMIN_WRITE.has(table) && session?.role !== 'Superadmin') {
     return json({ error: { message: 'Only the group account can change these settings.' } }, 403);
   }
@@ -262,6 +287,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
       return json({ error: { message: 'Your account is not linked to a branch yet.' } }, 403);
     }
     query = query.ilike('church_name', session.church_name);
+    if (table === 'user_profiles' && op !== 'select') query = query.eq('role', 'Usher');
   }
 
   if (body.or) {
