@@ -29,7 +29,7 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
     };
     members.forEach(m => { const v = get(m.church); v.members++; if (m.status === 'First Timer') v.firstTimers++; });
     leaders.forEach(l => get(l.church).leaders++);
-    attendanceRecords.forEach(r => { if (r.date >= since) get(r.church).checkins++; });
+    attendanceRecords.forEach(r => { if ((r.date || '') >= since) get(r.church).checkins++; });
     return Array.from(map.entries()).sort((a, b) => b[1].checkins - a[1].checkins);
   }, [members, leaders, attendanceRecords]);
   const maxCheck = Math.max(1, ...comparison.map(([, v]) => v.checkins));
