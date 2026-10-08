@@ -56,7 +56,12 @@ const ALLOWED_TABLES = new Set([
   'service_types',
   'admin_settings',
   'cell_reports',
+  'email_send_log',
+  'request_rate_limits',
 ]);
+
+/** Read-only system tables only the group account may see. */
+const SUPERADMIN_ONLY = new Set(['email_send_log', 'request_rate_limits']);
 
 const FILTER_OPS = new Set(['eq', 'neq', 'ilike', 'like', 'gte', 'lte', 'gt', 'lt', 'in', 'is', 'not']);
 
@@ -167,6 +172,9 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   if (!ALLOWED_TABLES.has(table)) return json({ error: { message: 'Table not available.' } }, 400);
 
   const isRead = op === 'select';
+  if (SUPERADMIN_ONLY.has(table) && (session?.role !== 'Superadmin' || !isRead)) {
+    return json({ error: { message: 'Only the group account can view this.' } }, 403);
+  }
 
   if (!session) {
     if (isRead && !PUBLIC_READ[table]) {
