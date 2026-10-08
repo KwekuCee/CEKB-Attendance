@@ -73,22 +73,27 @@ async function callFunction<T = any>(payload: Record<string, unknown>): Promise<
   }
 }
 
+export interface LeaderLogin { leaderCode: string; phone: string }
+export interface SignedLeader { fullName: string; cellOrPcfName: string; leaderType: string }
+
 /** Public: check a branch access code before revealing the report form. */
-export async function verifyReportCode(churchName: string, code: string) {
-  return callFunction<{ ok: boolean; churchName: string }>({
+export async function verifyReportCode(churchName: string, code: string, login?: LeaderLogin) {
+  return callFunction<{ ok: boolean; churchName: string; leader: SignedLeader | null }>({
     action: 'verify_code',
     churchName,
     code,
+    ...(login || {}),
   });
 }
 
 /** Public: send in a completed weekly report (the code is re-checked server side). */
-export async function submitCellReport(churchName: string, code: string, report: CellReportSubmission) {
+export async function submitCellReport(churchName: string, code: string, report: CellReportSubmission, login?: LeaderLogin) {
   return callFunction<{ ok: boolean; id: string }>({
     action: 'submit',
     churchName,
     code,
     report,
+    ...(login || {}),
   });
 }
 

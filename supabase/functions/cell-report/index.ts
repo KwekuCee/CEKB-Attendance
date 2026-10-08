@@ -182,27 +182,59 @@ Deno.serve(async (req: Request) => {
 
     // ---- Public: check the access code before showing the form -------------
     if (action === 'verify_code' || action === 'submit') {
-      const churchName = str(body?.churchName);
-      const code = str(body?.code, 24).toUpperCase();
-      if (!churchName || !code) {
-        return json({ error: 'Select your church and enter the access code.' }, 400);
-      }
-      const row = await codeRowFor(churchName);
-      if (!row) {
-        return json(
-          { error: 'No access code has been set for this church yet. Ask your church administrator.' },
-          403,
-        );
-      }
-      if (row.code_hash !== (await sha256(code))) {
-        return json({ error: 'That access code is not correct for this church.' }, 403);
+      let row: Record<string, any> | null = null;
+      let signedLeader: Record<string, any> | null = null;
+      const leaderCode = str(body?.leaderCode, 24).toUpperCase();
+      if (leaderCode) {
+        // ---- Leader sign-in: personal LDR code + the phone number on file ----
+        const phone = str(body?.phone, 30).replace(/\D/g, '').slice(-9);
+        if (phone.length < 9) return json({ error: 'Enter the phone number you registered with.' }, 400);
+        const { data: l } = await admin
+          .from('leaders')
+          .select('id, full_name, church_name, contact, cell_or_pcf_name, leader_type')
+          .ilike('leader_code', leaderCode)
+          .maybeSingle();
+        const onFile = String(l?.contact || '').replace(/\D/g, '').slice(-9);
+        if (!l || !onFile || onFile !== phone) {
+          return json({ error: 'That leader code and phone number do not match our records.' }, 403);
+        }
+        signedLeader = l;
+        row = { church_name: l.church_name };
+      } else {
+        const churchName = str(body?.churchName);
+        const code = str(body?.code, 24).toUpperCase();
+        if (!churchName || !code) {
+          return json({ error: 'Select your church and enter the access code.' }, 400);
+        }
+        row = await codeRowFor(churchName);
+        if (!row) {
+          return json(
+            { error: 'No access code has been set for this church yet. Ask your church administrator.' },
+            403,
+          );
+        }
+        if (row.code_hash !== (await sha256(code))) {
+          return json({ error: 'That access code is not correct for this church.' }, 403);
+        }
       }
 
-      if (action === 'verify_code') return json({ ok: true, churchName: row.church_name });
+      if (action === 'verify_code') {
+        return json({
+          ok: true,
+          churchName: row.church_name,
+          leader: signedLeader
+            ? {
+                fullName: signedLeader.full_name,
+                cellOrPcfName: signedLeader.cell_or_pcf_name || '',
+                leaderType: signedLeader.leader_type,
+              }
+            : null,
+        });
+      }
 
       // ---- Public: store the submitted report ------------------------------
       const report = body?.report || {};
-      const leaderName = str(report?.leaderName);
+      const leaderName = signedLeader ? String(signedLeader.full_name) : str(report?.leaderName);
       if (!leaderName) return json({ error: 'Select the name of the leader.' }, 400);
 
       const church = await findChurch(row.church_name);
