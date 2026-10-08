@@ -33,7 +33,8 @@
 - [ ] Sign-up/reset emails restyle, live end-to-end tests, close stale findings
 - [x] Weekly Monday summary email to group pastor (incl. missing cell reports)
 - [x] Fixed daily birthday reminders (scheduled job was being rejected)
-- [ ] Kiosk mode, offline check-in, service open/close times, attendance undo
+- [x] Entrance (kiosk) mode with sound, offline check-in sync (attendance edit/delete already existed)
+- [ ] Service open/close times with late flag
 - [ ] Absentee auto-assign + follow-up tracker, first-timer journey
 - [ ] WhatsApp/SMS reminders (needs WhatsApp Business connection)
 - [ ] Leader sign-in, report reminders, report trends, leader family tree
