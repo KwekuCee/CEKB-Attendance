@@ -312,6 +312,10 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
               Don't have a code? Ask your church administrator — they generate it in their dashboard settings.
             </p>
           </div>
+        </div>
+        )}
+
+        <div className="space-y-4">
 
           {gateError && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl px-3.5 py-2.5 flex items-start gap-2">
@@ -378,7 +382,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
             <p className="text-xs text-slate-500 truncate">{church} • fill in every section that applies</p>
           </div>
           <span className="ml-auto hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-bold text-emerald-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Code verified
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {signedIn ? `Signed in as ${leaderName}` : 'Code verified'}
           </span>
         </div>
 
@@ -394,6 +398,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
             <label className={labelClass}>Name of Leader</label>
             <select
               value={leaderName}
+              disabled={signedIn}
               onChange={(e) => {
                 setLeaderName(e.target.value);
                 const l = churchLeaders.find((x) => x.fullName === e.target.value);
@@ -402,6 +407,9 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
               className={inputClass}
             >
               <option value="">Select your name…</option>
+              {signedIn && !churchLeaders.some((l) => l.fullName === leaderName) && (
+                <option value={leaderName}>{leaderName}</option>
+              )}
               {churchLeaders.map((l) => (
                 <option key={l.id} value={l.fullName}>
                   {l.fullName} — {l.leaderType}
