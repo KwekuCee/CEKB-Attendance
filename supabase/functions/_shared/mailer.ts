@@ -20,9 +20,20 @@ export interface SendMailResult {
 
 const MAIL_FROM = 'CE Korle Bu <support@gcycattendance.online>';
 export const MAIL_LOGO_URL = 'https://gcycattendance.online/icon-512.png';
-const LOGO_HEADER = `<div style="text-align:center;padding:16px 0"><img src="${MAIL_LOGO_URL}" alt="CE Korle Bu" width="72" height="72" style="display:inline-block;border:0" /></div>`;
+/** Shared branded layout matching the app: royal-blue header band, white card, soft blue page. */
 function withLogo(html: string) {
-  return html.includes(MAIL_LOGO_URL) ? html : LOGO_HEADER + html;
+  if (html.includes('data-cekb-layout')) return html;
+  const body = html.replace(/<div style="text-align:center;padding:16px 0"><img src="[^"]*icon-512\.png"[^>]*><\/div>/g, '');
+  return `<div data-cekb-layout style="background:#eef3fb;padding:24px 12px;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
+<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe4f3">
+<div style="background:#1d4ed8;padding:20px;text-align:center">
+<img src="${MAIL_LOGO_URL}" alt="CE Korle Bu" width="64" height="64" style="display:inline-block;border:0;border-radius:12px;background:#ffffff;padding:4px" />
+<div style="color:#ffffff;font-size:18px;font-weight:700;margin-top:8px">CEKB Group</div>
+<div style="color:#dbeafe;font-size:12px">Christ Embassy Korle Bu Attendance System</div>
+</div>
+<div style="padding:24px;font-size:15px;line-height:1.6">${body}</div>
+<div style="background:#f8fafc;padding:14px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">CE Korle Bu &middot; support@gcycattendance.online</div>
+</div></div>`;
 }
 
 async function sendResend(opts: SendMailOptions): Promise<SendMailResult> {

@@ -24,3 +24,11 @@
 - Admins can record attendance by hand for people without phones; same person/service/day blocked.
 - Bible study class / cell / PCF names shown and saved on members, leaders and attendance.
 - Automatic growth: foundation graduates become Bible study class teachers; 4 under a leader promotes to cell leader; 4 cells promote to PCF leader. Superadmin appointments protected.
+
+## System audit (Oct 2026)
+- [x] Branch member counts kept correct automatically
+- [x] Expired sign-in sessions cleaned daily
+- [x] Branded email layout for system emails
+- [ ] Link records by branch ID instead of name
+- [ ] Sign-up/reset emails restyle, live end-to-end tests, close stale findings
+- [ ] Suggested features — waiting on user's picks
