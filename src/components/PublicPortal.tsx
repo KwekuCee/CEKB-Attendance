@@ -583,6 +583,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     }
   };
 
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpInfo, setOtpInfo] = useState('');
+
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -596,11 +600,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         loginPassword,
         loginRole,
         churchAdmins,
-        churches
+        churches,
+        otpCode || undefined
       );
 
       if (!result.success || !result.user) {
-        if ((result.error || '') === 'email_unverified') {
+        if (result.error === 'otp_required') {
+          setOtpStep(true); setOtpCode('');
+          setLoginError('');
+          setOtpInfo(`We emailed a 6-digit sign-in code to ${(result as any).otpEmail || 'your email'}. Enter it below.`);
+        } else if (result.error === 'otp_invalid') {
+          setLoginError('That code is not right. Check the email and try again.');
+        } else if ((result.error || '') === 'email_unverified') {
           setUnverifiedEmail(loginIdentifier.trim());
           setLoginError('Please confirm your email address before signing in. Check your inbox for the confirmation link.');
         } else {
@@ -1765,6 +1776,26 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   />
                 </div>
               </div>
+
+              {otpStep && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                  <p className="text-xs text-blue-900">{otpInfo}</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-digit code"
+                    aria-label="Sign-in code"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-lg font-bold tracking-[0.4em] text-center outline-none focus:border-blue-600"
+                  />
+                  <button type="button" onClick={() => { setOtpCode(''); setOtpStep(false); }} className="text-xs font-bold text-blue-700 hover:underline cursor-pointer">Send a new code</button>
+                </div>
+              )}
+
+
 
               <button
                 type="submit"

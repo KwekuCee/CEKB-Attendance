@@ -1,4 +1,5 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
+import { sendMail } from '../_shared/mailer.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -301,6 +302,28 @@ async function handleLogin(body: any) {
 
   if (rpcData && (rpcData as any).success && (rpcData as any).user) {
     const u = (rpcData as any).user;
+    if (u.role === 'Superadmin') {
+      const otp = String(body?.otp || '').replace(/\D/g, '');
+      const email = String(u.email || '').toLowerCase();
+      if (!otp) {
+        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0');
+        await admin.from('login_otps').delete().ilike('email', email);
+        await admin.from('login_otps').insert({ email, code_hash: await sha256(code), expires_at: new Date(Date.now() + 10 * 60000).toISOString() });
+        const sent = await sendMail({ to: email, subject: 'Your CEKB sign-in code', html: `<h2 style="color:#1d4ed8;margin:0 0 8px">Your sign-in code</h2><p>Use this code to finish signing in to the group account:</p><p style="font-size:32px;font-weight:800;letter-spacing:8px;color:#1e3a8a;margin:16px 0">${code}</p><p>It expires in 10 minutes. If you did not try to sign in, change your password straight away.</p>` });
+        if (!sent.ok) return json({ success: false, error: 'We could not send your sign-in code. Please try again.' });
+        const masked = email.replace(/^(.{2}).*(@.*)$/, '$1***$2');
+        return json({ success: false, error: 'otp_required', email: masked });
+      }
+      const { data: row } = await admin.from('login_otps').select('*').ilike('email', email).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!row || new Date(row.expires_at) < new Date() || row.attempts >= 5) {
+        return json({ success: false, error: 'This code has expired. Sign in again to get a new one.' });
+      }
+      if (row.code_hash !== (await sha256(otp))) {
+        await admin.from('login_otps').update({ attempts: row.attempts + 1 }).eq('id', row.id);
+        return json({ success: false, error: 'otp_invalid' });
+      }
+      await admin.from('login_otps').delete().eq('id', row.id);
+    }
     const token = await createSession({
       email: u.email,
       name: u.name,
