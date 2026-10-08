@@ -452,13 +452,47 @@ export async function saveAttendanceToSupabase(record: AttendanceRecord): Promis
     }
     if (error) {
       console.warn('Supabase saveAttendance error:', error.message);
+      const msg = String(error.message || '').toLowerCase();
+      if (!navigator.onLine || msg.includes('fetch') || msg.includes('network')) queueOfflineAttendance(record);
       return false;
     }
     return true;
   } catch (err) {
     console.error('Error in saveAttendanceToSupabase:', err);
+    queueOfflineAttendance(record);
     return false;
   }
+}
+
+// ---- Offline check-ins: kept on the device and sent once the connection returns.
+const OFFLINE_KEY = 'cekb_offline_attendance';
+
+export function getOfflineAttendance(): AttendanceRecord[] {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]'); } catch { return []; }
+}
+
+function queueOfflineAttendance(record: AttendanceRecord) {
+  const list = getOfflineAttendance().filter(r => r.id !== record.id);
+  list.push(record);
+  localStorage.setItem(OFFLINE_KEY, JSON.stringify(list));
+  window.dispatchEvent(new Event('cekb-offline-change'));
+}
+
+let flushing = false;
+export async function flushOfflineAttendance(): Promise<number> {
+  if (flushing || !navigator.onLine) return 0;
+  const pending = getOfflineAttendance();
+  if (!pending.length) return 0;
+  flushing = true;
+  localStorage.setItem(OFFLINE_KEY, '[]');
+  let sent = 0;
+  try {
+    for (const r of pending) if (await saveAttendanceToSupabase(r)) sent++; // failures re-queue themselves
+  } finally {
+    flushing = false;
+    window.dispatchEvent(new Event('cekb-offline-change'));
+  }
+  return sent;
 }
 
 export async function deleteAttendanceFromSupabase(recordId: string): Promise<boolean> {

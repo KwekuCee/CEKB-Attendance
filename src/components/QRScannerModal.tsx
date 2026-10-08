@@ -43,6 +43,22 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const [flashlightOn, setFlashlightOn] = useState(false);
   const [useRealCamera, setUseRealCamera] = useState(true);
   const [cameraError, setCameraError] = useState('');
+  // Kiosk mode: a device left at the entrance keeps scanning on its own.
+  const [kiosk, setKiosk] = useState(() => localStorage.getItem('cekb_kiosk') === '1');
+  useEffect(() => { localStorage.setItem('cekb_kiosk', kiosk ? '1' : '0'); }, [kiosk]);
+  const beep = (ok: boolean) => {
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = ok ? 880 : 300;
+      gain.gain.value = 0.15;
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + (ok ? 0.18 : 0.4));
+      if (navigator.vibrate) navigator.vibrate(ok ? 80 : [60, 60, 60]);
+    } catch { /* sound not available */ }
+  };
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scanLockRef = useRef(false);
@@ -128,11 +144,15 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       }
       if (alreadyRecorded(found, serviceType)) {
         setScannerState('duplicate');
+        beep(false);
+        if (kiosk) window.setTimeout(handleScanNext, 2500);
         return;
       }
       setScannerState('success');
+      beep(true);
       // Attendance is logged the instant a valid pass is scanned
       recordAttendance(found, serviceType);
+      if (kiosk) window.setTimeout(handleScanNext, 2500);
     } else {
       setScannerState('error');
       toast.showError('Invalid QR Code', `Member ID ${memberId} was not found in directory.`);
@@ -378,6 +398,14 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
               className="w-full text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl border border-white/10"
             >
               {useRealCamera ? 'Turn camera off' : 'Turn camera on'}
+            </button>
+
+            <button
+              onClick={() => setKiosk(k => !k)}
+              aria-pressed={kiosk}
+              className={`w-full text-xs font-bold px-3 py-2 rounded-xl border ${kiosk ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-white/10 hover:bg-white/20 text-white border-white/10'}`}
+            >
+              {kiosk ? 'Entrance mode ON — scans continue automatically' : 'Entrance mode: keep scanning automatically'}
             </button>
           </div>
         </div>
