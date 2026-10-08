@@ -278,6 +278,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
       return json({ error: { message: 'Your account is not linked to a branch yet.' } }, 403);
     }
     query = query.ilike('church_name', session.church_name);
+    if (table === 'user_profiles' && op !== 'select') query = query.eq('role', 'Usher');
   }
 
   if (body.or) {
