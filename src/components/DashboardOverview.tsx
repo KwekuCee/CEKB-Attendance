@@ -1145,6 +1145,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         churchName={isSuperadmin ? undefined : currentChurchName}
         isGroupView={isSuperadmin}
         recordedBy={user?.name}
+        leaders={branchLeaders}
       />
 
 
