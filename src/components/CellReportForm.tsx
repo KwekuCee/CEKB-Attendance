@@ -115,6 +115,10 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
   const [gateError, setGateError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
+  const [mode, setMode] = useState<'leader' | 'code'>('leader');
+  const [leaderCode, setLeaderCode] = useState('');
+  const [leaderPhone, setLeaderPhone] = useState('');
+  const [signedIn, setSignedIn] = useState(false);
 
   // --- form ---
   const [leaderName, setLeaderName] = useState('');
@@ -142,25 +146,41 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
   const handleVerify = async () => {
     if (isVerifying) return;
     setGateError('');
-    if (!church) return setGateError('Please choose your church branch.');
-    if (!code.trim()) return setGateError('Please enter the access code from your church administrator.');
+    if (mode === 'leader') {
+      if (!leaderCode.trim()) return setGateError('Please enter your leader code (e.g. LDR-0001).');
+      if (!normalizeGhanaPhone(leaderPhone)) return setGateError('Please enter the Ghana phone number you registered with.');
+    } else {
+      if (!church) return setGateError('Please choose your church branch.');
+      if (!code.trim()) return setGateError('Please enter the access code from your church administrator.');
+    }
 
     setIsVerifying(true);
-    const { data, error } = await verifyReportCode(church, code.trim().toUpperCase());
+    const { data, error } = await verifyReportCode(church, code.trim().toUpperCase(), loginInfo());
     setIsVerifying(false);
     if (error || !data?.ok) {
-      setGateError(error || 'That access code is not correct for this church.');
+      setGateError(error || (mode === 'leader' ? 'That leader code and phone number do not match.' : 'That access code is not correct for this church.'));
       return;
+    }
+    if (data.leader) {
+      setChurch(data.churchName);
+      setLeaderName(data.leader.fullName);
+      setCellName(data.leader.cellOrPcfName || '');
+      setSignedIn(true);
     }
     setUnlocked(true);
   };
+
+  const loginInfo = () =>
+    mode === 'leader' ? { leaderCode: leaderCode.trim().toUpperCase(), phone: leaderPhone.trim() } : undefined;
 
   const setGridValue = (key: string, column: 'cell' | 'outreach', value: string) =>
     setGrid((prev) => ({ ...prev, [key]: { ...prev[key], [column]: value } }));
 
   const resetForm = () => {
-    setLeaderName('');
-    setCellName('');
+    if (!signedIn) {
+      setLeaderName('');
+      setCellName('');
+    }
     setOutreachCentre('');
     setReportDate(new Date().toISOString().slice(0, 10));
     setGrid(emptyGrid());
@@ -203,7 +223,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
     };
 
     setIsSubmitting(true);
-    const { data, error } = await submitCellReport(church, code.trim().toUpperCase(), payload);
+    const { data, error } = await submitCellReport(church, code.trim().toUpperCase(), payload, loginInfo());
     setIsSubmitting(false);
     if (error || !data?.ok) {
       setSubmitError(error || 'The report could not be saved. Please try again.');
@@ -223,11 +243,49 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
           <div>
             <h3 className="font-display text-lg font-bold text-slate-900">Submit Weekly Cell Report</h3>
             <p className="text-xs text-slate-500">
-              Choose your branch and enter the access code your church administrator gave you.
+              Sign in with your leader code, or use your branch access code.
             </p>
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+          {([['leader', 'Leader sign-in'], ['code', 'Branch access code']] as const).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMode(m); setGateError(''); }}
+              className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${mode === m ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'leader' ? (
+        <div className="space-y-4">
+          <div>
+            <label className={labelClass}>Leader Code</label>
+            <input
+              value={leaderCode}
+              onChange={(e) => setLeaderCode(e.target.value.toUpperCase())}
+              placeholder="e.g. LDR-0001"
+              className={`${inputClass} font-mono tracking-widest uppercase`}
+            />
+            <p className="text-xs text-slate-400 mt-1.5">It's printed on your leader QR pass.</p>
+          </div>
+          <div>
+            <label className={labelClass}>Phone Number</label>
+            <input
+              type="tel"
+              value={leaderPhone}
+              onChange={(e) => setLeaderPhone(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
+              placeholder="The number you registered with, e.g. 0241234567"
+              className={inputClass}
+            />
+          </div>
+        </div>
+        ) : (
         <div className="space-y-4">
           <div>
             <label className={labelClass}>Church Branch</label>
