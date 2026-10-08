@@ -4,6 +4,7 @@ import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth } from '../utils/analyt
 import { BirthdaysPanel } from './BirthdaysPanel';
 import { ClassGroupsPanel } from './ClassGroupsPanel';
 import { AbsenteesPanel } from './AbsenteesPanel';
+import { InsightsPanel } from './InsightsPanel';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { ImportDataPanel } from './ImportDataPanel';
 
@@ -1147,6 +1148,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         recordedBy={user?.name}
         leaders={branchLeaders}
       />
+
+      <InsightsPanel members={branchMembers} leaders={branchLeaders} attendanceRecords={isSuperadmin ? attendanceRecords : attendanceRecords.filter(r => (r.church || '').toLowerCase() === currentChurchName.toLowerCase())} isGroupView={isSuperadmin} />
 
 
 
