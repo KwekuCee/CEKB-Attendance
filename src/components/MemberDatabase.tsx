@@ -38,6 +38,17 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [deletingMember, setDeletingMember] = useState<Member | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSel = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const bulkUpdate = (patch: (m: Member) => Member) => {
+    members.filter(m => selectedIds.has(m.id)).forEach(m => onUpdateMember?.(patch(m)));
+    setSelectedIds(new Set());
+  };
+  const bulkDelete = () => {
+    if (!window.confirm(`Delete ${selectedIds.size} selected member(s)? This cannot be undone.`)) return;
+    selectedIds.forEach(id => onDeleteMember?.(id));
+    setSelectedIds(new Set());
+  };
   const itemsPerPage = 8;
 
   const isChurchAdmin = user?.role === 'Church Admin';
@@ -370,12 +381,33 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
         </div>
       )}
 
+      {selectedIds.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-bold text-blue-900">{selectedIds.size} selected</span>
+          <select defaultValue="" onChange={(e) => { const v = Number(e.target.value); if (e.target.value !== '') bulkUpdate(m => ({ ...m, foundationClass: v })); e.target.value = ''; }} aria-label="Set Foundation School class" className="bg-white border border-slate-200 rounded-xl px-2 py-1.5 font-semibold">
+            <option value="">Set Foundation class…</option>
+            {[0,1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n === 7 ? 'Completed (7/7)' : `Class ${n}`}</option>)}
+          </select>
+          {leaders.length > 0 && (
+            <select defaultValue="" onChange={(e) => { const l = leaders.find(x => x.id === e.target.value); if (l) bulkUpdate(m => ({ ...m, invitedBy: l.fullName, invitedByLeaderId: l.id })); e.target.value = ''; }} aria-label="Assign leader" className="bg-white border border-slate-200 rounded-xl px-2 py-1.5 font-semibold">
+              <option value="">Assign leader…</option>
+              {leaders.map(l => <option key={l.id} value={l.id}>{l.fullName}</option>)}
+            </select>
+          )}
+          {onDeleteMember && <button onClick={bulkDelete} className="px-3 py-1.5 rounded-xl bg-red-600 text-white font-bold cursor-pointer">Delete</button>}
+          <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 font-bold cursor-pointer">Clear</button>
+        </div>
+      )}
+
       {/* Table Container */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm flex-1">
         <div className="overflow-x-auto flex-1">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead className="bg-slate-50/80 sticky top-0 z-10 border-b border-slate-200">
               <tr>
+                <th className="py-3.5 pl-4 w-8">
+                  <input type="checkbox" aria-label="Select all on this page" checked={paginatedMembers.length > 0 && paginatedMembers.every(m => selectedIds.has(m.id))} onChange={(e) => setSelectedIds(prev => { const n = new Set(prev); paginatedMembers.forEach(m => e.target.checked ? n.add(m.id) : n.delete(m.id)); return n; })} />
+                </th>
                 <th className="py-3.5 px-4 text-xs font-bold text-slate-400 ">
                   Member Details
                 </th>
@@ -408,6 +440,9 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
                     className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                     onClick={() => onSelectMemberForCard(member)}
                   >
+                    <td className="py-3.5 pl-4" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" aria-label={`Select ${member.fullName}`} checked={selectedIds.has(member.id)} onChange={() => toggleSel(member.id)} />
+                    </td>
                     {/* Name + Role Badge */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
@@ -515,7 +550,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-xs text-slate-500">
+                  <td colSpan={8} className="py-16 text-center text-xs text-slate-500">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                         <span className="material-symbols-outlined text-[24px]">search_off</span>
