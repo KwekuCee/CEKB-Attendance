@@ -1777,6 +1777,26 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
               </div>
 
+              {otpStep && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                  <p className="text-xs text-blue-900">{otpInfo}</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-digit code"
+                    aria-label="Sign-in code"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-lg font-bold tracking-[0.4em] text-center outline-none focus:border-blue-600"
+                  />
+                  <button type="button" onClick={() => { setOtpCode(''); setOtpStep(false); }} className="text-xs font-bold text-blue-700 hover:underline cursor-pointer">Send a new code</button>
+                </div>
+              )}
+
+
+
               <button
                 type="submit"
                 disabled={isLoggingIn}
