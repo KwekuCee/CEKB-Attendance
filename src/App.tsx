@@ -32,6 +32,8 @@ import {
   fetchAttendanceFromSupabase,
   saveAttendanceToSupabase,
   deleteAttendanceFromSupabase,
+  getOfflineAttendance,
+  flushOfflineAttendance,
   fetchChurchesFromSupabase,
   saveChurchToSupabase,
   deleteChurchFromSupabase,
@@ -208,14 +210,27 @@ export default function App() {
     const refresh = async () => {
       if (document.visibilityState !== 'visible') return;
       const [att, mem] = await Promise.all([fetchAttendanceFromSupabase(), fetchMembersFromSupabase()]);
-      if (att && att.length) setAttendanceRecords(att);
+      if (att && att.length) {
+        const pending = getOfflineAttendance().filter(p => !att.some(a => a.id === p.id));
+        setAttendanceRecords([...pending, ...att]);
+      }
       if (mem && mem.length) setMembers(mem);
     };
-    const timer = window.setInterval(refresh, 20000);
+    const goOnline = async () => {
+      const sent = await flushOfflineAttendance();
+      if (sent) {
+        toast.showSuccess('Back online', `${sent} saved check-in${sent === 1 ? '' : 's'} sent.`);
+        refresh();
+      }
+    };
+    const timer = window.setInterval(() => { goOnline(); refresh(); }, 20000);
     document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('online', goOnline);
+    goOnline();
     return () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('online', goOnline);
     };
   }, []);
 
