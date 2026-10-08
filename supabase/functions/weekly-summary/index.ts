@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     db.from('attendance_records').select('church_name, member_id').gte('attendance_date', since),
     db.from('members').select('church_name, status').gte('join_date', since),
     db.from('cell_reports').select('church_name, leader_id, leader_name, total_souls_won, total_offering').gte('report_date', since),
-    db.from('leaders').select('id, full_name, church_name, leader_type').in('leader_type', ['Cell Leader', 'PCF Leader']),
+    db.from('leaders').select('id, full_name, email, church_name, leader_type').in('leader_type', ['Cell Leader', 'PCF Leader']),
     db.from('user_profiles').select('email, full_name').eq('role', 'Superadmin'),
   ]);
 
@@ -46,6 +46,11 @@ Deno.serve(async (req) => {
   const html = `<h2 style="color:#1d4ed8;margin:0 0 8px">Weekly summary</h2><p>Here is how every branch did in the last 7 days (since ${since}).</p>${table}${missing ? `<h3 style="color:#1d4ed8;margin-top:20px">Cell reports still missing</h3>${missing}` : '<p>Every cell and PCF leader submitted a report this week.</p>'}`;
 
   let sent = 0;
+  // Gentle reminder to each leader who has not sent a report this week.
+  for (const r of rows) for (const l of r.missing as any[]) {
+    if (!l.email) continue;
+    await sendMail({ to: l.email, subject: 'Reminder: your weekly cell report', html: `<h2 style="color:#1d4ed8;margin:0 0 8px">Hello ${esc(l.full_name)},</h2><p>We haven't received your cell report for the past week yet. Please submit it from the <strong>Submit Cell Report</strong> button on <a href="https://gcycattendance.online">gcycattendance.online</a>.</p><p>Thank you for serving!</p>` });
+  }
   for (const s of supers || []) if (s.email && (await sendMail({ to: s.email, subject: 'CEKB weekly summary', html })).ok) sent++;
   return json({ success: true, sent, branches: rows.length });
 });
