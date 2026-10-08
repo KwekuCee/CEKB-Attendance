@@ -31,4 +31,11 @@
 - [x] Branded email layout for system emails
 - [ ] Link records by branch ID instead of name
 - [ ] Sign-up/reset emails restyle, live end-to-end tests, close stale findings
-- [ ] Suggested features — waiting on user's picks
+- [x] Weekly Monday summary email to group pastor (incl. missing cell reports)
+- [x] Fixed daily birthday reminders (scheduled job was being rejected)
+- [ ] Kiosk mode, offline check-in, service open/close times, attendance undo
+- [ ] Absentee auto-assign + follow-up tracker, first-timer journey
+- [ ] WhatsApp/SMS reminders (needs WhatsApp Business connection)
+- [ ] Leader sign-in, report reminders, report trends, leader family tree
+- [ ] Branch comparison, goals, bulk actions, duplicate merge, activity log screen
+- [ ] Two-step sign-in, weekly backup export, usher role, system health page

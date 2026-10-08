@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { sendMail as sendGmail } from '../_shared/mailer.ts';
 import { getPortalSession } from '../_shared/portal-session.ts';
 import { authenticateCronRequest } from '../_shared/cron-auth.ts';
+import { isScheduledCall } from '../_shared/app-cron.ts';
 
 const corsHeaders = {
   ...baseCorsHeaders,
@@ -21,8 +22,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   // Runs on a schedule, or by hand from a signed-in admin account. Nobody else.
-  const cronCheck = authenticateCronRequest(req);
-  if (cronCheck) {
+  if (!(await isScheduledCall(req)) && authenticateCronRequest(req)) {
     const session = await getPortalSession(req);
     if (!session) return json({ success: false, message: 'Please sign in to send reminders.' }, 401);
   }
