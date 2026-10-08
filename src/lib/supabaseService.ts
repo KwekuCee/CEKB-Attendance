@@ -1931,3 +1931,13 @@ export async function sendQrPassEmails(recipients: QrPassRecipient[]): Promise<Q
     return { success: false, sent: 0, skipped: skippedUpfront, failed: valid.length, error: err?.message || 'Failed to send.' };
   }
 }
+
+export async function setServiceStartTime(name: string, startTime: string, lateAfterMinutes = 15): Promise<boolean> {
+  const client = getSupabase();
+  if (!client || !name.trim()) return false;
+  const { error } = await client.from('service_types')
+    .update({ start_time: startTime || null, late_after_minutes: lateAfterMinutes } as any)
+    .eq('name', name.trim());
+  if (error) console.warn('setServiceStartTime error:', error.message);
+  return !error;
+}
