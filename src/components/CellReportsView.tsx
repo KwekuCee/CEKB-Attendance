@@ -153,6 +153,21 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
     [filtered],
   );
 
+  const weekly = useMemo(() => {
+    const map = new Map<string, { attendance: number; souls: number; reports: number }>();
+    filtered.forEach(r => {
+      if (!r.reportDate) return;
+      const d = new Date(r.reportDate.slice(0, 10) + 'T00:00:00');
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      const k = d.toISOString().slice(0, 10);
+      const v = map.get(k) || { attendance: 0, souls: 0, reports: 0 };
+      v.attendance += r.totalAttendance; v.souls += r.totalSoulsWon; v.reports += 1;
+      map.set(k, v);
+    });
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).slice(-8);
+  }, [filtered]);
+  const maxWeek = Math.max(1, ...weekly.map(([, v]) => v.attendance));
+
   return (
     <div className="p-4 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -199,6 +214,25 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
           </div>
         ))}
       </div>
+
+      {weekly.length > 1 && (
+        <div className={`${card} p-4`}>
+          <h3 className="font-bold text-sm text-slate-900">Weekly trend</h3>
+          <p className="text-xs text-slate-500 mb-3">Cell attendance per week (souls won in green). Follows the filters above.</p>
+          <div className="flex items-end gap-2 h-40">
+            {weekly.map(([wk, v]) => (
+              <div key={wk} className="flex-1 flex flex-col items-center justify-end h-full gap-1" title={`${v.reports} reports · ${v.attendance} attendance · ${v.souls} souls`}>
+                <span className="text-[10px] font-bold text-slate-700">{v.attendance}</span>
+                <div className="w-full flex items-end gap-0.5 h-full">
+                  <div className="flex-1 bg-blue-600 rounded-t" style={{ height: `${(v.attendance / maxWeek) * 100}%` }} />
+                  <div className="flex-1 bg-emerald-500 rounded-t" style={{ height: `${(v.souls / maxWeek) * 100}%` }} />
+                </div>
+                <span className="text-[10px] text-slate-500">{new Date(wk + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className={`${card} p-4 flex flex-wrap gap-2 items-center`}>
