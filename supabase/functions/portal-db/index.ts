@@ -80,7 +80,11 @@ const BRANCH_SCOPED = new Set([
   'promotion_queue',
   'audit_logs',
   'cell_reports',
+  'user_profiles',
 ]);
+
+/** Ushers can only look people up and record check-ins. */
+const USHER_READ = new Set(['members', 'attendance_records', 'service_types', 'churches', 'leaders']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -184,6 +188,18 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     if (!isRead && !(PUBLIC_WRITE.has(table) && (op === 'insert' || op === 'upsert'))) {
       return json({ error: { message: 'Please sign in to make this change.' } }, 401);
     }
+  }
+
+  if (session?.role === 'Usher') {
+    const ok = isRead ? USHER_READ.has(table) : table === 'attendance_records' && (op === 'insert' || op === 'upsert');
+    if (!ok) return json({ error: { message: 'Ushers can only scan and record check-ins.' } }, 403);
+  }
+
+  // Branch accounts may only create or change usher accounts, never group accounts.
+  if (session && session.role !== 'Superadmin' && table === 'user_profiles' && !isRead) {
+    if (op !== 'insert' && op !== 'upsert' && op !== 'delete' && op !== 'update') return json({ error: { message: 'Not allowed.' } }, 403);
+    const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
+    for (const row of rows) { row.role = 'Usher'; row.church_name = session.church_name; row.admin_verified = true; }
   }
 
   if (!isRead && SUPERADMIN_WRITE.has(table) && session?.role !== 'Superadmin') {
