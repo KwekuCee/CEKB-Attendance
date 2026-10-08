@@ -17,7 +17,7 @@ const TYPE_ORDER = ['Church Coordinator', 'PCF Leader', 'Cell Leader', 'BSCT'];
 
 /** Branch comparison, leader structure and possible duplicate members. */
 export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRecords, isGroupView }) => {
-  const [tab, setTab] = useState<'compare' | 'structure' | 'duplicates'>(isGroupView ? 'compare' : 'structure');
+  const [tab, setTab] = useState<'compare' | 'structure' | 'duplicates' | 'goals'>(isGroupView ? 'compare' : 'structure');
 
   const comparison = useMemo(() => {
     const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -59,9 +59,22 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
     </div>
   );
 
+  const goalKey = 'cekb_goals_' + (isGroupView ? 'group' : (members[0]?.church || 'branch'));
+  const [goals, setGoals] = useState<{ checkins: number; firstTimers: number; members: number }>(() => {
+    try { return JSON.parse(localStorage.getItem(goalKey) || '') } catch { return { checkins: 0, firstTimers: 0, members: 0 }; }
+  });
+  const saveGoal = (k: keyof typeof goals, v: number) => { const n = { ...goals, [k]: v }; setGoals(n); localStorage.setItem(goalKey, JSON.stringify(n)); };
+  const monthStart = new Date().toISOString().slice(0, 8) + '01';
+  const progress = {
+    checkins: attendanceRecords.filter(r => (r.date || '') >= monthStart).length,
+    firstTimers: members.filter(m => m.status === 'First Timer' && (m.joinDate || '') >= monthStart).length,
+    members: members.length,
+  };
+
   const tabs = [
     ...(isGroupView ? [['compare', 'Branch comparison'] as const] : []),
     ['structure', 'Leader structure'] as const,
+    ['goals', 'Growth goals'] as const,
     ['duplicates', `Possible duplicates (${duplicates.length})`] as const,
   ];
 
@@ -85,6 +98,26 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
           </div>
         )}
         {tab === 'structure' && (roots.length ? roots.map(r => renderNode(r)) : <p className="text-xs text-slate-500">No leaders registered yet.</p>)}
+        {tab === 'goals' && (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500">Set targets and watch progress. Check-ins and first timers count this month. Goals are saved on this device.</p>
+            {([['checkins', 'Check-ins this month'], ['firstTimers', 'New first timers this month'], ['members', 'Total members']] as const).map(([k, label]) => {
+              const target = goals[k] || 0; const pct = target ? Math.min(100, Math.round((progress[k] / target) * 100)) : 0;
+              return (
+                <div key={k}>
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <span className="font-bold text-slate-900">{label}</span>
+                    <span className="flex items-center gap-1 text-slate-600">{progress[k]} of
+                      <input type="number" min={0} value={target || ''} placeholder="goal" onChange={(e) => saveGoal(k, Math.max(0, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label={`${label} goal`} className="w-16 border border-slate-200 rounded-lg px-1.5 py-0.5 text-xs" />
+                    </span>
+                  </div>
+                  <div className="h-2.5 bg-slate-100 rounded-full mt-1"><div className="h-2.5 bg-blue-600 rounded-full" style={{ width: `${pct}%` }} /></div>
+                  {target > 0 && <div className="text-[11px] text-slate-500 mt-0.5">{pct}% reached</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {tab === 'duplicates' && (
           duplicates.length === 0 ? <p className="text-xs text-slate-500">No possible duplicate members found.</p> : (
             <div className="space-y-3">

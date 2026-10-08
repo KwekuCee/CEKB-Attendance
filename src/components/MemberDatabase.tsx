@@ -550,7 +550,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-xs text-slate-500">
+                  <td colSpan={8} className="py-16 text-center text-xs text-slate-500">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                         <span className="material-symbols-outlined text-[24px]">search_off</span>
