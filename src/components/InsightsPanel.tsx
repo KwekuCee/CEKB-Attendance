@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { getSupabase } from '../lib/supabase';
 import { AttendanceRecord, Leader, Member } from '../types';
 
 interface Props {
@@ -17,7 +18,7 @@ const TYPE_ORDER = ['Church Coordinator', 'PCF Leader', 'Cell Leader', 'BSCT'];
 
 /** Branch comparison, leader structure and possible duplicate members. */
 export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRecords, isGroupView }) => {
-  const [tab, setTab] = useState<'compare' | 'structure' | 'duplicates' | 'goals'>(isGroupView ? 'compare' : 'structure');
+  const [tab, setTab] = useState<'compare' | 'structure' | 'duplicates' | 'goals' | 'health'>(isGroupView ? 'compare' : 'structure');
 
   const comparison = useMemo(() => {
     const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -71,10 +72,22 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
     members: members.length,
   };
 
+  const [health, setHealth] = useState<{ emails: any[]; blocked: any[] } | null>(null);
+  useEffect(() => {
+    if (tab !== 'health' || health) return;
+    const c: any = getSupabase();
+    if (!c) return;
+    Promise.all([
+      c.from('email_send_log').select('*').in('status', ['failed', 'dlq', 'bounced', 'suppressed']).order('created_at', { ascending: false }).limit(50),
+      c.from('request_rate_limits').select('*').order('updated_at', { ascending: false }).limit(200),
+    ]).then(([e, r]: any[]) => setHealth({ emails: e.data || [], blocked: (r.data || []).filter((x: any) => x.request_count > 5) }));
+  }, [tab, health]);
+
   const tabs = [
     ...(isGroupView ? [['compare', 'Branch comparison'] as const] : []),
     ['structure', 'Leader structure'] as const,
     ['goals', 'Growth goals'] as const,
+    ...(isGroupView ? [['health', 'Failed emails & blocks'] as const] : []),
     ['duplicates', `Possible duplicates (${duplicates.length})`] as const,
   ];
 
@@ -98,6 +111,23 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
           </div>
         )}
         {tab === 'structure' && (roots.length ? roots.map(r => renderNode(r)) : <p className="text-xs text-slate-500">No leaders registered yet.</p>)}
+        {tab === 'health' && (!health ? <p className="text-xs text-slate-500">Loading…</p> : (
+          <div className="space-y-4 text-xs">
+            <div>
+              <h4 className="font-bold text-slate-900 mb-1">Emails that failed ({health.emails.length})</h4>
+              {health.emails.length === 0 ? <p className="text-slate-500">No failed emails recently.</p> : health.emails.map((e: any) => (
+                <div key={e.id} className="py-1 border-b border-slate-100"><span className="font-semibold">{e.recipient_email}</span> · {e.template_name} · <span className="text-red-600">{e.status}</span> · {new Date(e.created_at).toLocaleString()}{e.error_message ? ` — ${e.error_message}` : ''}</div>
+              ))}
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 mb-1">Busy or blocked attempts ({health.blocked.length})</h4>
+              <p className="text-slate-500 mb-1">Repeated sign-in, check-in or email attempts in a short time. Normal visitors rarely appear here.</p>
+              {health.blocked.length === 0 ? <p className="text-slate-500">Nothing unusual.</p> : health.blocked.map((b: any) => (
+                <div key={b.bucket_key} className="py-1 border-b border-slate-100"><span className="font-semibold">{String(b.bucket_key).split(':')[0]}</span> · {b.request_count} attempts · {new Date(b.updated_at).toLocaleString()}</div>
+              ))}
+            </div>
+          </div>
+        ))}
         {tab === 'goals' && (
           <div className="space-y-4">
             <p className="text-xs text-slate-500">Set targets and watch progress. Check-ins and first timers count this month. Goals are saved on this device.</p>
