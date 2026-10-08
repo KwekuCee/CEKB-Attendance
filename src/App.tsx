@@ -616,7 +616,7 @@ export default function App() {
   };
 
   const handleLoginSuccess = (role?: 'Superadmin' | 'Church Admin', churchName?: string, adminName?: string, email?: string) => {
-    const effectiveRole: 'Superadmin' | 'Church Admin' = role || 'Church Admin';
+    const effectiveRole = (role || 'Church Admin') as 'Superadmin' | 'Church Admin';
     let superadminChurch = 'GCYC Group HQ';
     let superadminPhone = '+233 24 123 4567';
     try {
@@ -703,6 +703,26 @@ export default function App() {
         onAddChurchAdmin={handleAddChurchAdmin}
         onConfirmAttendance={handleConfirmAttendance}
       />
+    );
+  }
+
+  if ((user?.role as string) === 'Usher') {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="flex items-center justify-between px-4 py-3 bg-blue-700 text-white">
+          <div className="text-sm font-bold">Usher · {user.church}</div>
+          <button onClick={handleLogout} className="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl cursor-pointer">Sign out</button>
+        </div>
+        <QRScannerModal
+          members={members}
+          attendance={attendanceRecords}
+          serviceTypes={serviceTypes}
+          user={user}
+          onConfirmAttendance={handleConfirmAttendance}
+          onClose={() => {}}
+          onNavigate={() => {}}
+        />
+      </div>
     );
   }
 
