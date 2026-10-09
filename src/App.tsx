@@ -694,6 +694,7 @@ export default function App() {
   // Render Public Portal if not logged in or viewing public views
   if (!isLoggedIn) {
     return (
+      <Suspense fallback={<ViewLoader />}>
       <PublicPortal
         members={members}
         churches={churches}
@@ -706,6 +707,7 @@ export default function App() {
         onAddChurchAdmin={handleAddChurchAdmin}
         onConfirmAttendance={handleConfirmAttendance}
       />
+      </Suspense>
     );
   }
 
@@ -719,6 +721,7 @@ export default function App() {
           </div>
           <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
         </div>
+        <Suspense fallback={<ViewLoader />}>
         <QRScannerModal
           members={members}
           attendance={attendanceRecords}
@@ -729,6 +732,7 @@ export default function App() {
           onLogout={handleLogout}
           onNavigate={() => {}}
         />
+        </Suspense>
       </div>
     );
   }
@@ -950,6 +954,7 @@ export default function App() {
                   onUpdateUser={(updated) => setUser(prev => ({ ...prev, ...updated }))}
                 />
               )}
+             </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -965,6 +970,7 @@ export default function App() {
       </div>
 
       {/* Global Modals */}
+      <Suspense fallback={null}>
       <AnimatePresence>
         {selectedMemberForCard && (
           <MemberCardModal
@@ -983,6 +989,7 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+      </Suspense>
 
     </div>
   );
