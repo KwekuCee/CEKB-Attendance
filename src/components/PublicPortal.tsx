@@ -38,7 +38,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   // A dedicated /cell-report address opens the weekly report sheet straight away,
   // so a subdomain can be pointed at it for leaders.
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report'>(
-    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).get('signin') === 'usher' ? 'login' : 'home'))
+    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).has('signin') ? 'login' : 'home'))
   );
 
   // Dynamically derive effective list of churches from DB and registered admins

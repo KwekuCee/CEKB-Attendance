@@ -41,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ] : [
     { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
     { id: 'leaders', label: 'PCF & Cell Leaders', icon: 'diversity_3' },
+    { id: 'hierarchy', label: 'Leader Hierarchy', icon: 'account_tree' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
@@ -71,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
         </nav>
         <div className="sidebar-utilities">
-          {!isSuperadmin && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
+          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
           <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>
           <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>
           {menuItem('settings', 'Settings', 'settings')}
@@ -80,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <p className="sidebar-caption">User account</p>
           <div className="sidebar-account-row">
             <span className="sidebar-avatar" aria-hidden="true">{user?.name?.trim().charAt(0).toUpperCase() || 'C'}</span>
-            <div className="sidebar-account-details"><strong>{user?.name || 'Administrator'}</strong><span>{isSuperadmin ? 'Group pastor' : 'Church administrator'}</span></div>
+            <div className="sidebar-account-details"><strong>{user?.name || 'Administrator'}</strong><span>{isSuperadmin ? 'Group pastor' : (user?.role as string) === 'Church Pastor' ? 'Church pastor' : 'Church administrator'}</span></div>
             <Button variant="ghost" className="sidebar-signout" onClick={onLogout} aria-label="Sign Out" title="Sign Out"><span className="material-symbols-outlined" aria-hidden="true">logout</span></Button>
           </div>
           <a className="sidebar-credit" href="https://primehaven.tech" target="_blank" rel="noopener noreferrer">Developed by Prime Haven</a>
