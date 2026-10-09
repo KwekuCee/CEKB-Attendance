@@ -1,5 +1,11 @@
 # Roadmap
 
+## Whole-system redesign (Oct 9, 2026)
+- [ ] Visible usher logout inside the scanner
+- [ ] New homepage and public navigation
+- [ ] Unified dashboard, onboarding, authentication, report and check-in styling
+- [ ] Verify public navigation and usher logout; inspect authenticated layouts where access is available
+
 - [x] Connect the app to the Lovable Cloud database (all tables + relations)
 - [x] Point the client at platform env vars instead of hardcoded credentials
 - [x] Verify login and dashboard data end-to-end
