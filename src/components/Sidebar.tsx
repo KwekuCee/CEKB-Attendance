@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { rawPortal } from '../lib/rawPortal';
+import { isFeatureOn, type FeatureMatrix } from '../lib/features';
 import type { AuthSessionUser } from '../types';
 import { ViewType, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
@@ -23,13 +25,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNavigate, onLogout, isMobileOpen = false, onCloseMobile,
 }) => {
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [matrix, setMatrix] = useState<FeatureMatrix | null>(null);
+  useEffect(() => { rawPortal({ action: 'featureMatrix' }, null).then((r: any) => setMatrix(r?.data || null)).catch(() => {}); }, []);
   const isSuperadmin = user?.role === 'Superadmin';
   const navigate = (view: ViewType) => { onNavigate(view); onCloseMobile?.(); };
   const exportRecords = () => {
     try { exportMultiSheetExcel(members, attendanceRecords, churches, churchAdmins); }
     catch { exportMultiSectionCSV(members, attendanceRecords, churches, churchAdmins); }
   };
-  const navItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
+  const allNavItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
     { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
     { id: 'group_overview', label: 'Churches', icon: 'account_tree' },
     { id: 'church_admins_directory', label: 'Church Admins', icon: 'badge' },
@@ -49,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
   ];
+  const navItems = allNavItems.filter(item => isFeatureOn(matrix, user?.role, item.id));
   const menuItem = (id: ViewType, label: string, icon: string) => (
     <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
@@ -73,9 +78,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
         </nav>
         <div className="sidebar-utilities">
-          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
-          <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>
-          <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>
+          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && isFeatureOn(matrix, user?.role, 'scanner') && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
+          {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
+          {isFeatureOn(matrix, user?.role, 'support') && <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>}
           {menuItem('settings', 'Settings', 'settings')}
         </div>
         <div className="sidebar-account">

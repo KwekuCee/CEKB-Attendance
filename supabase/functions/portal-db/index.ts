@@ -499,6 +499,130 @@ async function handleDevStats(session: Session | null) {
   } });
 }
 
+// Totals-only deep analytics for the developer console. Never returns personal fields.
+const DEV_TABLES = ['churches', 'members', 'leaders', 'attendance_records', 'cell_reports', 'announcements', 'audit_logs', 'email_send_log', 'user_profiles', 'church_admin_accounts', 'portal_sessions', 'absence_records', 'qr_tokens', 'service_types', 'suppressed_emails'];
+const SAFE_LOG_CATEGORIES = new Set(['System', 'Security', 'Settings', 'Church']);
+
+async function handleDevAnalytics(session: Session | null) {
+  if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
+  const now = Date.now();
+  const since90 = new Date(now - 90 * 864e5).toISOString();
+  const since24 = new Date(now - 864e5).toISOString();
+  const since30 = new Date(now - 30 * 864e5).toISOString();
+  const [{ data: att }, { data: churches }, { data: mem }, { data: lead }, { data: rep }, { data: mail }, { data: logs }, { data: profs }, rowCounts, { data: anns }] = await Promise.all([
+    admin.from('attendance_records').select('attendance_date, church_name').gte('attendance_date', since90.slice(0, 10)).limit(100000),
+    admin.from('churches').select('name, status, members_count, created_at'),
+    admin.from('members').select('church_name, created_at, status').limit(100000),
+    admin.from('leaders').select('church_name').limit(100000),
+    admin.from('cell_reports').select('church_name, created_at').limit(100000),
+    admin.from('email_send_log').select('template_name, status, error_message, created_at, metadata').gte('created_at', since30).order('created_at', { ascending: false }).limit(5000),
+    admin.from('audit_logs').select('id, actor, church_name, action, category, icon, created_at').order('created_at', { ascending: false }).limit(300),
+    admin.from('user_profiles').select('role, church_name, admin_verified, created_at'),
+    Promise.all(DEV_TABLES.map(async (t) => [t, await countOf(t)] as const)),
+    admin.from('announcements').select('title, target_audience, sender_name, created_at').order('created_at', { ascending: false }).limit(20),
+  ]);
+  const key = (s: any) => String(s || '').trim().toLowerCase();
+  const daily: Record<string, number> = {};
+  const lastSeen: Record<string, string> = {};
+  const att30: Record<string, number> = {};
+  for (const r of att || []) {
+    daily[r.attendance_date] = (daily[r.attendance_date] || 0) + 1;
+    const k = key(r.church_name);
+    if (!lastSeen[k] || lastSeen[k] < r.attendance_date) lastSeen[k] = r.attendance_date;
+    if (r.attendance_date >= since30.slice(0, 10)) att30[k] = (att30[k] || 0) + 1;
+  }
+  const series = Array.from({ length: 90 }, (_, i) => {
+    const d = new Date(now - (89 - i) * 864e5).toISOString().slice(0, 10);
+    return { date: d, count: daily[d] || 0 };
+  });
+  const tally = (rows: any[] | null) => { const m: Record<string, number> = {}; for (const r of rows || []) m[key(r.church_name)] = (m[key(r.church_name)] || 0) + 1; return m; };
+  const memBy = tally(mem), leadBy = tally(lead), repBy = tally(rep), staffBy = tally(profs);
+  const churchRows = (churches || []).map((c: any) => {
+    const k = key(c.name);
+    const rows = (memBy[k] || 0) + (leadBy[k] || 0) + (repBy[k] || 0) + (att30[k] || 0);
+    return { name: c.name, status: c.status, members: memBy[k] ?? c.members_count ?? 0, leaders: leadBy[k] || 0, staff: staffBy[k] || 0, reports: repBy[k] || 0, checkins30: att30[k] || 0, lastActive: lastSeen[k] || null, createdAt: c.created_at, rows, estBytes: rows * 1200, active: !!lastSeen[k] && lastSeen[k] >= since30.slice(0, 10) };
+  });
+  const monthKey = (d: string) => String(d).slice(0, 7);
+  const growth: Record<string, { churches: number; members: number }> = {};
+  for (const c of churches || []) { const m = monthKey(c.created_at); growth[m] = growth[m] || { churches: 0, members: 0 }; growth[m].churches++; }
+  for (const m of mem || []) { const k = monthKey(m.created_at); growth[k] = growth[k] || { churches: 0, members: 0 }; growth[k].members++; }
+  const mails = mail || [];
+  const failedStatuses = new Set(['failed', 'dlq', 'bounced', 'suppressed', 'complained']);
+  const mailBy = (s: (m: any) => boolean) => mails.filter(s).length;
+  const failures = mails.filter((m: any) => failedStatuses.has(m.status)).slice(0, 50).map((m: any) => ({ template: m.template_name, status: m.status, reason: m.error_message || 'Unknown', at: m.created_at }));
+  const reasons: Record<string, number> = {};
+  for (const f of mails.filter((m: any) => failedStatuses.has(m.status))) { const r = String(f.error_message || f.status).slice(0, 60); reasons[r] = (reasons[r] || 0) + 1; }
+  const mailChurch: Record<string, number> = {};
+  for (const m of mails) { const c = m.metadata?.church || m.metadata?.church_name; if (c) mailChurch[c] = (mailChurch[c] || 0) + 1; }
+  // Registrations needing attention: unverified accounts older than a day.
+  const flagged = (profs || []).filter((p: any) => !p.admin_verified && p.role !== 'Superadmin' && now - new Date(p.created_at).getTime() > 864e5).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at }));
+  // Integrity checks (counts only)
+  const [orphanAtt, orphanMem, expiredSessions] = await Promise.all([
+    countOf('attendance_records', (q) => q.is('church_id', null)),
+    countOf('members', (q) => q.is('church_id', null)),
+    countOf('portal_sessions', (q) => q.lt('expires_at', new Date().toISOString())),
+  ]);
+  const roleCounts: Record<string, number> = {};
+  for (const p of profs || []) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
+  const { data: fm } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'feature_matrix').maybeSingle();
+  const { data: plat } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'platform_config').maybeSingle();
+  return json({ data: {
+    series, churches: churchRows,
+    growth: Object.entries(growth).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
+    tables: Object.fromEntries(rowCounts), roleCounts, flagged,
+    messaging: {
+      total30: mails.length, sent30: mailBy((m) => m.status === 'sent'), failed30: mailBy((m) => failedStatuses.has(m.status)),
+      pending: mailBy((m) => m.status === 'pending'), last24: mailBy((m) => m.created_at >= since24),
+      sms30: 0, failures, reasons, byChurch: mailChurch,
+      byTemplate: mails.reduce((a: any, m: any) => { a[m.template_name] = (a[m.template_name] || 0) + 1; return a; }, {}),
+    },
+    integrity: { orphanAtt, orphanMem, expiredSessions },
+    logs: (logs || []).map((l: any) => ({ id: l.id, category: l.category || 'General', icon: l.icon, church: l.church_name, at: l.created_at,
+      action: SAFE_LOG_CATEGORIES.has(l.category) || l.actor === 'Developer' ? l.action : `${l.category || 'Record'} activity`,
+      actor: ['Developer', 'System', 'Group Pastor'].includes(l.actor) ? l.actor : 'Church account' })),
+    announcements: anns || [],
+    featureMatrix: fm?.setting_value || null, platform: plat?.setting_value || null,
+  } });
+}
+
+async function handleDevAction(body: any, session: Session | null) {
+  if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
+  const op = String(body?.op || '');
+  const log = (action: string, category = 'System') => admin.from('audit_logs').insert({ actor: 'Developer', action, category, icon: 'terminal' });
+  if (op === 'setChurchStatus') {
+    const status = String(body.status);
+    if (!['Active', 'Inactive', 'Suspended'].includes(status)) return json({ error: 'Bad status' }, 400);
+    await admin.from('churches').update({ status }).eq('name', String(body.name));
+    await log(`Set church "${body.name}" status to ${status}`, 'Church');
+    return json({ success: true });
+  }
+  if (op === 'saveSetting') {
+    const k = String(body.key);
+    if (!['feature_matrix', 'platform_config'].includes(k)) return json({ error: 'Bad key' }, 400);
+    await admin.from('admin_settings').upsert({ setting_key: k, setting_value: body.value ?? {}, is_global: true, setting_type: 'json' }, { onConflict: 'setting_key' });
+    await log(`Updated ${k.replace('_', ' ')}`, 'Settings');
+    return json({ success: true });
+  }
+  if (op === 'broadcast') {
+    const title = String(body.title || '').trim().slice(0, 200), message = String(body.message || '').trim().slice(0, 5000);
+    if (!title || !message) return json({ error: 'Title and message required.' }, 400);
+    await admin.from('announcements').insert({ title, message, target_audience: 'All Churches', sender_name: 'developer@gcycattendance.online', church_id: null });
+    await log(`Broadcast announcement: ${title}`);
+    return json({ success: true });
+  }
+  if (op === 'purgeSessions') {
+    await admin.from('portal_sessions').delete().lt('expires_at', new Date().toISOString());
+    await log('Purged expired sessions', 'Security');
+    return json({ success: true });
+  }
+  return json({ error: 'Unknown operation' }, 400);
+}
+
+async function handleFeatureMatrix() {
+  const { data } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'feature_matrix').maybeSingle();
+  return json({ data: data?.setting_value || null });
+}
+
 async function handleCheckGroupCode(body: any) {
   const code = Deno.env.get('GROUP_PASTOR_CODE') || '';
   return json({ valid: safeEqual(String(body?.code || '').trim().toUpperCase(), code.toUpperCase()) });
@@ -559,6 +683,12 @@ Deno.serve(async (req) => {
       }
       case 'devStats':
         return await handleDevStats(session);
+      case 'devAnalytics':
+        return await handleDevAnalytics(session);
+      case 'devAction':
+        return await handleDevAction(body, session);
+      case 'featureMatrix':
+        return await handleFeatureMatrix();
       case 'checkGroupCode': {
         const limited = await rateLimit(req, 'group-code', 10, 600, corsHeaders, undefined, true);
         if (limited) return limited;
