@@ -1,55 +1,15 @@
-const CACHE_NAME = 'cekorlebu-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon.svg'
-];
-
-// Install Event
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
-  );
-});
-
-// Activate Event
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// Fetch Event - Stale While Revalidate
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(() => {
-        // Return offline fallback if network fails
-        return cachedResponse;
-      });
-
-      return cachedResponse || fetchPromise;
-    })
-  );
-});
+// Retires the old caching worker so installed phones always load the latest app.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) =>
+  event.waitUntil((async () => {
+    try {
+      const names = await caches.keys();
+      await Promise.allSettled(names.filter((n) => n.startsWith('cekorlebu-')).map((n) => caches.delete(n)));
+      await self.clients.claim();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      await Promise.allSettled(clients.map((c) => c.navigate(c.url)));
+    } finally {
+      await self.registration.unregister();
+    }
+  })())
+);

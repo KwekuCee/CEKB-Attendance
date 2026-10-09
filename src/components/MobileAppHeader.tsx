@@ -174,7 +174,7 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed font-body">
-              Add this app directly to your home screen for quick check-ins and offline access:
+              Add this app directly to your home screen so it opens like an app for quick check-ins:
             </p>
 
             <div className="space-y-3 text-xs bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
