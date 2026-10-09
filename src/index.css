@@ -421,3 +421,25 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
   .portal-main--form form > .grid { gap: 18px; }
   .welcome-action, .welcome-action:first-child, .welcome-action:nth-child(3) { padding: 16px; }
 }
+
+/* Analytic white/black/blue layer: glass panels, gradients, rounded tiles. */
+.dashboard-shell { background: var(--gradient-workspace); background-attachment: fixed; }
+.dashboard-shell aside { background: var(--gradient-ink); border-right: 0; }
+.dashboard-shell aside > .flex-1 button[class*="bg-blue-700"] { background: hsl(0 0% 100% / .08); border: 1px solid hsl(0 0% 100% / .1); backdrop-filter: blur(8px); box-shadow: inset 3px 0 0 hsl(var(--palette-steel)) !important; }
+.dashboard-shell header { background: hsl(0 0% 100% / .65) !important; backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4); border-bottom: 1px solid hsl(var(--border) / .7); }
+.dashboard-main :is(div[class*="bg-white"], section[class*="bg-white"]) { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid hsl(var(--border) / .8); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft) !important; transition: transform .2s ease, box-shadow .2s ease; }
+.dashboard-metrics > div { border-radius: var(--radius-panel) !important; position: relative; overflow: hidden; }
+.dashboard-metrics > div:hover { transform: translateY(-2px); box-shadow: var(--shadow-popover) !important; }
+.dashboard-metrics > div:first-child { background: var(--gradient-ink) !important; border-color: transparent !important; }
+.dashboard-metrics > div:first-child::after { content: ""; position: absolute; right: -40px; top: -40px; width: 140px; height: 140px; border-radius: 9999px; background: hsl(var(--palette-steel) / .35); filter: blur(30px); pointer-events: none; }
+.dashboard-metrics > div:nth-child(2)::before, .dashboard-metrics > div:nth-child(3)::before, .dashboard-metrics > div:nth-child(4)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--gradient-blue); }
+.dashboard-metrics .font-display { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.dashboard-main div[class*="from-blue-"] { background: var(--gradient-ink) !important; border-radius: var(--radius-panel); }
+.dashboard-shell :is(button.bg-blue-600, button.bg-blue-700, button.bg-blue-800) { background: var(--gradient-blue); box-shadow: 0 6px 18px hsl(var(--palette-denim) / .3); }
+.dashboard-main table thead { background: hsl(var(--muted) / .7); }
+.dashboard-main table tbody tr:hover { background: hsl(var(--secondary) / .7); }
+.dashboard-main :is(input, select, textarea) { border-radius: var(--radius-control); background: hsl(0 0% 100% / .8); }
+.dashboard-shell #mobile-bottom-navigation { background: hsl(var(--palette-midnight) / .85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.scanner-screen > header { background: hsl(var(--palette-midnight) / .8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.scanner-screen .scanner-controls { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.portal-signin, .portal-flow-tabs button[aria-current=page] { background: var(--gradient-ink); }
