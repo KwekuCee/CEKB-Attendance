@@ -686,6 +686,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </Button>
               ))}
             </nav>
+            <div className="portal-page-heading">
+              <span className="portal-page-icon material-symbols-outlined">{({ attendance: 'how_to_reg', leader_reg: 'diversity_3', admin_signup: 'church', cell_report: 'assignment', login: 'lock', home: 'church' })[activeTab]}</span>
+              <div>
+                <p className="portal-page-eyebrow">CEKB Group</p>
+                <h1>{({ attendance: 'Check in to your church', leader_reg: 'Leader registration', admin_signup: 'Register your church', cell_report: 'Weekly cell report', login: 'Welcome back', home: 'CEKB Group' })[activeTab]}</h1>
+                <p>{({ attendance: "Join us for today’s service.", leader_reg: 'Your church. Your cell. Your calling.', admin_signup: 'Create your church administrator account.', cell_report: 'Cell meetings, attendance and soulwinning.', login: 'Sign in to your church account.', home: '' })[activeTab]}</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -827,6 +835,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </motion.div>
             ) : (
               <form onSubmit={handleSelfAttendanceSubmit} className="space-y-4">
+                <h4 className="portal-form-section">Personal details</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
@@ -944,6 +953,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 {/* Location, Occupation, Educational Level, Foundation Class */}
+                <h4 className="portal-form-section">About you</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
@@ -1128,14 +1138,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </select>
                 </div>
 
-                <button
+                <Button
                   type="submit"
                   disabled={isGeneratingQr || isSubmittingAttendance}
-                  className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-4 rounded-xl transition-all shadow-sm shadow-blue-700/20 flex items-center justify-center gap-2 cursor-pointer mt-4 active:scale-98 disabled:opacity-50"
+                  className="w-full mt-4"
                 >
                   <span className="material-symbols-outlined text-[20px]">qr_code_2</span>
                   <span>{isGeneratingQr || isSubmittingAttendance ? 'Recording attendance…' : 'Confirm Attendance & Download Digital QR Pass'}</span>
-                </button>
+                </Button>
               </form>
             )}
           </div>
@@ -1207,6 +1217,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             )}
 
             <form onSubmit={handleLeaderSelfReg} className="space-y-4">
+              <h4 className="portal-form-section">Leader details</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
@@ -1427,6 +1438,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             )}
 
             <form onSubmit={handleAdminSignUp} className="space-y-4">
+              <h4 className="portal-form-section">Administrator details</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">

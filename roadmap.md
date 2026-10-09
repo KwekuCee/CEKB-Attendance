@@ -1,5 +1,11 @@
 # Roadmap
 
+## Blue palette and public form redesign (Oct 9, 2026)
+- [x] Apply uploaded six-color palette throughout screens
+- [x] Rounded controls, panels and tiles
+- [x] Redesign opened attendance, leader, church, report and login pages
+- [x] Check public forms, navigation, typography and dashboard/scanner layouts; real-account submission checks remain pending below
+
 ## Reference-style dashboards and scanner (Oct 9, 2026)
 - [x] Charcoal navigation, mint workspace, green accents across dashboard views
 - [x] Matching scanner workspace with live camera and visible logout
