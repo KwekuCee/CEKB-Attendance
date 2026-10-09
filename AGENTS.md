@@ -6,3 +6,4 @@
 - Render restricted-account logout inside full-screen tools so overlays cannot hide sign-out.
 - Use one shared semantic palette across public pages, dashboards and scanners; use named scanner layout hooks to keep the camera framing independent of controls.
 - Keep the dashboard as a dark navigation rail beside one rounded light workspace; reserve gradients for featured analytic surfaces, not buttons.
+- Use explicit semantic sidebar hooks and aria-current for menu states, never legacy palette selectors or divider borders, so glass navigation stays consistent.
