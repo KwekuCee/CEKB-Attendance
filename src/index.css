@@ -575,5 +575,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .login-slider-track { display: flex; width: 200%; transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
 .login-slider-track > * { width: 50%; flex-shrink: 0; padding: 2px; }
 .login-slider-track[data-pane="usher"] { transform: translateX(-50%); }
-.login-slider-track [aria-hidden="true"] { visibility: hidden; }
+.login-slider-track > * { transition: visibility 0s; }
+.login-slider-track > [aria-hidden="true"] { visibility: hidden; transition: visibility 0s 0.45s; }
 @media (prefers-reduced-motion: reduce) { .login-slider-track { transition: none; } }

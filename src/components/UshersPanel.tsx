@@ -37,7 +37,11 @@ export const UshersPanel: React.FC<{ church: string }> = ({ church }) => {
     });
     setBusy(false);
     if (error) return toast.showError(error.message || 'Could not create the usher.');
-    toast.showSuccess(`Usher account created for ${name.trim()}.`);
+    const sent = await c.functions.invoke('usher-welcome', {
+      body: { email: email.trim().toLowerCase(), origin: window.location.origin },
+      headers: { 'x-portal-session': localStorage.getItem('gcyc_portal_token') || '' },
+    }).catch(() => ({ error: true }));
+    toast.showSuccess(`Usher account created for ${name.trim()}.${sent?.error ? ' The welcome email could not be sent.' : ' A welcome email is on its way.'}`);
     setName(''); setEmail(''); setPassword('');
     load();
   };
@@ -52,7 +56,7 @@ export const UshersPanel: React.FC<{ church: string }> = ({ church }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
       <h3 className="font-headline font-bold text-sm text-slate-900">Ushers</h3>
-      <p className="text-xs text-slate-500 mt-0.5 mb-3">Ushers sign in on the Admin Login page and can only open the scanner and check people in for {church}.</p>
+      <p className="text-xs text-slate-500 mt-0.5 mb-3">Ushers sign in on the Usher Sign In page (Sign In → “Are you an usher?”) and can only open the scanner and check people in for {church}.</p>
       <form onSubmit={add} className="grid sm:grid-cols-4 gap-2">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" aria-label="Usher name" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
         <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" aria-label="Usher email" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
