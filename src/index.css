@@ -68,11 +68,22 @@
   place-items: center;
   min-height: 100dvh;
   background: hsl(var(--opening-surface));
+  opacity: 1;
+  transition: opacity .5s ease;
 }
+.mobile-opening-screen--revealing { opacity: 0; }
+.mobile-opening-content--hidden { visibility: hidden; }
+.mobile-opening-brand { text-align: center; }
+.mobile-opening-emblem { position: relative; width: 136px; height: 136px; margin: 0 auto 30px; display: grid; place-items: center; }
+.mobile-opening-logo { width: 86px; height: 86px; }
+.mobile-opening-brand h1 { font-size: 24px; color: hsl(var(--foreground)); }
+.mobile-opening-brand p { margin-top: 8px; font-size: 13px; color: hsl(var(--muted-foreground)); }
 .mobile-opening-loader {
-  width: 60px;
-  height: 60px;
-  border: 4px solid hsl(var(--opening-track));
+  position: absolute;
+  inset: 0;
+  width: 136px;
+  height: 136px;
+  border: 3px solid hsl(var(--opening-track));
   border-top-color: hsl(var(--opening-indicator));
   border-right-color: hsl(var(--opening-indicator));
   border-radius: 50%;
@@ -81,6 +92,7 @@
 @keyframes mobile-opening-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .mobile-opening-loader { animation: none; }
+  .mobile-opening-screen { transition: none; }
 }
 
 @theme {
