@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { renderQrPass, saveQrPass, QrPassResult, SaveOutcome } from '../utils/qrPass';
 import { motion } from 'motion/react';
-import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';
+import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord, AuthSessionUser } from '../types';
+import { getSupabase } from '../lib/supabase';
 import { FOUNDATION_SCHOOL_CLASSES, STANDARD_SERVICE_TYPES, parseFoundationClassNumber, getFoundationClassLabel } from '../data/constants';
 import { clearStoredSession, authenticateUserWithDatabase, sendPasswordResetEmail, fetchServiceTypesFromSupabase, sendAttendanceEmailToChurchAdmin, uploadMemberPhoto, uploadProfilePhoto, sendAdminVerificationEmail, syncLeaderAsMember, generateLeaderCode, sendQrPassEmails } from '../lib/supabaseService';
 import { ChurchLogo } from './ChurchLogo';
@@ -178,6 +179,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [ldrPhotoFile, setLdrPhotoFile] = useState<File | null>(null);
   const [ldrPhotoPreview, setLdrPhotoPreview] = useState('');
   const [ldrAuthCode, setLdrAuthCode] = useState('');
+  const [ldrPassword, setLdrPassword] = useState('');
   const [ldrError, setLdrError] = useState('');
   const [ldrSuccessMsg, setLdrSuccessMsg] = useState('');
   const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
@@ -425,6 +427,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       setLdrError('Please complete all required fields including Full Name, Email, Contact, and Cell/PCF Names.');
       return;
     }
+    if (ldrPassword.length < 8) {
+      setLdrError('Please choose a password with at least 8 characters for your leader account.');
+      return;
+    }
 
     setIsSubmittingLeader(true);
     try {
@@ -455,6 +461,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     };
 
     onAddLeader(newLeader);
+
+    // Each leader gets their own sign-in so they can follow their group.
+    let accountNote = ' You can now sign in with your email and password.';
+    const accountClient: any = getSupabase();
+    if (accountClient) {
+      const email = newLeader.email.trim().toLowerCase();
+      const { error: accErr } = await accountClient.from('user_profiles').insert({
+        username: email, email, full_name: newLeader.fullName, password_hash: ldrPassword,
+        role: 'Leader', church_name: newLeader.church, phone: newLeader.contact,
+      });
+      if (accErr) accountNote = ` Your leader account could not be created (${accErr.message}).`;
+    }
 
     // Every leader is also a member: keep the membership records in step and
     // tag them with their leader role.
@@ -496,7 +514,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       ]).catch(() => {});
     }
 
-    setLdrSuccessMsg(`Registration complete for ${newLeader.fullName} (${newLeader.leaderType} - ${newLeader.church}). Leader code: ${leaderCode}. Your scan pass has been downloaded — show it to your branch admin at every service.`);
+    setLdrSuccessMsg(`Registration complete for ${newLeader.fullName} (${newLeader.leaderType} - ${newLeader.church}). Leader code: ${leaderCode}. Your scan pass has been downloaded — show it to your branch admin at every service.${accountNote}`);
     setLdrName('');
     setLdrEmail('');
     setLdrPhone('');
@@ -505,6 +523,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setLdrPhotoFile(null);
     setLdrPhotoPreview('');
     setLdrAuthCode('');
+    setLdrPassword('');
     } finally {
       setIsSubmittingLeader(false);
     }
@@ -526,7 +545,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       !admFullName.trim() ||
       !admRequiredEmail.trim() ||
       !admChurchName.trim() ||
-      !admPastorName.trim() ||
       !admPhone.trim()
     ) {
       setAdmError('Please complete all required fields for Church Branch Admin signup.');
@@ -543,7 +561,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     const newBranch: ChurchBranch = {
       id: `CH-${Date.now().toString().slice(-4)}`,
       name: admChurchName.trim(),
-      pastor: admPastorName.trim(),
+      pastor: admFullName.trim(),
       membersCount: 0,
       status: 'Growing',
       zone: 'Zone 1 (Korle Bu)',
@@ -1376,6 +1394,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Account password *</label>
+                <PasswordInput
+                  required
+                  placeholder="At least 8 characters"
+                  value={ldrPassword}
+                  onChange={(e) => setLdrPassword(e.target.value)}
+                  aria-label="Leader account password"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600"
+                />
+                <p className="text-xs text-slate-500 mt-1">Use your email and this password to sign in and follow your group's attendance.</p>
               </div>
 
               {/* AUTH CODE REQUIREMENT - CLEAN EMPTY PLACEHOLDER */}
