@@ -8,3 +8,4 @@
 - Keep the dashboard as a dark navigation rail beside one rounded light workspace; reserve gradients for featured analytic surfaces, not buttons.
 - Use explicit semantic sidebar hooks and aria-current for menu states, never legacy palette selectors or divider borders, so glass navigation stays consistent.
 - Public forms use equal viewport-height desktop panes with independent form scrolling and explicit centered-content wrappers for entry screens, so navigation remains visible without hiding headings.
+- Mount the mobile opening screen at the application entry, once per page load, so navigation and account workflows never replay the opening delay.
