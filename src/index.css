@@ -462,6 +462,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .dashboard-sidebar .sidebar-signout .material-symbols-outlined { font-size: 18px; }
 .sidebar-credit { display: block; color: hsl(var(--navigation-muted)); font-size: 9px; text-align: center; margin-top: 17px; }
 .sidebar-credit:hover { color: hsl(var(--navigation-foreground)); }
+@media (min-width: 768px) { .dashboard-sidebar .sidebar-close { display: none; } }
 @media (max-height: 800px) { .dashboard-shell .dashboard-sidebar { padding-top: 18px; } .sidebar-brand { padding-bottom: 16px; } .sidebar-context { margin-bottom: 14px; } .sidebar-utilities { padding-top: 10px; } .sidebar-account { padding-top: 10px; } .sidebar-credit { margin-top: 10px; } }
 
 /* Public flows: contextual navigation left, active attendance or account form right. */
