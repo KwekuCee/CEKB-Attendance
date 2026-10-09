@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import logoAsset from '../assets/cekbvc-logo.png.asset.json';
 
 interface ChurchLogoProps {
     className?: string;
@@ -27,7 +26,7 @@ export const ChurchLogo: React.FC<ChurchLogoProps> = ({
     return (
         <div className={className}>
             <img
-                src={logoAsset.url}
+                src="/icon-512.png"
                 alt={alt}
                 onError={() => setHasError(true)}
                 className={imgClassName}

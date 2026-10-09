@@ -655,7 +655,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <Button variant="ghost" onClick={() => setActiveTab('attendance')}>Attendance</Button>
           <Button variant="ghost" onClick={() => setActiveTab('cell_report')}>Cell reports</Button>
         </nav>
-        <Button variant="secondary" className="portal-signin" onClick={() => setActiveTab('login')}>
+        <Button variant="secondary" className="portal-signin" aria-label="Admin Login" onClick={() => setActiveTab('login')}>
           <span className="material-symbols-outlined">login</span><span>Admin Login</span>
         </Button>
       </header>
@@ -681,7 +681,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 ['cell_report', 'Cell Report', 'assignment'],
                 ['login', 'Sign In', 'lock'],
               ] as const).map(([tab, label, icon]) => (
-                <Button key={tab} variant="ghost" aria-current={activeTab === tab ? 'page' : undefined} onClick={() => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }}>
+                <Button key={tab} variant="ghost" aria-label={label} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }}>
                   <span className="material-symbols-outlined">{icon}</span><span>{label}</span>
                 </Button>
               ))}
