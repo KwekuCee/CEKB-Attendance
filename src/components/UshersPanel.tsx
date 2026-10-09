@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PasswordInput } from './PasswordInput';
 import { getSupabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
 

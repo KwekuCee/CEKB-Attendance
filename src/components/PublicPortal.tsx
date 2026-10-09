@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { PasswordInput } from './PasswordInput';
 import { renderQrPass, saveQrPass, QrPassResult, SaveOutcome } from '../utils/qrPass';
 import { motion } from 'motion/react';
 import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';

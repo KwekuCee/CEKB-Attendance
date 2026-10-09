@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PasswordInput } from './PasswordInput';
 import { ChurchLogo } from './ChurchLogo';
 import { Button } from './Button';
 import { confirmPasswordReset } from '../lib/supabaseService';
