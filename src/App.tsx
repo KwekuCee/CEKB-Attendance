@@ -51,6 +51,7 @@ import {
 
 
 import { Sidebar } from './components/Sidebar';
+import { Button } from './components/Button';
 import { TopHeader } from './components/TopHeader';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -711,7 +712,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-50">
         <div className="flex items-center justify-between px-4 py-3 bg-blue-700 text-white">
           <div className="text-sm font-bold">Usher · {user.church}</div>
-          <button onClick={handleLogout} className="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl cursor-pointer">Sign out</button>
+          <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
         </div>
         <QRScannerModal
           members={members}
@@ -720,6 +721,7 @@ export default function App() {
           user={user}
           onConfirmAttendance={handleConfirmAttendance}
           onClose={() => {}}
+          onLogout={handleLogout}
           onNavigate={() => {}}
         />
       </div>
@@ -727,7 +729,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-body text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
+    <div className="dashboard-shell flex h-screen bg-background overflow-hidden font-body text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
 
       {/* Navigation Sidebar */}
       <Sidebar
@@ -770,7 +772,7 @@ export default function App() {
         </div>
 
         {/* View Router */}
-        <main className="flex-1 overflow-y-auto pb-24 md:pb-8 relative">
+        <main className="dashboard-main flex-1 overflow-y-auto pb-24 md:pb-8 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}

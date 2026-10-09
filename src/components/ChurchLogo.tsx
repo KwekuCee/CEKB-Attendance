@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import logoAsset from '../assets/cekbvc-logo.png.asset.json';
 
 interface ChurchLogoProps {
     className?: string;
@@ -18,7 +17,7 @@ export const ChurchLogo: React.FC<ChurchLogoProps> = ({
 
     if (hasError) {
         return (
-            <div className={`${className} bg-blue-700 text-white font-headline font-black flex items-center justify-center text-xs tracking-wider shadow-sm shadow-blue-700/20`}>
+            <div className={`${className} bg-primary text-primary-foreground font-headline font-black flex items-center justify-center text-xs`}>
                 {fallbackText}
             </div>
         );
@@ -27,7 +26,7 @@ export const ChurchLogo: React.FC<ChurchLogoProps> = ({
     return (
         <div className={className}>
             <img
-                src={logoAsset.url}
+                src="/icon-512.png"
                 alt={alt}
                 onError={() => setHasError(true)}
                 className={imgClassName}

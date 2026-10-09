@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChurchLogo } from './ChurchLogo';
+import { Button } from './Button';
 
 interface EmailVerifiedScreenProps {
   status: 'verified' | 'expired' | 'invalid';
@@ -47,12 +48,12 @@ export const EmailVerifiedScreen: React.FC<EmailVerifiedScreenProps> = ({ status
           {copy.title}
         </h1>
         <p className="text-xs text-slate-500 leading-relaxed mb-6">{copy.message}</p>
-        <button
+        <Button
           onClick={onContinue}
           className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-3.5 px-4 rounded-xl transition-all shadow-sm cursor-pointer"
         >
           Go to sign in
-        </button>
+        </Button>
       </div>
     </div>
   );

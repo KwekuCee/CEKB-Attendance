@@ -5,6 +5,7 @@ import { BirthdaysPanel } from './BirthdaysPanel';
 import { ClassGroupsPanel } from './ClassGroupsPanel';
 import { AbsenteesPanel } from './AbsenteesPanel';
 import { InsightsPanel } from './InsightsPanel';
+import { Button } from './Button';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { ImportDataPanel } from './ImportDataPanel';
 
@@ -262,41 +263,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       {/* ===================================================================== */}
       {isSuperadmin ? (
         <div className="space-y-6">
-          {/* 1. Superadmin Hero Banner */}
-          <div className="bg-blue-700 rounded-2xl p-6 md:p-8 text-white shadow-sm border border-blue-600/30 relative overflow-hidden">
-            <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
-            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 bg-white/20 text-white text-xs font-extrabold px-3.5 py-1 rounded-full border border-white/30 backdrop-blur-xs">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
-                  SUPERADMIN COMMAND HQ • CEKB GROUP PASTOR
-                </div>
-                <h1 className="font-display text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-                  Welcome, {user.name.startsWith('Pastor') ? user.name : `Pastor ${user.name}`}
-                </h1>
-                <p className="text-blue-100 text-xs md:text-sm max-w-2xl font-body leading-relaxed">
-                  Live system telemetry over {churches.length} church branch{churches.length === 1 ? '' : 'es'}, {churchAdmins.length} registered church admin{churchAdmins.length === 1 ? '' : 's'}, {members.length} members, and real-time attendance logs.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
-                <button
-                  onClick={() => setShowBroadcastModal(true)}
-                  className="flex items-center gap-2 bg-white hover:bg-slate-100 text-blue-900 font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">campaign</span>
-                  <span>Broadcast to Admins</span>
-                </button>
-              </div>
+          <div className="dashboard-welcome">
+            <div>
+              <p className="dashboard-eyebrow">CEKB Group · Group pastor</p>
+              <h1>Welcome, {user.name.startsWith('Pastor') ? user.name : `Pastor ${user.name}`}</h1>
+              <p className="dashboard-welcome-detail">{churches.length} churches <span>·</span> {members.length} members <span>·</span> One family</p>
             </div>
+            <Button onClick={() => setShowBroadcastModal(true)}><span className="material-symbols-outlined">campaign</span> Message church admins</Button>
           </div>
 
           {/* 2. Superadmin Core Metrics (Group Wide) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Group Total Members</span>
+                <span className="text-xs font-bold text-slate-500 ">Total members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">groups</span>
                 </div>
@@ -310,52 +290,52 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Active Church Branches</span>
+                <span className="text-xs font-bold text-slate-500 ">Churches</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">church</span>
                 </div>
               </div>
               <div className="mt-3 flex items-baseline justify-between">
                 <span className="font-display text-3xl font-extrabold text-slate-900">{churches.length}</span>
-                <span className="inline-flex items-center text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">Group 1 Zone</span>
+                <span className="inline-flex items-center text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">All churches</span>
               </div>
               <p className="text-xs text-slate-400 mt-1">Active Korle Bu Group branch churches</p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Church Admins Registered</span>
+                <span className="text-xs font-bold text-slate-500 ">Church admins</span>
                 <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">badge</span>
                 </div>
               </div>
               <div className="mt-3 flex items-baseline justify-between">
                 <span className="font-display text-3xl font-extrabold text-slate-900">{churchAdmins.length}</span>
-                <span className="inline-flex items-center text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">Secured Gate</span>
+                <span className="inline-flex items-center text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">Admin accounts</span>
               </div>
               <p className="text-xs text-slate-400 mt-1">Verified local church administrators</p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Group Attendance Today</span>
+                <span className="text-xs font-bold text-slate-500 ">Attendance today</span>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">fact_check</span>
                 </div>
               </div>
               <div className="mt-3 flex items-baseline justify-between">
                 <span className="font-display text-3xl font-extrabold text-slate-900">{attendanceRecords.length}</span>
-                <span className="inline-flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Live Log</span>
+                <span className="inline-flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Check-ins</span>
               </div>
               <p className="text-xs text-slate-400 mt-1">Confirmed Sunday service check-ins</p>
             </div>
           </div>
 
-          {/* 3. Church Branches Network Status */}
+          {/* 3. Church attendance */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
             <div className="border-b border-slate-100 pb-3">
               <h3 className="font-headline font-bold text-base text-slate-900">
-                Church Branches Network Status
+                Church attendance
               </h3>
               <p className="text-xs text-slate-500">Live operational overview for Group Pastor HQ</p>
             </div>
@@ -401,7 +381,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="font-headline font-bold text-base text-slate-900">
-                    Registered Church Admins Directory
+                    Church admins
                   </h3>
                   <p className="text-xs text-slate-500">Access the full Church Admins management page</p>
                 </div>
@@ -425,7 +405,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-headline font-bold text-base text-blue-900">
-                  Superadmin System Security & Backup Controls
+                  Account & records
                 </h3>
                 <p className="text-xs text-slate-500">Manage data backups, audit logs, and cloud synchronisation</p>
               </div>
@@ -473,53 +453,16 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         /* ⛪ CHURCH ADMIN DASHBOARD INTERFACE                                  */
         /* ===================================================================== */
         <div className="space-y-6">
-          {/* 1. Church Admin Hero Banner */}
-          <div className="bg-blue-700 rounded-2xl p-6 md:p-8 text-white shadow-sm relative overflow-hidden border border-blue-600/30">
-            <div className="absolute right-0 top-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
-            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="inline-flex flex-wrap items-center gap-2 bg-white/20 text-white text-xs font-extrabold px-3.5 py-1 rounded-full border border-white/30 backdrop-blur-xs">
-                  <span className="w-2 h-2 rounded-full bg-blue-300 animate-ping"></span>
-                  CHURCH ADMIN PORTAL • {currentChurchName.toUpperCase()} • PASTOR: {currentBranchPastor.toUpperCase()}
-                </div>
-                <h1 className="font-display text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-                  Welcome, {user.name}
-                </h1>
-                <p className="text-blue-300 text-xs font-extrabold flex items-center gap-1.5 pt-0.5">
-                  <span className="material-symbols-outlined text-[16px]">person</span>
-                  <span>Branch Pastor: {currentBranchPastor}</span>
-                </p>
-                <p className="text-blue-100 text-xs md:text-sm max-w-2xl font-body leading-relaxed">
-                  Real-time management dashboard for {currentChurchName}. Monitor member directory, PCF & Cell leadership rosters, attendance records, and email service announcements.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
-                <button
-                  onClick={() => onNavigate('qr_scanner')}
-                  className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
-                  <span>Launch QR Scanner</span>
-                </button>
-
-                <button
-                  onClick={() => setShowEmailLeaderModal(true)}
-                  className="flex items-center gap-2 bg-white hover:bg-slate-100 text-blue-900 font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">mail</span>
-                  <span>Email PCF/Cell Leaders</span>
-                </button>
-
-                <button
-                  onClick={handleExportCSV}
-                  className="flex items-center gap-2 bg-blue-900/60 hover:bg-blue-900 text-white border border-white/20 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">download</span>
-                  <span>Export CSV</span>
-                </button>
-              </div>
+          <div className="dashboard-welcome">
+            <div>
+              <p className="dashboard-eyebrow">{currentChurchName}</p>
+              <h1>Welcome, {user.name}</h1>
+              <p className="dashboard-welcome-detail">Pastor {currentBranchPastor} <span>·</span> Your church, together</p>
+            </div>
+            <div className="dashboard-welcome-actions">
+              <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>
+              <Button variant="secondary" onClick={() => setShowEmailLeaderModal(true)} title="Email leaders"><span className="material-symbols-outlined">mail</span></Button>
+              <Button variant="secondary" onClick={handleExportCSV} title="Export attendance"><span className="material-symbols-outlined">download</span></Button>
             </div>
           </div>
 
@@ -541,11 +484,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           )}
 
           {/* 3. Church Branch Core Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Members */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Branch Total Members</span>
+                <span className="text-xs font-bold text-slate-500 ">Members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">groups</span>
                 </div>
@@ -595,10 +538,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <p className="text-xs text-slate-400 mt-1">Recorded attendance for the 1st time</p>
             </div>
 
-            {/* Leadership Structure */}
+            {/* Leaders */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 ">Leadership Structure</span>
+                <span className="text-xs font-bold text-slate-500 ">Leaders</span>
                 <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
                   <span className="material-symbols-outlined text-[20px]">military_tech</span>
                 </div>

@@ -6,6 +6,7 @@ import { FOUNDATION_SCHOOL_CLASSES, STANDARD_SERVICE_TYPES, parseFoundationClass
 import { authenticateUserWithDatabase, sendPasswordResetEmail, fetchServiceTypesFromSupabase, sendAttendanceEmailToChurchAdmin, uploadMemberPhoto, uploadProfilePhoto, sendAdminVerificationEmail, syncLeaderAsMember, generateLeaderCode, sendQrPassEmails } from '../lib/supabaseService';
 import { ChurchLogo } from './ChurchLogo';
 import { HeroSection } from './HeroSection';
+import { Button } from './Button';
 import { CellReportForm } from './CellReportForm';
 
 interface PublicPortalProps {
@@ -644,42 +645,23 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-body relative overflow-x-hidden flex flex-col">
-      {/* Background Decor */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none"></div>
-
-      {/* Top Portal Banner Bar */}
-      <header className="border-b border-slate-200/90 bg-white/95 backdrop-blur-md sticky top-0 z-40 px-4 md:px-8 py-3.5 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <ChurchLogo className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm shadow-blue-700/20 shrink-0" alt="CEKB Logo" />
-          <div>
-            <h1 className="font-display font-extrabold text-base md:text-lg text-slate-900 tracking-tight flex items-center gap-2">
-              CEKB Group
-
-            </h1>
-            <p className="text-xs text-slate-500 font-medium hidden sm:block">
-              Christ Embassy Korle Bu Attendance System
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('login')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'login'
-              ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-              }`}
-          >
-            <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
-            <span>Admin Sign In</span>
-          </button>
-        </div>
+    <div className="public-portal min-h-screen bg-background text-foreground font-body relative overflow-x-hidden flex flex-col" data-portal-view={activeTab}>
+      <header className="portal-header">
+        <Button variant="ghost" className="portal-brand" onClick={() => setActiveTab('home')} aria-label="CEKB Group home">
+          <ChurchLogo className="portal-logo" alt="CEKB Logo" />
+          <span><strong>CEKB Group</strong><small>Christ Embassy Korle Bu</small></span>
+        </Button>
+        <nav className="portal-header-links" aria-label="Main navigation">
+          <Button variant="ghost" onClick={() => setActiveTab('attendance')}>Attendance</Button>
+          <Button variant="ghost" onClick={() => setActiveTab('cell_report')}>Cell reports</Button>
+        </nav>
+        <Button variant="secondary" className="portal-signin" aria-label="Admin Login" onClick={() => setActiveTab('login')}>
+          <span className="material-symbols-outlined">login</span><span>Admin Login</span>
+        </Button>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 md:py-10 space-y-8">
+      <main className={`portal-main flex-1 w-full mx-auto ${activeTab === 'home' ? 'portal-main--home' : 'portal-main--form'}`}>
         {/* HOMEPAGE HERO — shown only on the landing tab */}
         {activeTab === 'home' && (
           <HeroSection onNavigate={(tab) => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }} />
@@ -687,75 +669,23 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
         {/* Action Tabs Switcher — hidden on the hero landing page */}
         {activeTab !== 'home' && (
-          <div className="flex flex-wrap justify-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 max-w-3xl mx-auto shadow-xs">
-            <button
-              onClick={() => {
-                setActiveTab('home');
-                setAttSuccessPass(null);
-              }}
-              className="flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer text-slate-600 hover:text-blue-800 hover:bg-white/80"
-            >
-              <span className="material-symbols-outlined text-[18px]">home</span>
-              <span>Home</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('attendance');
-                setAttSuccessPass(null);
-              }}
-              className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'attendance'
-                ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-                : 'text-slate-600 hover:text-blue-800 hover:bg-white/80'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">how_to_reg</span>
-              <span>Self Attendance</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('leader_reg')}
-              className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'leader_reg'
-                ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-                : 'text-slate-600 hover:text-blue-800 hover:bg-white/80'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">person_add</span>
-              <span>Self Leader Reg</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('admin_signup')}
-              className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'admin_signup'
-                ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-                : 'text-slate-600 hover:text-blue-800 hover:bg-white/80'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">church</span>
-              <span>Admin Sign Up</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('login')}
-              className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'login'
-                ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-                : 'text-slate-600 hover:text-blue-800 hover:bg-white/80'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">lock</span>
-              <span>Admin Login</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('cell_report')}
-              className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'cell_report'
-                ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20'
-                : 'text-slate-600 hover:text-blue-800 hover:bg-white/80'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">assignment</span>
-              <span>Submit Cell Report</span>
-            </button>
+          <div className="portal-flow-navigation">
+            <Button variant="ghost" className="portal-back" onClick={() => { setActiveTab('home'); setAttSuccessPass(null); }}>
+              <span className="material-symbols-outlined">arrow_back</span> Home
+            </Button>
+            <nav className="portal-flow-tabs" aria-label="Church services">
+              {([
+                ['attendance', 'Attendance', 'how_to_reg'],
+                ['leader_reg', 'Leader Sign Up', 'person_add'],
+                ['admin_signup', 'Register a Church', 'church'],
+                ['cell_report', 'Cell Report', 'assignment'],
+                ['login', 'Sign In', 'lock'],
+              ] as const).map(([tab, label, icon]) => (
+                <Button key={tab} variant="ghost" aria-label={label} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }}>
+                  <span className="material-symbols-outlined">{icon}</span><span>{label}</span>
+                </Button>
+              ))}
+            </nav>
           </div>
         )}
 
@@ -775,7 +705,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 <span className="material-symbols-outlined text-[24px]">fact_check</span>
               </div>
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-900">Self Attendance Check-In Station</h3>
+                <h3 className="font-display text-lg font-bold text-slate-900">Check in to your church</h3>
                 <p className="text-xs text-slate-500">
                   Mark your attendance for today's service in your local church branch.
                 </p>
@@ -1652,11 +1582,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {activeTab === 'login' && (
           <div className="max-w-md mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
             <div className="text-center space-y-1">
-              <div className="w-12 h-12 rounded-2xl bg-blue-700 text-white font-black text-xl flex items-center justify-center mx-auto mb-2 shadow-sm shadow-blue-700/20">
-                KB
-              </div>
-              <h3 className="font-display font-extrabold text-xl text-slate-900">Platform Admin Sign In</h3>
-              <p className="text-xs text-slate-500">Select account level to access dashboard</p>
+              <ChurchLogo className="w-14 h-14 mx-auto mb-4" />
+              <h3 className="font-display font-extrabold text-xl text-slate-900">Welcome back</h3>
+              <p className="text-xs text-slate-500">Sign in to your church account</p>
             </div>
 
             {/* Role Switcher: Superadmin vs Church Admin */}
@@ -1805,21 +1733,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 {isLoggingIn ? (
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
-                    <span>Validating with Database...</span>
+                    <span>Signing in…</span>
                   </span>
                 ) : (
                   <>
-                    <span>Authenticate & Sign In</span>
+                    <span>Sign in</span>
                     <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                   </>
                 )}
               </button>
             </form>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-center text-slate-500 text-xs">
-              <span className="material-symbols-outlined text-emerald-600 text-[16px]">verified_user</span>
-              <span>Direct Database Verification • live database Auth</span>
-            </div>
+
           </div>
         )}
       </main>

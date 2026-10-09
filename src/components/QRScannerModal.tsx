@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import jsQR from 'jsqr';
 import { Member, AttendanceRecord, ViewType } from '../types';
 import { useToast } from '../context/ToastContext';
+import { Button } from './Button';
 
 
 interface QRScannerModalProps {
@@ -15,6 +16,7 @@ interface QRScannerModalProps {
   };
   onConfirmAttendance: (record: AttendanceRecord) => void;
   onClose: () => void;
+  onLogout?: () => void;
   onNavigate: (view: ViewType) => void;
 }
 
@@ -25,6 +27,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   user,
   onConfirmAttendance,
   onClose,
+  onLogout,
   onNavigate
 }) => {
   const toast = useToast();
@@ -284,7 +287,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col font-body select-none overflow-hidden">
+    <div className="scanner-screen fixed inset-0 z-50 bg-slate-950 flex flex-col font-body select-none overflow-hidden">
 
       {/* Viewfinder Background */}
       <div className="absolute inset-0 w-full h-full object-cover">
@@ -413,18 +416,20 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
       {/* Top Overlay Bar */}
       <header className="absolute top-0 left-0 w-full z-30 px-4 pt-6 pb-4 flex justify-between items-center bg-gradient-to-b from-slate-950/90 to-transparent">
-        <button
-          onClick={onClose}
-          aria-label="Close Scanner"
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-white active:scale-95 transition-transform cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[20px]">close</span>
-        </button>
+        {onLogout ? (
+          <Button variant="inverse" onClick={onLogout} className="scanner-logout" aria-label="Log out">
+            <span className="material-symbols-outlined">logout</span> Log out
+          </Button>
+        ) : (
+          <Button variant="inverse" onClick={onClose} aria-label="Close Scanner" className="scanner-close">
+            <span className="material-symbols-outlined">close</span>
+          </Button>
+        )}
 
         <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-700">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span className="text-xs font-bold text-slate-200 ">
-            Usher Station 1
+            {user?.church || 'Check-in station'}
           </span>
         </div>
 

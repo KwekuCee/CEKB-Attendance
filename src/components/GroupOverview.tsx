@@ -143,10 +143,10 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full mb-1">
             <span className="material-symbols-outlined text-[14px]">account_tree</span>
-            CEKB Network Structure
+            CEKB Group
           </div>
           <h1 className="font-display text-2xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Group Network Overview
+            Churches
           </h1>
           <p className="font-body text-xs md:text-sm text-slate-500 mt-1">
             Manage church branches, service schedules, audit records, and group-wide backups.
@@ -184,7 +184,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
           <p className="text-xs font-bold text-slate-400 mb-2">
-            Total Network Membership
+            Total members
           </p>
           <div className="font-display text-3xl font-extrabold text-slate-900">
             0
@@ -197,7 +197,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
           <p className="text-xs font-bold text-slate-400 mb-2">
-            Active Church Branches
+            Churches
           </p>
           <div className="font-display text-3xl font-extrabold text-slate-900">
             {churches.length}
@@ -207,7 +207,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
           <p className="text-xs font-bold text-slate-400 mb-2">
-            Avg. Service Attendance
+            Service attendance
           </p>
           <div className="font-display text-3xl font-extrabold text-slate-900">
             0
