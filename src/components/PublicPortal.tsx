@@ -535,10 +535,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setAdmError('');
     setAdmSuccessMsg('');
 
-    // REQUIRED AUTH CODE VALIDATION
-    if (admAuthCode.trim().toUpperCase() !== 'YOM26') {
-      setAdmError('Invalid Authentication Code! Please enter a valid security code.');
-      return;
+    // REQUIRED AUTH CODE VALIDATION — the group pastor code is checked on the server.
+    const enteredCode = admAuthCode.trim().toUpperCase();
+    let isGroupPastorCode = false;
+    if (enteredCode !== 'YOM26') {
+      const check = await rawPortal({ action: 'checkGroupCode', code: enteredCode });
+      isGroupPastorCode = !!check?.valid;
+      if (!isGroupPastorCode) {
+        setAdmError('Invalid Authentication Code! Please enter a valid security code.');
+        return;
+      }
     }
 
     if (
