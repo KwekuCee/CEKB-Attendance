@@ -70,7 +70,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     : [];
 
   return (
-    <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/90 w-full h-16 sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between shadow-sm">
+    <header className="dashboard-topbar bg-white/90 backdrop-blur-md border-b border-slate-200/90 w-full h-16 sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between shadow-sm">
       {/* Left: Mobile Toggle & Page Title */}
       <div className="flex items-center gap-3">
         <button

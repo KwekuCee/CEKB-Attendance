@@ -77,7 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      <aside className={`
+      <aside className={`dashboard-sidebar
         fixed left-0 top-0 h-full w-64 bg-white/95 backdrop-blur-xl text-slate-800 border-r border-slate-200/90 
         flex flex-col z-50 transition-transform duration-300 ease-in-out shadow-sm md:shadow-none
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -118,12 +118,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Action CTAs */}
-        <div className="p-3 space-y-2">
+        <div className="sidebar-actions p-3 space-y-2">
           {isSuperadmin ? (
             <>
               <button
                 onClick={handleExportSystemData}
-                className="w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
+                className="sidebar-primary-action w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
                 title="Export multi-sheet report with total members per church, attendance per service, and new members per service"
               >
                 <span className="material-symbols-outlined text-[18px]">download</span>
@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <>
               <button
                 onClick={() => { onNavigate('qr_scanner'); onCloseMobile?.(); }}
-                className="w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
+                className="sidebar-primary-action w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
                 <span>Launch Scanner</span>
