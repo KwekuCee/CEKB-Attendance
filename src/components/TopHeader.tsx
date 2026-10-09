@@ -52,6 +52,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     analytics: 'Insights',
     database_schema: 'Database',
     qr_scanner: 'QR Check-In Station',
+    hierarchy: 'Leader Hierarchy',
     register: 'Member Check-In',
     church_admins_directory: 'Church admins',
     cell_reports: 'Weekly Cell Reports',

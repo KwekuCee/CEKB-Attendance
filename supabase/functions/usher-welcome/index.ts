@@ -33,9 +33,11 @@ Deno.serve(async (req) => {
     .from('user_profiles')
     .select('full_name, email, church_name, role')
     .ilike('email', email)
-    .eq('role', 'Usher')
+    .in('role', ['Usher', 'Church Admin'])
     .maybeSingle();
-  if (!usher) return json({ success: false, error: 'Usher not found.' }, 404);
+  if (!usher) return json({ success: false, error: 'Account not found.' }, 404);
+  const isAdmin = usher.role === 'Church Admin';
+  const roleTitle = isAdmin ? 'church administrator' : 'usher';
 
   const isGroup = session.role === 'Superadmin';
   if (!isGroup && (usher.church_name || '').toLowerCase() !== (session.church_name || '').toLowerCase()) {
@@ -48,14 +50,14 @@ Deno.serve(async (req) => {
 
   const result = await sendMail({
     to: usher.email,
-    subject: `You've been appointed as an usher at ${usher.church_name || 'CE Korle Bu'}`,
-    html: `<h2 style="font-size:22px">Welcome to the usher team, ${name}</h2>
-<p>You have been appointed as an usher for <strong>${church}</strong>. Thank you for serving — every person you welcome and check in matters.</p>
-<p>Your account is ready. Sign in with this email address and the password your church admin set for you:</p>
-<p style="margin:22px 0"><a href="${origin}/?signin=usher" style="background:#000f22;color:#ffffff;padding:13px 22px;border-radius:12px;text-decoration:none;font-weight:700;display:inline-block">Sign in as an usher</a></p>
-<p><strong>How to get started</strong><br>1. Open the link above on your phone.<br>2. Tap “Sign In”, then “Are you an usher? Sign in here”.<br>3. Allow camera access and start scanning members’ passes.</p>
+    subject: `You've been appointed as ${isAdmin ? 'a church administrator' : 'an usher'} at ${usher.church_name || 'CE Korle Bu'}`,
+    html: `<h2 style="font-size:22px">Welcome to the team, ${name}</h2>
+<p>You have been appointed as ${roleTitle} for <strong>${church}</strong>. Thank you for serving.</p>
+<p>Your account is ready. Sign in with this email address and the password that was set for you:</p>
+<p style="margin:22px 0"><a href="${origin}/?signin=1" style="background:#000f22;color:#ffffff;padding:13px 22px;border-radius:12px;text-decoration:none;font-weight:700;display:inline-block">Sign in</a></p>
+<p><strong>How to get started</strong><br>1. Open the link above on your phone.<br>2. Enter your email and password on the sign-in page.<br>3. You will land on your ${isAdmin ? 'church dashboard' : 'scanner'}.</p>
 <p>Tip: on your phone, choose “Add to Home Screen” so the scanner opens like an app.</p>
-<p style="color:#5b6b80;font-size:13px">Forgot your password? Use “Forgot Password?” on the usher sign-in page. If you weren’t expecting this, you can ignore this email.</p>`,
+<p style="color:#5b6b80;font-size:13px">Forgot your password? Use “Forgot Password?” on the sign-in page. If you weren’t expecting this, you can ignore this email.</p>`,
   });
 
   if (!result.ok) return json({ success: false, error: result.error || 'Email could not be sent.' }, 502);

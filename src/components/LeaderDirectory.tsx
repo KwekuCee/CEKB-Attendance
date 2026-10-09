@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { Leader, LeaderType, PromotionQueueItem, ViewType, ChurchBranch, Member } from '../types';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader } from '../utils/analyticsUtils';
@@ -10,7 +11,7 @@ interface LeaderDirectoryProps {
   promotionQueue: PromotionQueueItem[];
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onConfirmPromotion: (promotionId: string) => void;
@@ -41,7 +42,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   const [deletingLeader, setDeletingLeader] = useState<Leader | null>(null);
   const [viewingLeader, setViewingLeader] = useState<Leader | null>(null);
 
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
 
   const scopedLeaders = isChurchAdmin

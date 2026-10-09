@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType, TopLeader, Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth } from '../utils/analyticsUtils';
 import { BirthdaysPanel } from './BirthdaysPanel';
@@ -14,7 +15,7 @@ interface DashboardOverviewProps {
   user: {
     id: string;
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
     zone: string;
     avatar: string;
@@ -49,7 +50,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const currentChurchName = user.church || churches[0]?.name || 'Unassigned';
   const matchingBranch = churches.find(c => c && c.name && c.name.toLowerCase() === currentChurchName.toLowerCase());
   const matchingAdmin = churchAdmins.find(a => a && a.churchName && a.churchName.toLowerCase() === currentChurchName.toLowerCase());
-  const currentBranchPastor = matchingBranch?.pastor || matchingAdmin?.adminName || (user.role === 'Church Admin' ? user.name : 'Branch Pastor');
+  const currentBranchPastor = matchingBranch?.pastor || matchingAdmin?.adminName || (user.role !== 'Superadmin' ? user.name : 'Branch Pastor');
 
   // --- Filtered Data for Church Admin (Strict multi-tenant isolation) ---
   const branchMembers = isSuperadmin
@@ -460,7 +461,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <p className="dashboard-welcome-detail">Pastor {currentBranchPastor} <span>·</span> Your church, together</p>
             </div>
             <div className="dashboard-welcome-actions">
-              <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>
+              {(user.role as string) === 'Church Pastor'
+                ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
+                : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
               <Button variant="secondary" onClick={() => setShowEmailLeaderModal(true)} title="Email leaders"><span className="material-symbols-outlined">mail</span></Button>
               <Button variant="secondary" onClick={handleExportCSV} title="Export attendance"><span className="material-symbols-outlined">download</span></Button>
             </div>
@@ -752,13 +755,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <p className="text-xs text-slate-500">First 5 attendance records captured by either First Signup Form or QR Code Scan</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                {(user.role as string) !== 'Church Pastor' && <button
                   onClick={() => onNavigate('qr_scanner')}
                   className="text-xs font-bold text-slate-800 hover:text-slate-950 flex items-center gap-1 cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-all"
                 >
                   <span className="material-symbols-outlined text-[16px]">qr_code_scanner</span>
                   <span>Scan QR Code</span>
-                </button>
+                </button>}
                 <button
                   onClick={() => onNavigate('attendance')}
                   className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-all"

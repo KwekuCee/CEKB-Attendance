@@ -617,7 +617,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             ownChurch={user.church}
           />
         )}
-        {activeTab === 'profile' && !isSuperadmin && user.church && <UshersPanel church={user.church} />}
+        {activeTab === 'profile' && !isSuperadmin && user.church && <UshersPanel church={user.church} canAppointAdmins={(user.role as string) === 'Church Pastor'} />}
 
         {/* TAB 0: Live Database Configuration */}
         {activeTab === 'supabase' && (

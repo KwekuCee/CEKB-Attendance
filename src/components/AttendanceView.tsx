@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { AttendanceRecord, ChurchBranch, ViewType, Member, Leader } from '../types';
 import { useToast } from '../context/ToastContext';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
@@ -8,7 +9,7 @@ interface AttendanceViewProps {
   attendanceRecords: AttendanceRecord[];
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;
@@ -51,7 +52,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   const [manualSearch, setManualSearch] = useState<string>('');
   const [manualService, setManualService] = useState<string>('');
 
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
 
   const serviceOptions = (serviceTypes || []).filter(s => s.active).map(s => s.name);

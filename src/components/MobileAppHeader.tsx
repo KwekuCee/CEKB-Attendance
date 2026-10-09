@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useToast } from '../context/ToastContext';
@@ -7,7 +8,7 @@ interface MobileAppHeaderProps {
   currentView: ViewType;
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;
@@ -125,7 +126,7 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
             )}
 
             {/* Quick QR Scanner Trigger (Church Admin Only) */}
-            {user?.role !== 'Superadmin' && (
+            {user?.role !== 'Superadmin' && (user?.role as string) !== 'Church Pastor' && (
               <button
                 onClick={() => onNavigate('qr_scanner')}
                 className={`p-2 rounded-xl transition-all cursor-pointer active:scale-95 ${currentView === 'qr_scanner'

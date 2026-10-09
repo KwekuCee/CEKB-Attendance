@@ -17,7 +17,8 @@ export type ViewType =
   | 'database_schema'
   | 'settings'
   | 'cell_reports'
-  | 'church_admins_directory';
+  | 'church_admins_directory'
+  | 'hierarchy';
 
 export interface CellReportGridCell {
   cell: string;
@@ -55,6 +56,8 @@ export interface ChurchAdminAccount {
   status: 'Active' | 'Pending Verification';
   password?: string;
   photoUrl?: string;
+  /** Church pastors register the church; church admins are appointed by them. */
+  accountRole?: 'Church Pastor' | 'Church Admin';
 }
 
 export type RoleType = 'Leader' | 'Member' | 'First Timer';
@@ -182,7 +185,7 @@ export interface AuditLogItem {
 export interface UserProfile {
   name: string;
   email: string;
-  role: 'Superadmin' | 'Church Admin' | 'Leader';
+  role: AuthSessionUser['role'] | 'Church Pastor' | 'Leader';
   church: string;
   avatarUrl?: string;
   isSuperadmin?: boolean;
@@ -195,7 +198,7 @@ export interface UserProfile {
 export interface AuthSessionUser {
   id: string;
   name: string;
-  role: 'Superadmin' | 'Church Admin';
+  role: 'Superadmin' | 'Church Admin' | 'Church Pastor' | 'Leader' | 'Usher';
   church: string;
   zone: string;
   avatar: string;

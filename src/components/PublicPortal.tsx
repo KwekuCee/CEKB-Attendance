@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { renderQrPass, saveQrPass, QrPassResult, SaveOutcome } from '../utils/qrPass';
 import { motion } from 'motion/react';
-import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';
+import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord, AuthSessionUser } from '../types';
+import { getSupabase } from '../lib/supabase';
 import { FOUNDATION_SCHOOL_CLASSES, STANDARD_SERVICE_TYPES, parseFoundationClassNumber, getFoundationClassLabel } from '../data/constants';
 import { clearStoredSession, authenticateUserWithDatabase, sendPasswordResetEmail, fetchServiceTypesFromSupabase, sendAttendanceEmailToChurchAdmin, uploadMemberPhoto, uploadProfilePhoto, sendAdminVerificationEmail, syncLeaderAsMember, generateLeaderCode, sendQrPassEmails } from '../lib/supabaseService';
 import { ChurchLogo } from './ChurchLogo';
@@ -19,7 +20,7 @@ interface PublicPortalProps {
   onConfirmAttendance: (record: AttendanceRecord) => void;
   onAddLeader: (leader: Leader) => void;
   onAddChurchAdmin: (admin: ChurchAdminAccount, branch: ChurchBranch) => void;
-  onLoginSuccess: (userRole?: 'Superadmin' | 'Church Admin', userChurch?: string, adminName?: string, userEmail?: string) => void;
+  onLoginSuccess: (userRole?: AuthSessionUser['role'], userChurch?: string, adminName?: string, userEmail?: string) => void;
   onAddMember: (member: Member) => void;
 }
 
@@ -38,7 +39,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   // A dedicated /cell-report address opens the weekly report sheet straight away,
   // so a subdomain can be pointed at it for leaders.
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report'>(
-    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).get('signin') === 'usher' ? 'login' : 'home'))
+    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).has('signin') ? 'login' : 'home'))
   );
 
   // Dynamically derive effective list of churches from DB and registered admins
@@ -178,6 +179,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [ldrPhotoFile, setLdrPhotoFile] = useState<File | null>(null);
   const [ldrPhotoPreview, setLdrPhotoPreview] = useState('');
   const [ldrAuthCode, setLdrAuthCode] = useState('');
+  const [ldrPassword, setLdrPassword] = useState('');
   const [ldrError, setLdrError] = useState('');
   const [ldrSuccessMsg, setLdrSuccessMsg] = useState('');
   const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
@@ -425,6 +427,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       setLdrError('Please complete all required fields including Full Name, Email, Contact, and Cell/PCF Names.');
       return;
     }
+    if (ldrPassword.length < 8) {
+      setLdrError('Please choose a password with at least 8 characters for your leader account.');
+      return;
+    }
 
     setIsSubmittingLeader(true);
     try {
@@ -455,6 +461,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     };
 
     onAddLeader(newLeader);
+
+    // Each leader gets their own sign-in so they can follow their group.
+    let accountNote = ' You can now sign in with your email and password.';
+    const accountClient: any = getSupabase();
+    if (accountClient) {
+      const email = newLeader.email.trim().toLowerCase();
+      const { error: accErr } = await accountClient.from('user_profiles').insert({
+        username: email, email, full_name: newLeader.fullName, password_hash: ldrPassword,
+        role: 'Leader', church_name: newLeader.church, phone: newLeader.contact,
+      });
+      if (accErr) accountNote = ` Your leader account could not be created (${accErr.message}).`;
+    }
 
     // Every leader is also a member: keep the membership records in step and
     // tag them with their leader role.
@@ -496,7 +514,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       ]).catch(() => {});
     }
 
-    setLdrSuccessMsg(`Registration complete for ${newLeader.fullName} (${newLeader.leaderType} - ${newLeader.church}). Leader code: ${leaderCode}. Your scan pass has been downloaded — show it to your branch admin at every service.`);
+    setLdrSuccessMsg(`Registration complete for ${newLeader.fullName} (${newLeader.leaderType} - ${newLeader.church}). Leader code: ${leaderCode}. Your scan pass has been downloaded — show it to your branch admin at every service.${accountNote}`);
     setLdrName('');
     setLdrEmail('');
     setLdrPhone('');
@@ -505,6 +523,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setLdrPhotoFile(null);
     setLdrPhotoPreview('');
     setLdrAuthCode('');
+    setLdrPassword('');
     } finally {
       setIsSubmittingLeader(false);
     }
@@ -526,7 +545,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       !admFullName.trim() ||
       !admRequiredEmail.trim() ||
       !admChurchName.trim() ||
-      !admPastorName.trim() ||
       !admPhone.trim()
     ) {
       setAdmError('Please complete all required fields for Church Branch Admin signup.');
@@ -543,7 +561,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     const newBranch: ChurchBranch = {
       id: `CH-${Date.now().toString().slice(-4)}`,
       name: admChurchName.trim(),
-      pastor: admPastorName.trim(),
+      pastor: admFullName.trim(),
       membersCount: 0,
       status: 'Growing',
       zone: 'Zone 1 (Korle Bu)',
@@ -567,11 +585,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       zone: 'Zone 1 (Korle Bu)',
       joinedDate: new Date().toISOString().slice(0, 10),
       status: 'Active',
-      password: admPassword.trim()
+      password: admPassword.trim(),
+      accountRole: 'Church Pastor'
     };
 
     onAddChurchAdmin(newAdmin, newBranch);
-    setAdmSuccessMsg(`Church branch "${newBranch.name}" and the admin account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
+    setAdmSuccessMsg(`Church "${newBranch.name}" and the pastor account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
 
     const res = await sendAdminVerificationEmail(newAdmin.adminEmail, newAdmin.adminName, true);
     setAdmSuccessMsg(
@@ -698,7 +717,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               <div>
                 <p className="portal-page-eyebrow">CEKB Group</p>
                 <h1>{({ attendance: 'Check in to your church', leader_reg: 'Leader registration', admin_signup: 'Register your church', cell_report: 'Weekly cell report', login: 'Welcome back', home: 'CEKB Group' })[activeTab]}</h1>
-                <p>{({ attendance: "Join us for today’s service.", leader_reg: 'Your church. Your cell. Your calling.', admin_signup: 'Create your church administrator account.', cell_report: 'Cell meetings, attendance and soulwinning.', login: 'Sign in to your church account.', home: '' })[activeTab]}</p>
+                <p>{({ attendance: "Join us for today’s service.", leader_reg: 'Your church. Your cell. Your calling.', admin_signup: 'The church pastor creates the church account.', cell_report: 'Cell meetings, attendance and soulwinning.', login: 'Sign in to your account.', home: '' })[activeTab]}</p>
               </div>
             </div>
           </div>
@@ -1377,6 +1396,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Account password *</label>
+                <PasswordInput
+                  required
+                  placeholder="At least 8 characters"
+                  value={ldrPassword}
+                  onChange={(e) => setLdrPassword(e.target.value)}
+                  aria-label="Leader account password"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600"
+                />
+                <p className="text-xs text-slate-500 mt-1">Use your email and this password to sign in and follow your group's attendance.</p>
+              </div>
+
               {/* AUTH CODE REQUIREMENT - CLEAN EMPTY PLACEHOLDER */}
               <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
                 <label className="block text-xs font-black text-blue-800 ">
@@ -1421,9 +1453,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <span className="material-symbols-outlined text-[24px]">church</span>
                 </div>
                 <div>
-                  <h3 className="font-display text-lg font-bold text-slate-900">Admin Signup & Church Registration</h3>
+                  <h3 className="font-display text-lg font-bold text-slate-900">Pastor Church Registration</h3>
                   <p className="text-xs text-slate-500">
-                    Register your church branch account on the platform for your members and leaders to join.
+                    The church pastor creates the church account. After signing in you can appoint church administrators and ushers.
                   </p>
                 </div>
               </div>
@@ -1445,7 +1477,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             )}
 
             <form onSubmit={handleAdminSignUp} className="space-y-4">
-              <h4 className="portal-form-section">Administrator details</h4>
+              <h4 className="portal-form-section">Pastor details</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
@@ -1454,7 +1486,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="Admin Full Name"
+                    placeholder="Pastor's full name"
                     value={admFullName}
                     onChange={(e) => setAdmFullName(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 font-semibold transition-all"
@@ -1491,19 +1523,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    4. Pastor or Coordinator's Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Pastor Mark Kwakye"
-                    value={admPastorName}
-                    onChange={(e) => setAdmPastorName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 transition-all"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

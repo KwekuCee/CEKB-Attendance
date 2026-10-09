@@ -74,6 +74,8 @@ const DatabaseSchemaView = lazy(() => import('./components/DatabaseSchemaView').
 const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const CellReportsView = lazy(() => import('./components/CellReportsView').then(m => ({ default: m.CellReportsView })));
 import { useToast } from './context/ToastContext';
+const LeaderHierarchyManager = lazy(() => import('./components/LeaderHierarchyManager').then(m => ({ default: m.LeaderHierarchyManager })));
+const LeaderHome = lazy(() => import('./components/LeaderHome').then(m => ({ default: m.LeaderHome })));
 const UsherScansCard = lazy(() => import('./components/UsherScansCard').then(m => ({ default: m.UsherScansCard })));
 const ViewLoader = () => <div className="view-loader" role="status" aria-label="Loading"><span /></div>;
 import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
@@ -618,8 +620,8 @@ export default function App() {
     toast.showInfo('Signed Out', 'You have been signed out successfully.');
   };
 
-  const handleLoginSuccess = (role?: 'Superadmin' | 'Church Admin', churchName?: string, adminName?: string, email?: string) => {
-    const effectiveRole = (role || 'Church Admin') as 'Superadmin' | 'Church Admin';
+  const handleLoginSuccess = (role?: AuthSessionUser['role'], churchName?: string, adminName?: string, email?: string) => {
+    const effectiveRole = (role || 'Church Admin') as AuthSessionUser['role'];
     let superadminChurch = 'GCYC Group HQ';
     let superadminPhone = '+233 24 123 4567';
     try {
@@ -707,6 +709,14 @@ export default function App() {
         onAddChurchAdmin={handleAddChurchAdmin}
         onConfirmAttendance={handleConfirmAttendance}
       />
+      </Suspense>
+    );
+  }
+
+  if (user?.role === 'Leader') {
+    return (
+      <Suspense fallback={<ViewLoader />}>
+        <LeaderHome user={user} leaders={leaders} members={members} attendance={attendanceRecords} onLogout={handleLogout} />
       </Suspense>
     );
   }
@@ -911,7 +921,11 @@ export default function App() {
               )}
 
 
-              {currentView === 'qr_scanner' && user?.role !== 'Superadmin' && (
+              {currentView === 'hierarchy' && user?.role !== 'Superadmin' && (
+                <LeaderHierarchyManager church={user.church} leaders={leaders} members={members} attendance={attendanceRecords} canEdit={user.role === 'Church Pastor'} onUpdateLeader={handleUpdateLeader} />
+              )}
+
+              {currentView === 'qr_scanner' && user?.role !== 'Superadmin' && user?.role !== 'Church Pastor' && (
                 <QRScannerModal
                   members={members}
                   attendance={attendanceRecords}
