@@ -64,8 +64,8 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ token,
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">New password</label>
-            <input
-              type="password"
+            <PasswordInput
+              
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -75,8 +75,8 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ token,
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Repeat new password</label>
-            <input
-              type="password"
+            <PasswordInput
+              
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}

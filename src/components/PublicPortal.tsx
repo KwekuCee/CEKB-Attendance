@@ -1525,8 +1525,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
                     6. Password *
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    
                     required
                     placeholder="••••••••"
                     value={admPassword}
@@ -1711,8 +1711,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
                     lock
                   </span>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    
                     required
                     value={loginPassword}
                     onChange={(e) => {

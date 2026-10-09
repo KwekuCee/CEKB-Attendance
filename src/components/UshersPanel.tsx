@@ -56,7 +56,7 @@ export const UshersPanel: React.FC<{ church: string }> = ({ church }) => {
       <form onSubmit={add} className="grid sm:grid-cols-4 gap-2">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" aria-label="Usher name" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
         <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" aria-label="Usher email" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
-        <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password (8+ chars)" aria-label="Usher password" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
+        <PasswordInput value={password} onChange={e => setPassword(e.target.value)}  placeholder="Password (8+ chars)" aria-label="Usher password" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
         <button disabled={busy} className="bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl px-3 py-2 cursor-pointer disabled:opacity-60">{busy ? 'Adding…' : 'Add usher'}</button>
       </form>
       <div className="mt-3 divide-y divide-slate-100">
