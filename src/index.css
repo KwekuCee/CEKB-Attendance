@@ -4,47 +4,52 @@
   --font-serif: 'Sora', sans-serif;
   --font-sans: 'Manrope', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  --palette-ice: 202.62 93.85% 87.25%;
-  --palette-sky: 209.64 48.54% 66.47%;
-  --palette-steel: 211.65 38.4% 53.53%;
-  --palette-denim: 212.86 40% 41.18%;
-  --palette-navy: 212.63 51.35% 21.76%;
-  --palette-midnight: 213.53 100% 6.67%;
-  --background: 207 55% 97%;
-  --foreground: var(--palette-navy);
+  --palette-ice: 214 100% 94%;
+  --palette-sky: 213 94% 72%;
+  --palette-steel: 217 91% 60%;
+  --palette-denim: 221 83% 53%;
+  --palette-navy: 224 30% 12%;
+  --palette-midnight: 225 25% 6%;
+  --background: 220 20% 97%;
+  --foreground: 224 30% 9%;
   --card: 0 0% 100%;
-  --card-foreground: var(--palette-navy);
+  --card-foreground: 224 30% 9%;
   --primary: var(--palette-denim);
   --primary-foreground: 0 0% 100%;
-  --secondary: 205 58% 93%;
-  --secondary-foreground: var(--palette-navy);
-  --muted: 207 40% 95%;
-  --muted-foreground: 213 22% 43%;
+  --secondary: 214 100% 96%;
+  --secondary-foreground: 224 30% 12%;
+  --muted: 220 16% 95%;
+  --muted-foreground: 220 9% 42%;
   --accent: var(--palette-steel);
   --accent-foreground: 0 0% 100%;
-  --border: 209 35% 86%;
+  --border: 220 14% 89%;
   --ring: var(--palette-steel);
   --destructive: 350 66% 46%;
   --hero-foreground: 0 0% 100%;
   --hero-overlay: var(--palette-midnight);
-  --shadow-color: var(--palette-navy);
-  --shadow-soft: 0 4px 20px hsl(var(--shadow-color) / .045);
-  --shadow-popover: 0 12px 40px hsl(var(--shadow-color) / .12);
+  --shadow-color: 224 40% 10%;
+  --shadow-soft: 0 6px 24px hsl(var(--shadow-color) / .06);
+  --shadow-popover: 0 16px 48px hsl(var(--shadow-color) / .16);
   --royal-blue: hsl(var(--primary));
-  --royal-blue-dark: hsl(var(--palette-navy));
+  --royal-blue-dark: hsl(224 76% 40%);
   --royal-blue-light: hsl(var(--palette-steel));
   --workspace: var(--background);
   --navigation: var(--palette-midnight);
-  --navigation-hover: var(--palette-navy);
-  --navigation-foreground: 205 70% 96%;
-  --navigation-muted: var(--palette-sky);
-  --navigation-border: var(--palette-navy);
+  --navigation-hover: 224 22% 14%;
+  --navigation-foreground: 0 0% 100%;
+  --navigation-muted: 220 10% 64%;
+  --navigation-border: 224 18% 18%;
   --leaf: var(--palette-denim);
-  --leaf-bright: var(--palette-ice);
+  --leaf-bright: var(--palette-sky);
   --leaf-soft: var(--secondary);
   --scanner-mask: var(--palette-midnight);
-  --radius-control: 12px;
-  --radius-panel: 20px;
+  --radius-control: 14px;
+  --radius-panel: 24px;
+  --gradient-blue: linear-gradient(135deg, hsl(var(--palette-steel)), hsl(var(--palette-denim)) 55%, hsl(228 80% 42%));
+  --gradient-ink: radial-gradient(120% 140% at 0% 0%, hsl(221 83% 53% / .45), transparent 55%), linear-gradient(160deg, hsl(224 30% 12%), hsl(var(--palette-midnight)));
+  --gradient-workspace: radial-gradient(60% 50% at 100% 0%, hsl(214 100% 92% / .7), transparent 70%), radial-gradient(50% 40% at 0% 100%, hsl(214 100% 95% / .8), transparent 70%), hsl(var(--background));
+  --glass: hsl(0 0% 100% / .72);
+  --glass-border: hsl(0 0% 100% / .6);
 }
 
 @theme {
@@ -416,3 +421,25 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
   .portal-main--form form > .grid { gap: 18px; }
   .welcome-action, .welcome-action:first-child, .welcome-action:nth-child(3) { padding: 16px; }
 }
+
+/* Analytic white/black/blue layer: glass panels, gradients, rounded tiles. */
+.dashboard-shell { background: var(--gradient-workspace); background-attachment: fixed; }
+.dashboard-shell aside { background: var(--gradient-ink); border-right: 0; }
+.dashboard-shell aside > .flex-1 button[class*="bg-blue-700"] { background: hsl(0 0% 100% / .08); border: 1px solid hsl(0 0% 100% / .1); backdrop-filter: blur(8px); box-shadow: inset 3px 0 0 hsl(var(--palette-steel)) !important; }
+.dashboard-shell header { background: hsl(0 0% 100% / .65) !important; backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4); border-bottom: 1px solid hsl(var(--border) / .7); }
+.dashboard-main :is(div[class*="bg-white"], section[class*="bg-white"]) { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid hsl(var(--border) / .8); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft) !important; transition: transform .2s ease, box-shadow .2s ease; }
+.dashboard-metrics > div { border-radius: var(--radius-panel) !important; position: relative; overflow: hidden; }
+.dashboard-metrics > div:hover { transform: translateY(-2px); box-shadow: var(--shadow-popover) !important; }
+.dashboard-metrics > div:first-child { background: var(--gradient-ink) !important; border-color: transparent !important; }
+.dashboard-metrics > div:first-child::after { content: ""; position: absolute; right: -40px; top: -40px; width: 140px; height: 140px; border-radius: 9999px; background: hsl(var(--palette-steel) / .35); filter: blur(30px); pointer-events: none; }
+.dashboard-metrics > div:nth-child(2)::before, .dashboard-metrics > div:nth-child(3)::before, .dashboard-metrics > div:nth-child(4)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--gradient-blue); }
+.dashboard-metrics .font-display { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.dashboard-main div[class*="from-blue-"] { background: var(--gradient-ink) !important; border-radius: var(--radius-panel); }
+.dashboard-shell :is(button.bg-blue-600, button.bg-blue-700, button.bg-blue-800) { background: var(--gradient-blue); box-shadow: 0 6px 18px hsl(var(--palette-denim) / .3); }
+.dashboard-main table thead { background: hsl(var(--muted) / .7); }
+.dashboard-main table tbody tr:hover { background: hsl(var(--secondary) / .7); }
+.dashboard-main :is(input, select, textarea) { border-radius: var(--radius-control); background: hsl(0 0% 100% / .8); }
+.dashboard-shell #mobile-bottom-navigation { background: hsl(var(--palette-midnight) / .85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.scanner-screen > header { background: hsl(var(--palette-midnight) / .8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.scanner-screen .scanner-controls { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.portal-signin, .portal-flow-tabs button[aria-current=page] { background: var(--gradient-ink); }
