@@ -1,5 +1,12 @@
 # Roadmap
 
+## AEUX-inspired analytic workspace (Oct 9, 2026)
+- [x] Rounded dashboard workspace with refined dark navigation
+- [x] Remove card-top and active-navigation edge lines
+- [x] Solid black actions with restrained blue analytic accents
+- [x] Split public forms into side navigation and form workspace
+- [ ] Browser verification across dashboard roles and public forms
+
 ## Blue palette and public form redesign (Oct 9, 2026)
 - [x] Apply uploaded six-color palette throughout screens
 - [x] Rounded controls, panels and tiles

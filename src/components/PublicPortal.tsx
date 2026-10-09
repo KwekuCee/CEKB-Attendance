@@ -673,6 +673,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             <Button variant="ghost" className="portal-back" onClick={() => { setActiveTab('home'); setAttSuccessPass(null); }}>
               <span className="material-symbols-outlined">arrow_back</span> Home
             </Button>
+            <div className="portal-flow-intro">
+              <span className="portal-flow-mark material-symbols-outlined">analytics</span>
+              <p>CEKB attendance system</p>
+              <h2>People, services and growth in one place.</h2>
+              <span>Choose what you want to do. The selected form opens beside this panel.</span>
+            </div>
             <nav className="portal-flow-tabs" aria-label="Church services">
               {([
                 ['attendance', 'Attendance', 'how_to_reg'],
@@ -682,7 +688,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 ['login', 'Sign In', 'lock'],
               ] as const).map(([tab, label, icon]) => (
                 <Button key={tab} variant="ghost" aria-label={label} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }}>
-                  <span className="material-symbols-outlined">{icon}</span><span>{label}</span>
+                  <span className="portal-tab-icon material-symbols-outlined">{icon}</span><span>{label}</span><span className="portal-tab-arrow material-symbols-outlined">arrow_forward</span>
                 </Button>
               ))}
             </nav>

@@ -746,7 +746,7 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <div className="flex-1 md:ml-64 flex flex-col h-full overflow-hidden relative">
+      <div className="dashboard-workspace flex-1 md:ml-64 flex flex-col h-full overflow-hidden relative">
 
         {/* Mobile App Native Header Bar */}
         <MobileAppHeader
