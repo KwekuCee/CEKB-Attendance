@@ -677,7 +677,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               <span className="portal-flow-mark material-symbols-outlined">analytics</span>
               <p>CEKB attendance system</p>
               <h2>People, services and growth in one place.</h2>
-              <span>Choose what you want to do. The selected form opens beside this panel.</span>
+              <span>Every name is a person. Every gathering is an opportunity to grow together in faith.</span>
             </div>
             <nav className="portal-flow-tabs" aria-label="Church services">
               {([

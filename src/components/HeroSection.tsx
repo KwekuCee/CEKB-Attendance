@@ -21,12 +21,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onNavigate }) => {
         <img src={communityImage} alt="A welcoming Ghanaian church congregation" width={1600} height={912} className="welcome-image" fetchPriority="high" />
         <div className="welcome-shade" />
         <motion.div className="welcome-content" initial={reducedMotion ? false : { opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <p className="welcome-eyebrow"><span /> Christ Embassy Korle Bu</p>
-          <h1>CEKB Group<span>A place to belong.</span></h1>
-          <p className="welcome-copy">One family. Many churches. <br />Welcome to your church community.</p>
-          <div className="welcome-ctas">
-            <Button variant="inverse" onClick={() => onNavigate('attendance')}><span className="material-symbols-outlined">qr_code_scanner</span> Check in <span className="material-symbols-outlined">arrow_forward</span></Button>
-            <Button variant="ghost" className="welcome-report-link" onClick={() => onNavigate('cell_report')}>Submit a report <span className="material-symbols-outlined">north_east</span></Button>
+          <p className="welcome-eyebrow"><span /> CEKB Group · Christ Embassy Korle Bu</p>
+          <h1>Every presence counts.</h1>
+          <p className="welcome-copy">Behind every attendance record is a person who matters.<br />Stay connected. Show up in faith. Grow together.</p>
+          <div className="welcome-values" aria-label="Our focus">
+            <span><span className="material-symbols-outlined" aria-hidden="true">how_to_reg</span>Attendance</span>
+            <span><span className="material-symbols-outlined" aria-hidden="true">groups</span>Connection</span>
+            <span><span className="material-symbols-outlined" aria-hidden="true">trending_up</span>Growth</span>
           </div>
         </motion.div>
         <div className="welcome-photo-caption"><span className="material-symbols-outlined">church</span><span>Faith. Fellowship. Family.</span></div>
