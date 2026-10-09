@@ -3,7 +3,7 @@
 ## Equal-split public forms and attendance hero (Oct 9, 2026)
 - [x] Equal-width navigation rectangle and selected form across all five public flows
 - [x] Attendance-focused hero message and non-button focus labels
-- [ ] Verify form switching and equal column widths in the browser
+- [x] Verify form switching and equal column widths in the browser
 
 ## AEUX-inspired analytic workspace (Oct 9, 2026)
 - [x] Rounded dashboard workspace with refined dark navigation

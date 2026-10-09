@@ -465,14 +465,14 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 /* Public flows: contextual navigation left, active attendance or account form right. */
 .portal-main--form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; max-width: none; padding: 30px 34px 76px; align-items: start; }
 .portal-flow-navigation { grid-column: 1; position: sticky; top: 114px; display: flex; flex-direction: column; min-height: calc(100dvh - 160px); margin: 0; padding: 36px; border-radius: 28px; color: hsl(var(--navigation-foreground)); background: linear-gradient(155deg, hsl(var(--palette-midnight)), hsl(224 30% 12%) 62%, hsl(var(--palette-denim)) 180%); box-shadow: 0 22px 58px hsl(var(--palette-midnight) / .22); overflow: hidden; }
-.portal-back { color: hsl(var(--navigation-muted)); margin: -8px 0 18px -8px; }
+.portal-back { align-self: flex-start; color: hsl(var(--navigation-muted)); margin: -8px 0 18px -8px; }
 .portal-back:hover { background: hsl(0 0% 100% / .08); color: hsl(var(--navigation-foreground)); }
 .portal-flow-intro { padding: 12px 4px 32px; flex: 1; }
 .portal-flow-mark { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 16px; color: hsl(var(--palette-midnight)); background: hsl(var(--palette-sky)); margin-bottom: 22px; }
 .portal-flow-intro p { color: hsl(var(--palette-sky)); font-size: 11px; font-weight: 700; }
 .portal-flow-intro h2 { color: hsl(var(--navigation-foreground)); font-size: 24px; line-height: 1.25; margin-top: 7px; }
 .portal-flow-intro > span:last-child { display: block; color: hsl(var(--navigation-muted)); font-size: 12px; line-height: 1.65; margin-top: 12px; }
-.portal-flow-tabs { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; background: transparent; }
+.portal-flow-tabs { display: grid; width: 100%; gap: 8px; margin: 0; padding: 0; border: 0; background: transparent; }
 .portal-flow-tabs button { width: 100%; min-height: 54px; justify-content: flex-start; color: hsl(var(--navigation-muted)); border: 1px solid transparent; padding: 10px 12px; background: transparent; }
 .portal-flow-tabs button:hover { color: hsl(var(--navigation-foreground)); background: hsl(0 0% 100% / .06); }
 .portal-flow-tabs button[aria-current=page] { color: hsl(var(--navigation-foreground)); background: hsl(0 0% 100% / .1); border-color: hsl(0 0% 100% / .1); box-shadow: none; }
