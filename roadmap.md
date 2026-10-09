@@ -2,7 +2,7 @@
 
 ## Mobile opening screen (Oct 9, 2026)
 - [x] Logo-free circular loader for three seconds on mobile page entry only
-- [ ] Verify mobile timing, subsequent navigation, reduced motion and immediate desktop entry
+- [x] Verify mobile timing, subsequent navigation, reduced motion and immediate desktop entry
 
 ## Public form refinement (Oct 9, 2026)
 - [x] Tile-grid flow navigation and large bold detail headings
