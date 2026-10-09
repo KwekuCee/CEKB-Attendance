@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { Member, RoleType, ViewType, ChurchBranch, Leader } from '../types';
 import { MemberPhoto } from './MemberPhoto';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
@@ -8,7 +9,7 @@ interface MemberDatabaseProps {
   members: Member[];
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;

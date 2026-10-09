@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { SupportChat } from './SupportChat';
@@ -6,7 +7,7 @@ import { Button } from './Button';
 
 interface SidebarProps {
   currentView: ViewType;
-  user?: { name: string; role: 'Superadmin' | 'Church Admin'; church: string };
+  user?: { name: string; role: AuthSessionUser['role']; church: string };
   members?: Member[];
   attendanceRecords?: AttendanceRecord[];
   churches?: ChurchBranch[];

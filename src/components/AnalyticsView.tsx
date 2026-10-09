@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { Member, ViewType, AuditLogItem, ChurchBranch } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth, formatBirthdayDisplay } from '../utils/analyticsUtils';
 
 interface AnalyticsViewProps {
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   members: Member[];

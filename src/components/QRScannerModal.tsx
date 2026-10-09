@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { AuthSessionUser } from '../types';
 import jsQR from 'jsqr';
 import { Member, AttendanceRecord, ViewType } from '../types';
 import { useToast } from '../context/ToastContext';
@@ -11,7 +12,7 @@ interface QRScannerModalProps {
   serviceTypes?: Array<{ id: string; name: string; active: boolean }>;
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onConfirmAttendance: (record: AttendanceRecord) => void;

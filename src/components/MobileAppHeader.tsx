@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useToast } from '../context/ToastContext';
@@ -7,7 +8,7 @@ interface MobileAppHeaderProps {
   currentView: ViewType;
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;

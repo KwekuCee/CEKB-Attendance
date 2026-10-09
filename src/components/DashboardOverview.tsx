@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType, TopLeader, Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth } from '../utils/analyticsUtils';
 import { BirthdaysPanel } from './BirthdaysPanel';
@@ -14,7 +15,7 @@ interface DashboardOverviewProps {
   user: {
     id: string;
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
     zone: string;
     avatar: string;

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { AttendanceRecord, ChurchBranch, ViewType, Member, Leader } from '../types';
 import { useToast } from '../context/ToastContext';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
@@ -8,7 +9,7 @@ interface AttendanceViewProps {
   attendanceRecords: AttendanceRecord[];
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;

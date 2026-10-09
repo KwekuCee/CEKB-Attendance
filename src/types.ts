@@ -185,7 +185,7 @@ export interface AuditLogItem {
 export interface UserProfile {
   name: string;
   email: string;
-  role: 'Superadmin' | 'Church Admin' | 'Church Pastor' | 'Leader';
+  role: AuthSessionUser['role'] | 'Church Pastor' | 'Leader';
   church: string;
   avatarUrl?: string;
   isSuperadmin?: boolean;
@@ -198,7 +198,7 @@ export interface UserProfile {
 export interface AuthSessionUser {
   id: string;
   name: string;
-  role: 'Superadmin' | 'Church Admin' | 'Church Pastor' | 'Leader' | 'Usher';
+  role: AuthSessionUser['role'] | 'Church Pastor' | 'Leader' | 'Usher';
   church: string;
   zone: string;
   avatar: string;

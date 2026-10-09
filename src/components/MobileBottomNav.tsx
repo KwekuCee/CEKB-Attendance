@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { AuthSessionUser } from '../types';
 import { ViewType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -6,7 +7,7 @@ interface MobileBottomNavProps {
   currentView: ViewType;
   user?: {
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
   };
   onNavigate: (view: ViewType) => void;

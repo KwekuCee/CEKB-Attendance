@@ -905,7 +905,7 @@ export interface AuthResult {
   user?: {
     id: string;
     name: string;
-    role: 'Superadmin' | 'Church Admin';
+    role: AuthSessionUser['role'];
     church: string;
     zone: string;
     email: string;
