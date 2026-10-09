@@ -2,14 +2,11 @@ import React, { useState } from 'react';
 import { ViewType, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { SupportChat } from './SupportChat';
+import { Button } from './Button';
 
 interface SidebarProps {
   currentView: ViewType;
-  user?: {
-    name: string;
-    role: 'Superadmin' | 'Church Admin';
-    church: string;
-  };
+  user?: { name: string; role: 'Superadmin' | 'Church Admin'; church: string };
   members?: Member[];
   attendanceRecords?: AttendanceRecord[];
   churches?: ChurchBranch[];
@@ -21,208 +18,75 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  currentView,
-  user,
-  members = [],
-  attendanceRecords = [],
-  churches = [],
-  churchAdmins = [],
-  onNavigate,
-  onLogout,
-  isMobileOpen = false,
-  onCloseMobile
+  currentView, user, members = [], attendanceRecords = [], churches = [], churchAdmins = [],
+  onNavigate, onLogout, isMobileOpen = false, onCloseMobile,
 }) => {
-  const logoUrl = '/church-logo.png';
   const [showSupportChat, setShowSupportChat] = useState(false);
-
   const isSuperadmin = user?.role === 'Superadmin';
-
-  const handleExportSystemData = () => {
-    try {
-      exportMultiSheetExcel(members, attendanceRecords, churches, churchAdmins);
-    } catch (e) {
-      exportMultiSectionCSV(members, attendanceRecords, churches, churchAdmins);
-    }
+  const navigate = (view: ViewType) => { onNavigate(view); onCloseMobile?.(); };
+  const exportRecords = () => {
+    try { exportMultiSheetExcel(members, attendanceRecords, churches, churchAdmins); }
+    catch { exportMultiSectionCSV(members, attendanceRecords, churches, churchAdmins); }
   };
-
   const navItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
-    { id: 'dashboard', label: 'Overview', icon: 'shield' },
+    { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
     { id: 'group_overview', label: 'Churches', icon: 'account_tree' },
     { id: 'church_admins_directory', label: 'Church Admins', icon: 'badge' },
     { id: 'leaders', label: 'Leaders', icon: 'diversity_3' },
-    { id: 'leader_registration', label: 'Register a leader', icon: 'military_tech' },
+    { id: 'leader_registration', label: 'Register a leader', icon: 'person_add' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
-    { id: 'settings', label: 'Settings', icon: 'settings' },
   ] : [
-    { id: 'dashboard', label: 'Overview', icon: 'church' },
-    { id: 'leaders', label: 'PCF & Cell Leaders', icon: 'military_tech' },
+    { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
+    { id: 'leaders', label: 'PCF & Cell Leaders', icon: 'diversity_3' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
-    { id: 'settings', label: 'Settings', icon: 'settings' },
   ];
-
+  const menuItem = (id: ViewType, label: string, icon: string) => (
+    <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
+      <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
+      <span className="sidebar-menu-label">{label}</span>
+    </Button>
+  );
   return (
     <>
-      {/* Mobile Backdrop */}
-      {isMobileOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-xs transition-opacity"
-          onClick={onCloseMobile}
-        />
-      )}
-
-      <aside className={`dashboard-sidebar
-        fixed left-0 top-0 h-full w-64 bg-white/95 backdrop-blur-xl text-slate-800 border-r border-slate-200/90 
-        flex flex-col z-50 transition-transform duration-300 ease-in-out shadow-sm md:shadow-none
-        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
-        {/* Header / Brand */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-700 p-0.5 shadow-sm shadow-blue-700/20 shrink-0 flex items-center justify-center overflow-hidden">
-              <img
-                src={logoUrl}
-                alt="CEKB Logo"
-                className="w-full h-full object-cover rounded-[10px]"
-              />
-            </div>
-            <div>
-              <h1 className="font-headline text-base font-bold text-slate-900 tracking-tight leading-tight">
-                CEKB
-              </h1>
-              {isSuperadmin ? (
-                <span className="font-label-mono text-[9px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                  Group pastor
-                </span>
-              ) : (
-                <span className="font-label-mono text-[9px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 truncate max-w-[120px] block">
-                  {user?.church || 'Church Admin'}
-                </span>
-              )}
-            </div>
-          </div>
-          {onCloseMobile && (
-            <button
-              onClick={onCloseMobile}
-              className="md:hidden text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          )}
+      {isMobileOpen && <div className="sidebar-backdrop fixed inset-0 z-40 md:hidden" onClick={onCloseMobile} />}
+      <aside aria-label="Dashboard navigation" className={`dashboard-sidebar fixed flex flex-col z-50 transition-transform duration-300 ease-in-out ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="sidebar-brand">
+          <img src="/church-logo.png" alt="CEKB Logo" className="sidebar-brand-logo" />
+          <h1>CEKB<span>Group</span></h1>
+          {onCloseMobile && <Button variant="ghost" className="sidebar-close md:hidden" aria-label="Close navigation" onClick={onCloseMobile}><span className="material-symbols-outlined" aria-hidden="true">close</span></Button>}
         </div>
-
-        {/* Action CTAs */}
-        <div className="sidebar-actions p-3 space-y-2">
-          {isSuperadmin ? (
-            <>
-              <button
-                onClick={handleExportSystemData}
-                className="sidebar-primary-action w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
-                title="Export multi-sheet report with total members per church, attendance per service, and new members per service"
-              >
-                <span className="material-symbols-outlined text-[18px]">download</span>
-                <span>Export records</span>
-              </button>
-
-              <button
-                onClick={() => { onNavigate('settings'); onCloseMobile?.(); }}
-                className="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold text-xs py-2 px-3 rounded-xl transition-all active:scale-98 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">settings</span>
-                <span>Settings</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => { onNavigate('qr_scanner'); onCloseMobile?.(); }}
-                className="sidebar-primary-action w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-xs active:scale-98 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
-                <span>Launch Scanner</span>
-              </button>
-
-              <button
-                onClick={handleExportSystemData}
-                className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold text-xs py-2 px-3 rounded-xl transition-all active:scale-98 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">download</span>
-                <span>Export Branch Data</span>
-              </button>
-            </>
-          )}
+        <div className="sidebar-context">
+          <span className="sidebar-context-icon material-symbols-outlined" aria-hidden="true">church</span>
+          <div><span className="sidebar-caption">Your workspace</span><strong>{isSuperadmin ? 'Group pastor' : user?.church || 'Church Admin'}</strong></div>
         </div>
-
-        {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1">
-          <div className="px-2 pb-1 font-label-mono text-xs font-bold text-slate-400 ">
-            Workspace
-          </div>
-          {navItems.map((item) => {
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => { onNavigate(item.id); onCloseMobile?.(); }}
-                className={`
-                  w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer group
-                  ${isActive
-                    ? 'bg-blue-700 text-white shadow-sm shadow-blue-700/20 font-bold'
-                    : 'text-slate-600 hover:bg-blue-50/70 hover:text-blue-900'
-                  }
-                `}
-              >
-                <span
-                  className={`material-symbols-outlined text-[18px] transition-transform group-hover:scale-110 ${isActive ? 'icon-fill text-white' : 'text-slate-400 group-hover:text-blue-700'}`}
-                >
-                  {item.icon}
-                </span>
-                <span className="min-w-0">{item.label}</span>
-              </button>
-            );
-          })}
+        <nav className="sidebar-navigation" aria-label="Main menu">
+          <p className="sidebar-caption sidebar-section-label">Navigation</p>
+          {navItems.map(item => menuItem(item.id, item.label, item.icon))}
+        </nav>
+        <div className="sidebar-utilities">
+          {!isSuperadmin && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
+          <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>
+          <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>
+          {menuItem('settings', 'Settings', 'settings')}
         </div>
-
-        {/* Footer Links */}
-        <div className="p-3 border-t border-slate-100 space-y-1">
-          <button
-            onClick={() => setShowSupportChat(true)}
-            className="w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[18px]">contact_support</span>
-            <span>Admin Support</span>
-          </button>
-
-          <button
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[18px]">logout</span>
-            <span>Sign Out</span>
-          </button>
-
-          <div className="pt-2 text-center text-xs text-slate-400">
-            Developed by{' '}
-            <a
-              href="https://primehaven.tech"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-700 hover:underline font-semibold"
-            >
-              Prime Haven
-            </a>
+        <div className="sidebar-account">
+          <p className="sidebar-caption">User account</p>
+          <div className="sidebar-account-row">
+            <span className="sidebar-avatar" aria-hidden="true">{user?.name?.trim().charAt(0).toUpperCase() || 'C'}</span>
+            <div className="sidebar-account-details"><strong>{user?.name || 'Administrator'}</strong><span>{isSuperadmin ? 'Group pastor' : 'Church administrator'}</span></div>
+            <Button variant="ghost" className="sidebar-signout" onClick={onLogout} aria-label="Sign Out" title="Sign Out"><span className="material-symbols-outlined" aria-hidden="true">logout</span></Button>
           </div>
+          <a className="sidebar-credit" href="https://primehaven.tech" target="_blank" rel="noopener noreferrer">Developed by Prime Haven</a>
         </div>
       </aside>
-
       {showSupportChat && <SupportChat onClose={() => setShowSupportChat(false)} />}
     </>
   );
 };
-
