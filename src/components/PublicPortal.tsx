@@ -4,7 +4,7 @@ import { renderQrPass, saveQrPass, QrPassResult, SaveOutcome } from '../utils/qr
 import { motion } from 'motion/react';
 import { Member, Leader, ChurchBranch, ChurchAdminAccount, AttendanceRecord } from '../types';
 import { FOUNDATION_SCHOOL_CLASSES, STANDARD_SERVICE_TYPES, parseFoundationClassNumber, getFoundationClassLabel } from '../data/constants';
-import { authenticateUserWithDatabase, sendPasswordResetEmail, fetchServiceTypesFromSupabase, sendAttendanceEmailToChurchAdmin, uploadMemberPhoto, uploadProfilePhoto, sendAdminVerificationEmail, syncLeaderAsMember, generateLeaderCode, sendQrPassEmails } from '../lib/supabaseService';
+import { clearStoredSession, authenticateUserWithDatabase, sendPasswordResetEmail, fetchServiceTypesFromSupabase, sendAttendanceEmailToChurchAdmin, uploadMemberPhoto, uploadProfilePhoto, sendAdminVerificationEmail, syncLeaderAsMember, generateLeaderCode, sendQrPassEmails } from '../lib/supabaseService';
 import { ChurchLogo } from './ChurchLogo';
 import { HeroSection } from './HeroSection';
 import { Button } from './Button';
@@ -216,6 +216,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   // --- 4. Admin Sign In State ---
   const [loginRole, setLoginRole] = useState<'Superadmin' | 'Church Admin'>('Superadmin');
+  const [loginPane, setLoginPane] = useState<'admin' | 'usher'>('admin');
+  const [usherEmail, setUsherEmail] = useState('');
+  const [usherPassword, setUsherPassword] = useState('');
+  const [usherError, setUsherError] = useState('');
+  const [usherBusy, setUsherBusy] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -623,6 +628,13 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         return;
       }
 
+      if ((result.user.role as string) === 'Usher') {
+        clearStoredSession();
+        localStorage.removeItem('gcyc_portal_token');
+        setLoginError('This is an usher account. Use "Are you an usher? Sign in here" below.');
+        return;
+      }
+
       onLoginSuccess(
         result.user.role,
         result.user.church,
@@ -633,6 +645,30 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       setLoginError(err?.message || 'Database connection error during authentication. Please retry.');
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleUsherLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUsherError('');
+    setUsherBusy(true);
+    try {
+      const result = await authenticateUserWithDatabase(usherEmail, usherPassword, 'Church Admin', churchAdmins, churches);
+      if (!result.success || !result.user) {
+        setUsherError(result.error || 'Incorrect email or password.');
+        return;
+      }
+      if ((result.user.role as string) !== 'Usher') {
+        clearStoredSession();
+        localStorage.removeItem('gcyc_portal_token');
+        setUsherError('This account is not an usher account. Use the Group Pastor / Church Admin sign-in instead.');
+        return;
+      }
+      onLoginSuccess(result.user.role, result.user.church, result.user.name, result.user.email);
+    } catch (err: any) {
+      setUsherError(err?.message || 'We could not reach the sign-in service. Please try again.');
+    } finally {
+      setUsherBusy(false);
     }
   };
 
@@ -1600,7 +1636,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {/* TAB 4: ADMIN LOGIN PAGE */}
         {activeTab === 'login' && (
           <div className="portal-centered-card max-w-md mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm">
-           <div className="portal-centered-content space-y-6">
+           <div className="portal-centered-content login-slider">
+            <div className="login-slider-track" data-pane={loginPane}>
+            <div className="space-y-6" aria-hidden={loginPane !== 'admin'}>
             <div className="portal-login-heading text-center space-y-1">
               <ChurchLogo className="w-14 h-14 mx-auto mb-4" />
               <h3 className="font-display font-extrabold text-xl text-slate-900">{loginRole === 'Superadmin' ? 'Group Pastor Sign In' : 'Church Admin Sign In'}</h3>
@@ -1764,6 +1802,48 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </button>
             </form>
 
+            <button type="button" onClick={() => { setLoginPane('usher'); setUsherError(''); }} className="w-full text-center text-xs font-bold text-blue-700 hover:underline cursor-pointer">
+              Are you an usher? Sign in here
+            </button>
+            </div>
+
+            {/* USHER SIGN-IN PANE */}
+            <div className="space-y-6" aria-hidden={loginPane !== 'usher'}>
+              <div className="portal-login-heading text-center space-y-1">
+                <ChurchLogo className="w-14 h-14 mx-auto mb-4" />
+                <h3 className="font-display font-extrabold text-xl text-slate-900">Usher Sign In</h3>
+                <p className="text-xs text-slate-500">Sign in with the email your church gave you, then start scanning.</p>
+              </div>
+              {usherError && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 font-medium flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-rose-600 text-[18px] shrink-0">error</span>
+                  <span>{usherError}</span>
+                </div>
+              )}
+              <form onSubmit={handleUsherLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="usher-email" className="block text-xs font-bold text-slate-600 uppercase mb-1">Usher Email *</label>
+                  <input id="usher-email" type="email" required autoComplete="username" value={usherEmail} onChange={(e) => { setUsherEmail(e.target.value); setUsherError(''); }} placeholder="usher@cekorlebu.org" tabIndex={loginPane === 'usher' ? 0 : -1} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 font-semibold" />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label htmlFor="usher-password" className="block text-xs font-bold text-slate-600 uppercase">Password *</label>
+                    <button type="button" tabIndex={loginPane === 'usher' ? 0 : -1} onClick={() => { setResetEmail(usherEmail.includes('@') ? usherEmail : ''); setResetFeedback(null); setShowForgotModal(true); }} className="text-xs text-blue-700 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">lock_reset</span><span>Forgot Password?</span>
+                    </button>
+                  </div>
+                  <PasswordInput id="usher-password" required autoComplete="current-password" value={usherPassword} onChange={(e) => { setUsherPassword(e.target.value); setUsherError(''); }} placeholder="Enter your password" tabIndex={loginPane === 'usher' ? 0 : -1} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10" />
+                </div>
+                <Button type="submit" variant="primary" disabled={usherBusy} tabIndex={loginPane === 'usher' ? 0 : -1} className="w-full">
+                  <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
+                  <span>{usherBusy ? 'Signing in…' : 'Sign in and start scanning'}</span>
+                </Button>
+              </form>
+              <button type="button" tabIndex={loginPane === 'usher' ? 0 : -1} onClick={() => setLoginPane('admin')} className="w-full text-center text-xs font-bold text-blue-700 hover:underline cursor-pointer flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">arrow_back</span> Group Pastor or Church Admin? Sign in here
+              </button>
+            </div>
+            </div>
            </div>
           </div>
         )}
@@ -1795,7 +1875,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 <span className="material-symbols-outlined text-[20px]">lock_reset</span>
               </div>
               <div>
-                <h3 className="font-display font-extrabold text-base text-slate-900">Admin Password Recovery</h3>
+                <h3 className="font-display font-extrabold text-base text-slate-900">Password Recovery</h3>
                 <p className="text-xs text-slate-500">Secure Password Reset</p>
               </div>
             </div>
