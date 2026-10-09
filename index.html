@@ -19,10 +19,10 @@
 
   <!-- PWA Settings & Manifest -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#1d4ed8" />
+  <meta name="theme-color" content="#000f22" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="CEKB" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="icon" type="image/png" href="/favicon.png" />
@@ -39,15 +39,6 @@
 <body class="bg-slate-50 text-slate-900 font-sans h-full antialiased selection:bg-blue-200 overscroll-none">
   <div id="root" class="h-full"></div>
   <script type="module" src="/src/main.tsx"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('ServiceWorker registered:', reg.scope))
-          .catch(err => console.log('ServiceWorker registration failed:', err));
-      });
-    }
-  </script>
 </body>
 
 </html>

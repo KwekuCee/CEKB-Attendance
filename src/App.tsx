@@ -1,3 +1,4 @@
+import { UsherScansCard } from './components/UsherScansCard';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -711,7 +712,10 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="flex items-center justify-between px-4 py-3 bg-blue-700 text-white">
-          <div className="text-sm font-bold">Usher · {user.church}</div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold truncate">Signed in as {user.name}</div>
+            <div className="text-xs opacity-90 truncate">{user.church} · You've scanned {(attendanceRecords || []).filter(a => a?.verifiedBy === `${user.name} (QR Scanner)` && (a.date || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length} today</div>
+          </div>
           <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
         </div>
         <QRScannerModal
@@ -797,6 +801,11 @@ export default function App() {
                   onUpdateServiceTypes={setServiceTypes}
                   onImported={handleImported}
                 />
+              )}
+              {currentView === 'dashboard' && (
+                <div className="px-4 md:px-8 pb-8">
+                  <UsherScansCard attendance={attendanceRecords} church={user?.role === 'Superadmin' ? undefined : user?.church} />
+                </div>
               )}
 
               {currentView === 'group_overview' && (
