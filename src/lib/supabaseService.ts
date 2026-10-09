@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase';
-import { getPortalToken } from './portalDb';
+import { getPortalToken, setPortalToken } from './portalDb';
 import {
   Member,
   Leader,
@@ -47,6 +47,7 @@ export function getStoredSession(): AuthSessionUser | null {
 }
 
 export function clearStoredSession(): void {
+  setPortalToken(null);
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
   } catch (err) {
