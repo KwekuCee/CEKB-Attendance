@@ -195,19 +195,33 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     if (!ok) return json({ error: { message: 'Ushers can only scan and record check-ins.' } }, 403);
   }
 
-  // Branch accounts may only create or change usher accounts, never group accounts.
+  // Leaders have a read-only view of their own branch.
+  if (session?.role === 'Leader' && !isRead) {
+    return json({ error: { message: 'Leader accounts can only view records.' } }, 403);
+  }
+
+  // Church pastors look after their church but never scan check-ins.
+  if (session?.role === 'Church Pastor' && table === 'attendance_records' && !isRead && op !== 'delete' && op !== 'update') {
+    // pastors may still correct records, but recording is for admins and ushers
+    return json({ error: { message: 'Church pastors do not record check-ins.' } }, 403);
+  }
+
+  // Branch accounts may only manage staff accounts below them, never group accounts.
+  // Church pastors appoint church admins and ushers; church admins appoint ushers.
+  const staffRoles = session?.role === 'Church Pastor' ? ['Usher', 'Church Admin'] : ['Usher'];
   if (session && session.role !== 'Superadmin' && table === 'user_profiles' && !isRead) {
     if (op !== 'insert' && op !== 'upsert' && op !== 'delete' && op !== 'update') return json({ error: { message: 'Not allowed.' } }, 403);
     const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
     for (const row of rows) {
       const email = String(row.email || '').toLowerCase();
       const isOwnProfile = email && email === String(session.user_email || '').toLowerCase();
-      if (isOwnProfile) { row.role = 'Church Admin'; delete row.admin_verified; row.church_name = session.church_name; continue; }
+      if (isOwnProfile) { row.role = session.role; delete row.admin_verified; row.church_name = session.church_name; continue; }
       if (email && (op === 'insert' || op === 'upsert')) {
         const { data: existing } = await admin.from('user_profiles').select('role').ilike('email', email).maybeSingle();
-        if (existing && existing.role !== 'Usher') return json({ error: { message: 'This email already belongs to another account.' } }, 409);
+        if (existing && !staffRoles.includes(String(existing.role))) return json({ error: { message: 'This email already belongs to another account.' } }, 409);
       }
-      row.role = 'Usher'; row.church_name = session.church_name; row.admin_verified = true;
+      row.role = staffRoles.includes(String(row.role)) ? row.role : 'Usher';
+      row.church_name = session.church_name; row.admin_verified = true;
     }
   }
 
@@ -216,6 +230,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   }
 
   // Visitors may only create brand-new accounts, never overwrite existing ones.
+  // Public sign-up creates either a church pastor (with a brand-new church) or a leader.
   if (!session && (table === 'user_profiles' || table === 'church_admin_accounts')) {
     const rows = Array.isArray(body.values) ? body.values : [body.values];
     for (const row of rows as Array<Record<string, unknown>>) {
@@ -230,7 +245,19 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
       if (existing) {
         return json({ error: { message: 'An account with this email already exists.' } }, 409);
       }
-      if (table === 'user_profiles' && row.role === 'Superadmin') row.role = 'Church Admin';
+      if (table === 'user_profiles') {
+        const role = row.role === 'Leader' ? 'Leader' : 'Church Pastor';
+        if (role === 'Church Pastor') {
+          const { data: pastor } = await admin.from('user_profiles').select('id')
+            .eq('role', 'Church Pastor').ilike('church_name', String(row.church_name || '')).limit(1).maybeSingle();
+          if (pastor) return json({ error: { message: 'This church already has a pastor account. Ask the pastor to appoint you instead.' } }, 409);
+        }
+        row.role = role;
+        // Leaders can sign in straight away; pastors must confirm their email first.
+        row.admin_verified = role === 'Leader';
+      } else {
+        row.admin_verified = false;
+      }
     }
   }
 
@@ -287,7 +314,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
       return json({ error: { message: 'Your account is not linked to a branch yet.' } }, 403);
     }
     query = query.ilike('church_name', session.church_name);
-    if (table === 'user_profiles' && op !== 'select') query = query.eq('role', 'Usher');
+    if (table === 'user_profiles' && op !== 'select') query = query.in('role', staffRoles);
   }
 
   if (body.or) {
