@@ -195,6 +195,22 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     if (!ok) return json({ error: { message: 'Ushers can only scan and record check-ins.' } }, 403);
   }
 
+  // The developer account manages the system but never sees personal records.
+  if (session?.role === 'Developer') {
+    const ok = table === 'admin_settings' || table === 'service_types';
+    if (!ok) return json({ error: { message: 'The developer account only sees totals, not personal records.' } }, 403);
+  }
+
+  // Only church pastors (and the group account) may change the leader hierarchy.
+  if (session && table === 'leaders' && !isRead && session.role !== 'Church Pastor' && session.role !== 'Superadmin') {
+    const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
+    const touchesHierarchy = op === 'delete' || rows.some((r) => r && ('parent_leader_id' in r || 'leader_type' in r));
+    if (touchesHierarchy && op !== 'insert') {
+      return json({ error: { message: 'Only the church pastor can change the leader hierarchy.' } }, 403);
+    }
+    if (op === 'insert') for (const r of rows) if (r) delete r.parent_leader_id;
+  }
+
   // Leaders have a read-only view of their own branch.
   if (session?.role === 'Leader' && !isRead) {
     return json({ error: { message: 'Leader accounts can only view records.' } }, 403);
@@ -225,7 +241,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     }
   }
 
-  if (!isRead && SUPERADMIN_WRITE.has(table) && session?.role !== 'Superadmin') {
+  if (!isRead && SUPERADMIN_WRITE.has(table) && session?.role !== 'Superadmin' && session?.role !== 'Developer') {
     return json({ error: { message: 'Only the group account can change these settings.' } }, 403);
   }
 
@@ -429,6 +445,83 @@ async function handleSignedUrl(body: any, session: Session | null) {
   return json({ data });
 }
 
+
+// ------------------------------------------------------- developer + group code
+
+function safeEqual(a: string, b: string) {
+  if (!a || !b || a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+async function handleDevLogin(body: any) {
+  const user = Deno.env.get('DEVELOPER_USERNAME') || '';
+  const pass = Deno.env.get('DEVELOPER_PASSWORD') || '';
+  if (!user || !pass) return json({ success: false, error: 'The developer account is not set up yet.' });
+  const okUser = safeEqual(String(body?.username || '').trim().toLowerCase(), user.trim().toLowerCase());
+  const okPass = safeEqual(String(body?.password || ''), pass);
+  if (!okUser || !okPass) return json({ success: false, error: 'Incorrect username or password.' });
+  const token = await createSession({ email: null, name: 'Developer', role: 'Developer', church: null });
+  await admin.from('audit_logs').insert({ actor: 'Developer', action: 'Developer signed in', category: 'System', icon: 'terminal' });
+  return json({ success: true, token });
+}
+
+async function countOf(table: string, apply?: (q: any) => any) {
+  let q: any = admin.from(table).select('*', { count: 'exact', head: true });
+  if (apply) q = apply(q);
+  const { count } = await q;
+  return count || 0;
+}
+
+async function handleDevStats(session: Session | null) {
+  if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
+  const since7 = new Date(Date.now() - 7 * 864e5).toISOString();
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: churches } = await admin.from('churches').select('name, status, members_count');
+  const [members, leaders, attendanceToday, attendance7, reports7, pastors, admins, ushers, groupPastors, emailsFailed7, emailsSent7, activeSessions] = await Promise.all([
+    countOf('members'), countOf('leaders'),
+    countOf('attendance_records', (q) => q.eq('attendance_date', today)),
+    countOf('attendance_records', (q) => q.gte('checked_in_at', since7)),
+    countOf('cell_reports', (q) => q.gte('created_at', since7)),
+    countOf('user_profiles', (q) => q.eq('role', 'Church Pastor')),
+    countOf('user_profiles', (q) => q.eq('role', 'Church Admin')),
+    countOf('user_profiles', (q) => q.eq('role', 'Usher')),
+    countOf('user_profiles', (q) => q.eq('role', 'Superadmin')),
+    countOf('email_send_log', (q) => q.gte('created_at', since7).in('status', ['failed', 'dlq', 'bounced'])),
+    countOf('email_send_log', (q) => q.gte('created_at', since7).eq('status', 'sent')),
+    countOf('portal_sessions', (q) => q.gt('expires_at', new Date().toISOString())),
+  ]);
+  return json({ data: {
+    churches: (churches || []).map((c: any) => ({ name: c.name, status: c.status, members: c.members_count })),
+    totals: { members, leaders, attendanceToday, attendance7, reports7, pastors, admins, ushers, groupPastors },
+    health: { emailsSent7, emailsFailed7, activeSessions },
+  } });
+}
+
+async function handleCheckGroupCode(body: any) {
+  const code = Deno.env.get('GROUP_PASTOR_CODE') || '';
+  return json({ valid: safeEqual(String(body?.code || '').trim().toUpperCase(), code.toUpperCase()) });
+}
+
+async function handleClaimGroupPastor(body: any) {
+  const code = Deno.env.get('GROUP_PASTOR_CODE') || '';
+  if (!safeEqual(String(body?.code || '').trim().toUpperCase(), code.toUpperCase())) {
+    return json({ success: false, error: 'Invalid group pastor code.' }, 403);
+  }
+  const email = String(body?.email || '').trim().toLowerCase();
+  if (!email) return json({ success: false, error: 'Email required.' }, 400);
+  // Only a freshly registered, not-yet-confirmed pastor account can be promoted.
+  const { data: row } = await admin.from('user_profiles').select('id, role, admin_verified, created_at')
+    .ilike('email', email).maybeSingle();
+  if (!row || row.role !== 'Church Pastor' || Date.now() - new Date(row.created_at).getTime() > 30 * 60000) {
+    return json({ success: false, error: 'Pastor account not found.' }, 404);
+  }
+  await admin.from('user_profiles').update({ role: 'Superadmin' }).eq('id', row.id);
+  await admin.from('audit_logs').insert({ actor: 'System', action: `Group pastor appointed via group code: ${email}`, category: 'System', icon: 'verified' });
+  return json({ success: true });
+}
+
 // ------------------------------------------------------------------- dispatch
 
 Deno.serve(async (req) => {
@@ -458,6 +551,23 @@ Deno.serve(async (req) => {
           await admin.from('portal_sessions').delete().eq('token_hash', await sha256(token));
         }
         return json({ success: true });
+      }
+      case 'devLogin': {
+        const limited = await rateLimit(req, 'dev-login', 6, 600, corsHeaders, undefined, true);
+        if (limited) return limited;
+        return await handleDevLogin(body);
+      }
+      case 'devStats':
+        return await handleDevStats(session);
+      case 'checkGroupCode': {
+        const limited = await rateLimit(req, 'group-code', 10, 600, corsHeaders, undefined, true);
+        if (limited) return limited;
+        return await handleCheckGroupCode(body);
+      }
+      case 'claimGroupPastor': {
+        const limited = await rateLimit(req, 'group-claim', 10, 600, corsHeaders, undefined, true);
+        if (limited) return limited;
+        return await handleClaimGroupPastor(body);
       }
       case 'upload':
         return await handleUpload(body, session);

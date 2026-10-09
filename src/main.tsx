@@ -1,20 +1,29 @@
-import { StrictMode } from 'react';
+import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ToastProvider } from './context/ToastContext';
 import { MobileOpeningScreen } from './components/MobileOpeningScreen';
 import './index.css';
 
+const DeveloperPortal = lazy(() => import('./components/DeveloperPortal'));
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root is missing');
+
+const isDeveloper = window.location.pathname.replace(/\/+$/, '') === '/developer';
 
 createRoot(root).render(
   <StrictMode>
     <ToastProvider>
-      <MobileOpeningScreen>
-        <App />
-      </MobileOpeningScreen>
+      {isDeveloper ? (
+        <Suspense fallback={null}>
+          <DeveloperPortal />
+        </Suspense>
+      ) : (
+        <MobileOpeningScreen>
+          <App />
+        </MobileOpeningScreen>
+      )}
     </ToastProvider>
   </StrictMode>,
 );
-

@@ -10,6 +10,7 @@ import { ChurchLogo } from './ChurchLogo';
 import { HeroSection } from './HeroSection';
 import { Button } from './Button';
 import { CellReportForm } from './CellReportForm';
+import { rawPortal } from '../lib/rawPortal';
 
 interface PublicPortalProps {
   members: Member[];
@@ -535,10 +536,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setAdmError('');
     setAdmSuccessMsg('');
 
-    // REQUIRED AUTH CODE VALIDATION
-    if (admAuthCode.trim().toUpperCase() !== 'YOM26') {
-      setAdmError('Invalid Authentication Code! Please enter a valid security code.');
-      return;
+    // REQUIRED AUTH CODE VALIDATION — the group pastor code is checked on the server.
+    const enteredCode = admAuthCode.trim().toUpperCase();
+    let isGroupPastorCode = false;
+    if (enteredCode !== 'YOM26') {
+      const check = await rawPortal({ action: 'checkGroupCode', code: enteredCode });
+      isGroupPastorCode = !!check?.valid;
+      if (!isGroupPastorCode) {
+        setAdmError('Invalid Authentication Code! Please enter a valid security code.');
+        return;
+      }
     }
 
     if (
@@ -589,7 +596,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       accountRole: 'Church Pastor'
     };
 
-    onAddChurchAdmin(newAdmin, newBranch);
+    await onAddChurchAdmin(newAdmin, newBranch);
+    if (isGroupPastorCode) {
+      let claimed = false;
+      for (let i = 0; i < 5 && !claimed; i++) {
+        const r = await rawPortal({ action: 'claimGroupPastor', code: enteredCode, email: newAdmin.adminEmail });
+        claimed = !!r?.success;
+        if (!claimed) await new Promise((res) => setTimeout(res, 1200));
+      }
+      if (!claimed) {
+        setAdmError('Your church was created, but the group pastor appointment did not complete. Please contact support.');
+      }
+    }
     setAdmSuccessMsg(`Church "${newBranch.name}" and the pastor account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
 
     const res = await sendAdminVerificationEmail(newAdmin.adminEmail, newAdmin.adminName, true);

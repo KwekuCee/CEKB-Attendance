@@ -12,3 +12,7 @@
 - All accounts (group pastor, church admin, usher) use one sign-in form; the role returned by the server decides the destination, so login logic lives in one place.
 - Church pastors register their church and appoint church admins/ushers; church admins appoint ushers; leaders get read-only accounts. Enforce these limits in portal-db, because the browser can't be trusted.
 - Only church pastors edit the leader hierarchy (BSCT → Cell → PCF); totals roll up through parent links, so every screen gets the same numbers.
+
+- Developer account at /developer uses DEVELOPER_USERNAME/DEVELOPER_PASSWORD secrets; it gets totals only, never personal records.
+- Group pastor code lives in the GROUP_PASTOR_CODE secret and is checked on the server only.
+- Only church pastors and the group account can change leader hierarchy fields; the server blocks everyone else.
