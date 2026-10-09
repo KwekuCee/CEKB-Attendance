@@ -125,7 +125,7 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
             )}
 
             {/* Quick QR Scanner Trigger (Church Admin Only) */}
-            {user?.role !== 'Superadmin' && (
+            {user?.role !== 'Superadmin' && (user?.role as string) !== 'Church Pastor' && (
               <button
                 onClick={() => onNavigate('qr_scanner')}
                 className={`p-2 rounded-xl transition-all cursor-pointer active:scale-95 ${currentView === 'qr_scanner'

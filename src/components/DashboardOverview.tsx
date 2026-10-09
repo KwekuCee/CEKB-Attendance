@@ -460,7 +460,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <p className="dashboard-welcome-detail">Pastor {currentBranchPastor} <span>·</span> Your church, together</p>
             </div>
             <div className="dashboard-welcome-actions">
-              <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>
+              {(user.role as string) === 'Church Pastor'
+                ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
+                : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
               <Button variant="secondary" onClick={() => setShowEmailLeaderModal(true)} title="Email leaders"><span className="material-symbols-outlined">mail</span></Button>
               <Button variant="secondary" onClick={handleExportCSV} title="Export attendance"><span className="material-symbols-outlined">download</span></Button>
             </div>
@@ -752,7 +754,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <p className="text-xs text-slate-500">First 5 attendance records captured by either First Signup Form or QR Code Scan</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                {(user.role as string) !== 'Church Pastor' && <button
                   onClick={() => onNavigate('qr_scanner')}
                   className="text-xs font-bold text-slate-800 hover:text-slate-950 flex items-center gap-1 cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-all"
                 >

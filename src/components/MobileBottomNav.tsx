@@ -27,6 +27,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     { id: 'group_overview', label: 'Network', icon: 'account_tree' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'leaders', label: 'Leaders', icon: 'diversity_3' },
+  ] : (user?.role as string) === 'Church Pastor' ? [
+    { id: 'dashboard', label: 'Home', icon: 'grid_view' },
+    { id: 'members', label: 'Members', icon: 'group' },
+    { id: 'hierarchy', label: 'Hierarchy', icon: 'account_tree' },
+    { id: 'leaders', label: 'Leaders', icon: 'military_tech' },
   ] : [
     { id: 'dashboard', label: 'Home', icon: 'grid_view' },
     { id: 'members', label: 'Members', icon: 'group' },
