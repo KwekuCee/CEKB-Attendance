@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { rawPortal } from '../lib/rawPortal';
+import { isFeatureOn, type FeatureMatrix } from '../lib/features';
 import type { AuthSessionUser } from '../types';
 import { ViewType, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
@@ -23,6 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNavigate, onLogout, isMobileOpen = false, onCloseMobile,
 }) => {
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [matrix, setMatrix] = useState<FeatureMatrix | null>(null);
+  useEffect(() => { rawPortal({ action: 'featureMatrix' }, null).then((r: any) => setMatrix(r?.data || null)).catch(() => {}); }, []);
   const isSuperadmin = user?.role === 'Superadmin';
   const navigate = (view: ViewType) => { onNavigate(view); onCloseMobile?.(); };
   const exportRecords = () => {
@@ -48,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
-  ];
+  ].filter(item => isFeatureOn(matrix, user?.role, item.id));
   const menuItem = (id: ViewType, label: string, icon: string) => (
     <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
