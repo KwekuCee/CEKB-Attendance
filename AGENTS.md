@@ -9,3 +9,4 @@
 - Use explicit semantic sidebar hooks and aria-current for menu states, never legacy palette selectors or divider borders, so glass navigation stays consistent.
 - Public forms use equal viewport-height desktop panes with independent form scrolling and explicit centered-content wrappers for entry screens, so navigation remains visible without hiding headings.
 - Mount the mobile opening screen at the application entry, once per page load, so navigation and account workflows never replay the opening delay.
+- All accounts (group pastor, church admin, usher) use one sign-in form; the role returned by the server decides the destination, so login logic lives in one place.
