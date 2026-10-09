@@ -77,9 +77,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
         </nav>
         <div className="sidebar-utilities">
-          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
-          <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>
-          <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>
+          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && isFeatureOn(matrix, user?.role, 'scanner') && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
+          {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
+          {isFeatureOn(matrix, user?.role, 'support') && <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>}
           {menuItem('settings', 'Settings', 'settings')}
         </div>
         <div className="sidebar-account">
