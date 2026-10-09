@@ -16,3 +16,8 @@ Ushers open the site once on their phone, tap "Add to Home Screen", and from the
 - Usher sessions persist across app launches (existing stored session) so ushers land on the scanner directly.
 - Edit the install modal copy in `MobileAppHeader.tsx`; keep `usePWAInstall` as is.
 - Note: home-screen install works only on the published site, not inside the editor preview.
+
+## Usher name and scan counts
+- Scanner page header shows "Signed in as <usher name> · <church>" plus a "You've scanned N today" counter that updates after each successful scan.
+- Each scan already records the scanner's name ("<name> (QR Scanner)"); add a "Ushers' scans" card on the church admin dashboard (and in the Ushers list in Settings) showing each usher's scans today and for the week, read from that branch's attendance records.
+- Group pastor sees the same counts per branch. No database change needed.
