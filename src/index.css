@@ -55,6 +55,32 @@
   --gradient-workspace: radial-gradient(60% 50% at 100% 0%, hsl(214 100% 92% / .7), transparent 70%), radial-gradient(50% 40% at 0% 100%, hsl(214 100% 95% / .8), transparent 70%), hsl(var(--background));
   --glass: hsl(0 0% 100% / .72);
   --glass-border: hsl(0 0% 100% / .6);
+  --opening-surface: var(--card);
+  --opening-track: var(--secondary);
+  --opening-indicator: var(--primary);
+}
+
+.mobile-opening-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  background: hsl(var(--opening-surface));
+}
+.mobile-opening-loader {
+  width: 60px;
+  height: 60px;
+  border: 4px solid hsl(var(--opening-track));
+  border-top-color: hsl(var(--opening-indicator));
+  border-right-color: hsl(var(--opening-indicator));
+  border-radius: 50%;
+  animation: mobile-opening-spin .85s linear infinite;
+}
+@keyframes mobile-opening-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-opening-loader { animation: none; }
 }
 
 @theme {
