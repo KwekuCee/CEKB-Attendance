@@ -19,7 +19,7 @@ interface PublicPortalProps {
   onConfirmAttendance: (record: AttendanceRecord) => void;
   onAddLeader: (leader: Leader) => void;
   onAddChurchAdmin: (admin: ChurchAdminAccount, branch: ChurchBranch) => void;
-  onLoginSuccess: (userRole?: 'Superadmin' | 'Church Admin', userChurch?: string, adminName?: string, userEmail?: string) => void;
+  onLoginSuccess: (userRole?: AuthSessionUser['role'], userChurch?: string, adminName?: string, userEmail?: string) => void;
   onAddMember: (member: Member) => void;
 }
 
@@ -567,11 +567,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       zone: 'Zone 1 (Korle Bu)',
       joinedDate: new Date().toISOString().slice(0, 10),
       status: 'Active',
-      password: admPassword.trim()
+      password: admPassword.trim(),
+      accountRole: 'Church Pastor'
     };
 
     onAddChurchAdmin(newAdmin, newBranch);
-    setAdmSuccessMsg(`Church branch "${newBranch.name}" and the admin account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
+    setAdmSuccessMsg(`Church "${newBranch.name}" and the pastor account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
 
     const res = await sendAdminVerificationEmail(newAdmin.adminEmail, newAdmin.adminName, true);
     setAdmSuccessMsg(
@@ -698,7 +699,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               <div>
                 <p className="portal-page-eyebrow">CEKB Group</p>
                 <h1>{({ attendance: 'Check in to your church', leader_reg: 'Leader registration', admin_signup: 'Register your church', cell_report: 'Weekly cell report', login: 'Welcome back', home: 'CEKB Group' })[activeTab]}</h1>
-                <p>{({ attendance: "Join us for today’s service.", leader_reg: 'Your church. Your cell. Your calling.', admin_signup: 'Create your church administrator account.', cell_report: 'Cell meetings, attendance and soulwinning.', login: 'Sign in to your church account.', home: '' })[activeTab]}</p>
+                <p>{({ attendance: "Join us for today’s service.", leader_reg: 'Your church. Your cell. Your calling.', admin_signup: 'The church pastor creates the church account.', cell_report: 'Cell meetings, attendance and soulwinning.', login: 'Sign in to your account.', home: '' })[activeTab]}</p>
               </div>
             </div>
           </div>
@@ -1421,9 +1422,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <span className="material-symbols-outlined text-[24px]">church</span>
                 </div>
                 <div>
-                  <h3 className="font-display text-lg font-bold text-slate-900">Admin Signup & Church Registration</h3>
+                  <h3 className="font-display text-lg font-bold text-slate-900">Pastor Church Registration</h3>
                   <p className="text-xs text-slate-500">
-                    Register your church branch account on the platform for your members and leaders to join.
+                    The church pastor creates the church account. After signing in you can appoint church administrators and ushers.
                   </p>
                 </div>
               </div>
@@ -1445,7 +1446,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             )}
 
             <form onSubmit={handleAdminSignUp} className="space-y-4">
-              <h4 className="portal-form-section">Administrator details</h4>
+              <h4 className="portal-form-section">Pastor details</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
@@ -1454,7 +1455,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="Admin Full Name"
+                    placeholder="Pastor's full name"
                     value={admFullName}
                     onChange={(e) => setAdmFullName(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/10 font-semibold transition-all"
