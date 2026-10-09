@@ -782,7 +782,7 @@ export async function saveChurchAdminToSupabase(admin: ChurchAdminAccount): Prom
       username: rawUsername,
       email: email,
       full_name: admin.adminName,
-      role: 'Church Admin',
+      role: admin.accountRole || 'Church Admin',
       church_name: admin.churchName,
       zone: admin.zone || 'Zone 1 (Korle Bu)',
       avatar_url: admin.photoUrl || null
@@ -826,7 +826,7 @@ export async function saveChurchAdminToSupabase(admin: ChurchAdminAccount): Prom
       admin_email: email,
       admin_phone: admin.adminPhone || '+233 24 000 0000',
       zone: admin.zone || 'Zone 1 (Korle Bu)',
-      role: 'Church Admin',
+      role: admin.accountRole || 'Church Admin',
       photo_url: admin.photoUrl || null
     };
     if (passwordToStore) {

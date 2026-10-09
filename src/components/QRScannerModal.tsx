@@ -33,7 +33,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const toast = useToast();
   const [scannerState, setScannerState] = useState<'scanning' | 'success' | 'duplicate' | 'error'>('scanning');
   const [lookupQuery, setLookupQuery] = useState('');
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const scopedMembers = (members || []).filter(m =>
     m && (!isChurchAdmin || (m.church || '').toLowerCase() === (user?.church || '').toLowerCase())
   );

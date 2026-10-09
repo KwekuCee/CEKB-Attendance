@@ -41,7 +41,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   const [deletingLeader, setDeletingLeader] = useState<Leader | null>(null);
   const [viewingLeader, setViewingLeader] = useState<Leader | null>(null);
 
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
 
   const scopedLeaders = isChurchAdmin

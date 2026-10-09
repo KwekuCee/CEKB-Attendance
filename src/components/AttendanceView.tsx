@@ -51,7 +51,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   const [manualSearch, setManualSearch] = useState<string>('');
   const [manualService, setManualService] = useState<string>('');
 
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
 
   const serviceOptions = (serviceTypes || []).filter(s => s.active).map(s => s.name);

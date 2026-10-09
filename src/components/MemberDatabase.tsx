@@ -51,7 +51,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
   };
   const itemsPerPage = 8;
 
-  const isChurchAdmin = user?.role === 'Church Admin';
+  const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
 
   // Bible study class / cell / PCF names a member belongs to, via their leader
