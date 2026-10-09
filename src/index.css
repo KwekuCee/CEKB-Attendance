@@ -557,3 +557,24 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
   .portal-main--form > :is(.max-w-md, .max-w-xl, .max-w-2xl) { padding: 24px 20px !important; }
   .portal-centered-card { min-height: 520px; }
 }
+
+/* Lightweight placeholder while a screen loads on demand */
+.view-loader { display: grid; place-items: center; min-height: 40vh; }
+.view-loader span { width: 34px; height: 34px; border-radius: 9999px; border: 3px solid hsl(var(--palette-sky) / 0.5); border-top-color: hsl(var(--palette-denim)); animation: view-loader-spin 0.8s linear infinite; }
+@keyframes view-loader-spin { to { transform: rotate(360deg); } }
+
+/* Password peek */
+.password-field { position: relative; }
+.password-field input { padding-right: 2.6rem !important; }
+.password-peek { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 9999px; color: hsl(var(--muted-foreground)); background: transparent; border: 0; cursor: pointer; }
+.password-peek:hover { color: hsl(var(--foreground)); background: hsl(var(--palette-ice) / 0.6); }
+.password-peek .material-symbols-outlined { font-size: 18px; }
+
+/* Usher sign-in slide */
+.login-slider { overflow: hidden; }
+.login-slider-track { display: flex; width: 200%; transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+.login-slider-track > * { width: 50%; flex-shrink: 0; padding: 2px; }
+.login-slider-track[data-pane="usher"] { transform: translateX(-50%); }
+.login-slider-track > * { transition: visibility 0s; }
+.login-slider-track > [aria-hidden="true"] { visibility: hidden; transition: visibility 0s 0.45s; }
+@media (prefers-reduced-motion: reduce) { .login-slider-track { transition: none; } }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PasswordInput } from './PasswordInput';
 import { ChurchLogo } from './ChurchLogo';
 import { sendPasswordResetEmail } from '../lib/supabaseService';
 
@@ -100,8 +101,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
                 lock
               </span>
-              <input
-                type="password"
+              <PasswordInput
+                
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

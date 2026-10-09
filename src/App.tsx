@@ -1,10 +1,9 @@
-import { UsherScansCard } from './components/UsherScansCard';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ViewType,
@@ -56,25 +55,27 @@ import { Button } from './components/Button';
 import { TopHeader } from './components/TopHeader';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { PublicPortal } from './components/PublicPortal';
-import { DashboardOverview } from './components/DashboardOverview';
-import { GroupOverview } from './components/GroupOverview';
-import { ChurchAdminsDirectory } from './components/ChurchAdminsDirectory';
-import { MemberDatabase } from './components/MemberDatabase';
-import { NewRegistration } from './components/NewRegistration';
-import { QRScannerModal } from './components/QRScannerModal';
-import { MemberCardModal } from './components/MemberCardModal';
-import { AnnouncementModal } from './components/AnnouncementModal';
-import { AttendanceView } from './components/AttendanceView';
-import { LeaderDirectory } from './components/LeaderDirectory';
-import { LeaderRegistration } from './components/LeaderRegistration';
+const PublicPortal = lazy(() => import('./components/PublicPortal').then(m => ({ default: m.PublicPortal })));
+const DashboardOverview = lazy(() => import('./components/DashboardOverview').then(m => ({ default: m.DashboardOverview })));
+const GroupOverview = lazy(() => import('./components/GroupOverview').then(m => ({ default: m.GroupOverview })));
+const ChurchAdminsDirectory = lazy(() => import('./components/ChurchAdminsDirectory').then(m => ({ default: m.ChurchAdminsDirectory })));
+const MemberDatabase = lazy(() => import('./components/MemberDatabase').then(m => ({ default: m.MemberDatabase })));
+const NewRegistration = lazy(() => import('./components/NewRegistration').then(m => ({ default: m.NewRegistration })));
+const QRScannerModal = lazy(() => import('./components/QRScannerModal').then(m => ({ default: m.QRScannerModal })));
+const MemberCardModal = lazy(() => import('./components/MemberCardModal').then(m => ({ default: m.MemberCardModal })));
+const AnnouncementModal = lazy(() => import('./components/AnnouncementModal').then(m => ({ default: m.AnnouncementModal })));
+const AttendanceView = lazy(() => import('./components/AttendanceView').then(m => ({ default: m.AttendanceView })));
+const LeaderDirectory = lazy(() => import('./components/LeaderDirectory').then(m => ({ default: m.LeaderDirectory })));
+const LeaderRegistration = lazy(() => import('./components/LeaderRegistration').then(m => ({ default: m.LeaderRegistration })));
 import { ResetPasswordScreen } from './components/ResetPasswordScreen';
 import { EmailVerifiedScreen } from './components/EmailVerifiedScreen';
-import { AnalyticsView } from './components/AnalyticsView';
-import { DatabaseSchemaView } from './components/DatabaseSchemaView';
-import { SettingsView } from './components/SettingsView';
-import { CellReportsView } from './components/CellReportsView';
+const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
+const DatabaseSchemaView = lazy(() => import('./components/DatabaseSchemaView').then(m => ({ default: m.DatabaseSchemaView })));
+const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
+const CellReportsView = lazy(() => import('./components/CellReportsView').then(m => ({ default: m.CellReportsView })));
 import { useToast } from './context/ToastContext';
+const UsherScansCard = lazy(() => import('./components/UsherScansCard').then(m => ({ default: m.UsherScansCard })));
+const ViewLoader = () => <div className="view-loader" role="status" aria-label="Loading"><span /></div>;
 import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
 
 export default function App() {
@@ -693,6 +694,7 @@ export default function App() {
   // Render Public Portal if not logged in or viewing public views
   if (!isLoggedIn) {
     return (
+      <Suspense fallback={<ViewLoader />}>
       <PublicPortal
         members={members}
         churches={churches}
@@ -705,6 +707,7 @@ export default function App() {
         onAddChurchAdmin={handleAddChurchAdmin}
         onConfirmAttendance={handleConfirmAttendance}
       />
+      </Suspense>
     );
   }
 
@@ -718,6 +721,7 @@ export default function App() {
           </div>
           <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
         </div>
+        <Suspense fallback={<ViewLoader />}>
         <QRScannerModal
           members={members}
           attendance={attendanceRecords}
@@ -728,6 +732,7 @@ export default function App() {
           onLogout={handleLogout}
           onNavigate={() => {}}
         />
+        </Suspense>
       </div>
     );
   }
@@ -786,6 +791,7 @@ export default function App() {
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="h-full"
             >
+             <Suspense fallback={<ViewLoader />}>
               {currentView === 'dashboard' && (
                 <DashboardOverview
                   user={user}
@@ -948,6 +954,7 @@ export default function App() {
                   onUpdateUser={(updated) => setUser(prev => ({ ...prev, ...updated }))}
                 />
               )}
+             </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -963,6 +970,7 @@ export default function App() {
       </div>
 
       {/* Global Modals */}
+      <Suspense fallback={null}>
       <AnimatePresence>
         {selectedMemberForCard && (
           <MemberCardModal
@@ -981,6 +989,7 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+      </Suspense>
 
     </div>
   );

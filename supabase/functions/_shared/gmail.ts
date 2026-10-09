@@ -30,12 +30,21 @@ function buildRaw(opts: SendGmailOptions): string {
     `From: ${MAIL_FROM}`,
     `To: ${to}`,
     `Subject: ${header(opts.subject)}`,
+    'Reply-To: support@gcycattendance.online',
     'MIME-Version: 1.0',
+  ];
+  const text = opts.html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<(br|\/p|\/div|\/h[1-6]|\/tr)[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
+  const alt = `alt_${crypto.randomUUID().replace(/-/g, '')}`;
+  const altPart = [
+    `Content-Type: multipart/alternative; boundary="${alt}"`, '',
+    `--${alt}`, 'Content-Type: text/plain; charset="UTF-8"', '', text, '',
+    `--${alt}`, 'Content-Type: text/html; charset="UTF-8"', '', opts.html, '',
+    `--${alt}--`, '',
   ];
 
   if (opts.attachments?.length) {
     lines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, '');
-    lines.push(`--${boundary}`, 'Content-Type: text/html; charset="UTF-8"', '', opts.html, '');
+    lines.push(`--${boundary}`, ...altPart);
     for (const att of opts.attachments) {
       lines.push(
         `--${boundary}`,
@@ -49,7 +58,7 @@ function buildRaw(opts: SendGmailOptions): string {
     }
     lines.push(`--${boundary}--`, '');
   } else {
-    lines.push('Content-Type: text/html; charset="UTF-8"', '', opts.html);
+    lines.push(...altPart);
   }
 
   return b64(lines.join('\r\n')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

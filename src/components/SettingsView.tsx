@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PasswordInput } from './PasswordInput';
 import { motion } from 'motion/react';
 import { UserProfile, AuthSessionUser, ChurchBranch, ViewType, AuditLogItem, Member, Leader, AttendanceRecord, ChurchAdminAccount } from '../types';
 import {
@@ -699,8 +700,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     Supabase Anon Public API Key
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    
                     value={supabaseKeyInput}
                     onChange={(e) => setSupabaseKeyInput(e.target.value)}
                     placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -1165,8 +1166,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 space-y-3">
                 <label className="block text-slate-200 font-bold">Current Security Gate Code</label>
                 <div className="flex gap-2">
-                  <input
-                    type="password"
+                  <PasswordInput
+                    
                     value={securityCode}
                     onChange={(e) => setSecurityCode(e.target.value.toUpperCase())}
                     placeholder="••••••••"

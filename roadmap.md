@@ -81,3 +81,6 @@
 - [ ] Leader sign-in, report reminders, report trends, leader family tree
 - [ ] Branch comparison, goals, bulk actions, duplicate merge, activity log screen
 - [ ] Two-step sign-in, weekly backup export, usher role, system health page
+
+- [x] Usher sign-in page (slide), password peek, usher welcome email, lazy loading, restyled emails + plain-text versions
+- [ ] Inbox delivery: needs SPF/DKIM/DMARC confirmed for gcycattendance.online at the email provider
