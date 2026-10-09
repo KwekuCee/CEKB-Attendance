@@ -4,7 +4,7 @@
 - [x] Apply uploaded six-color palette throughout screens
 - [x] Rounded controls, panels and tiles
 - [x] Redesign opened attendance, leader, church, report and login pages
-- [ ] Check public forms, navigation, typography and dashboard/scanner appearance
+- [x] Check public forms, navigation, typography and dashboard/scanner layouts; real-account submission checks remain pending below
 
 ## Reference-style dashboards and scanner (Oct 9, 2026)
 - [x] Charcoal navigation, mint workspace, green accents across dashboard views
