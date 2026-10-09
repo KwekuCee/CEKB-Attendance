@@ -195,6 +195,22 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     if (!ok) return json({ error: { message: 'Ushers can only scan and record check-ins.' } }, 403);
   }
 
+  // The developer account manages the system but never sees personal records.
+  if (session?.role === 'Developer') {
+    const ok = table === 'admin_settings' || table === 'service_types';
+    if (!ok) return json({ error: { message: 'The developer account only sees totals, not personal records.' } }, 403);
+  }
+
+  // Only church pastors (and the group account) may change the leader hierarchy.
+  if (session && table === 'leaders' && !isRead && session.role !== 'Church Pastor' && session.role !== 'Superadmin') {
+    const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
+    const touchesHierarchy = op === 'delete' || rows.some((r) => r && ('parent_leader_id' in r || 'leader_type' in r));
+    if (touchesHierarchy && op !== 'insert') {
+      return json({ error: { message: 'Only the church pastor can change the leader hierarchy.' } }, 403);
+    }
+    if (op === 'insert') for (const r of rows) if (r) delete r.parent_leader_id;
+  }
+
   // Leaders have a read-only view of their own branch.
   if (session?.role === 'Leader' && !isRead) {
     return json({ error: { message: 'Leader accounts can only view records.' } }, 403);
