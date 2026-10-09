@@ -290,7 +290,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
     <div className="scanner-screen fixed inset-0 z-50 bg-slate-950 flex flex-col font-body select-none overflow-hidden">
 
       {/* Viewfinder Background */}
-      <div className="absolute inset-0 w-full h-full object-cover">
+      <div className="scanner-camera absolute inset-0 w-full h-full object-cover">
         {useRealCamera ? (
           <video
             ref={videoRef}
@@ -308,10 +308,10 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       </div>
 
       {/* Darkened Overlay Grid with Scanner Corner Guides */}
-      <div className="absolute inset-0 flex flex-col z-10 pointer-events-none">
-        <div className="flex-1 bg-slate-950/70 backdrop-blur-xs" />
+      <div className="scanner-layout absolute inset-0 flex flex-col z-10 pointer-events-none">
+        <div className="scanner-top-mask flex-1 bg-slate-950/70 backdrop-blur-xs" />
 
-        <div className="flex h-64 md:h-80">
+        <div className="scanner-viewfinder flex h-64 md:h-80">
           <div className="flex-1 bg-slate-950/70 backdrop-blur-xs" />
 
           {/* Target Scanning Box */}
@@ -329,13 +329,13 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
           <div className="flex-1 bg-slate-950/70 backdrop-blur-xs" />
         </div>
 
-        <div className="flex-1 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center pt-6">
+        <div className="scanner-lower flex-1 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center pt-6">
           <span className="text-xs font-bold text-amber-300 bg-slate-900/90 px-4 py-1.5 rounded-full border border-amber-500/30 shadow-lg">
             Hold the pass inside the frame — it records on its own
           </span>
 
           {/* Service picker + manual lookup */}
-          <div className="mt-4 pointer-events-auto w-full px-4 max-w-md space-y-2">
+          <div className="scanner-controls mt-4 pointer-events-auto w-full px-4 max-w-md space-y-2">
             <select
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}

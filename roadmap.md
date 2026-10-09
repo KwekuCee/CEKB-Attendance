@@ -1,5 +1,11 @@
 # Roadmap
 
+## Reference-style dashboards and scanner (Oct 9, 2026)
+- [x] Charcoal navigation, mint workspace, green accents across dashboard views
+- [x] Matching scanner workspace with live camera and visible logout
+- [x] Sora headings and Manrope body typography
+- [ ] Verify dashboard views, scanner controls, logout and fonts
+
 ## Whole-system redesign (Oct 9, 2026)
 - [x] Visible usher logout inside the scanner; clears account and gateway token
 - [x] New homepage and public navigation
