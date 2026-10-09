@@ -4,7 +4,7 @@
 - [x] Tile-grid flow navigation and large bold detail headings
 - [x] Stationary desktop navigation with independently scrolling form cards
 - [x] Full-height centered report entry and sign-in cards with visible sign-in heading
-- [ ] Verify switching, scrolling and card alignment in the browser
+- [x] Verify switching, scrolling and card alignment in the browser
 
 ## Equal-split public forms and attendance hero (Oct 9, 2026)
 - [x] Equal-width navigation rectangle and selected form across all five public flows
