@@ -38,7 +38,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   // A dedicated /cell-report address opens the weekly report sheet straight away,
   // so a subdomain can be pointed at it for leaders.
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report'>(
-    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : 'home')
+    () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).get('signin') === 'usher' ? 'login' : 'home'))
   );
 
   // Dynamically derive effective list of churches from DB and registered admins
@@ -216,7 +216,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   // --- 4. Admin Sign In State ---
   const [loginRole, setLoginRole] = useState<'Superadmin' | 'Church Admin'>('Superadmin');
-  const [loginPane, setLoginPane] = useState<'admin' | 'usher'>('admin');
+  const [loginPane, setLoginPane] = useState<'admin' | 'usher'>(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('signin') === 'usher' ? 'usher' : 'admin'));
   const [usherEmail, setUsherEmail] = useState('');
   const [usherPassword, setUsherPassword] = useState('');
   const [usherError, setUsherError] = useState('');
