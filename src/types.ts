@@ -198,7 +198,7 @@ export interface UserProfile {
 export interface AuthSessionUser {
   id: string;
   name: string;
-  role: AuthSessionUser['role'] | 'Church Pastor' | 'Leader' | 'Usher';
+  role: 'Superadmin' | 'Church Admin' | 'Church Pastor' | 'Leader' | 'Usher';
   church: string;
   zone: string;
   avatar: string;
