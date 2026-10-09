@@ -1598,10 +1598,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
         {/* TAB 4: ADMIN LOGIN PAGE */}
         {activeTab === 'login' && (
-          <div className="max-w-md mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
-            <div className="text-center space-y-1">
+          <div className="portal-centered-card max-w-md mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm">
+           <div className="portal-centered-content space-y-6">
+            <div className="portal-login-heading text-center space-y-1">
               <ChurchLogo className="w-14 h-14 mx-auto mb-4" />
-              <h3 className="font-display font-extrabold text-xl text-slate-900">Welcome back</h3>
+              <h3 className="font-display font-extrabold text-xl text-slate-900">{loginRole === 'Superadmin' ? 'Group Pastor Sign In' : 'Church Admin Sign In'}</h3>
               <p className="text-xs text-slate-500">Sign in to your church account</p>
             </div>
 
@@ -1762,7 +1763,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </button>
             </form>
 
-
+           </div>
           </div>
         )}
       </main>

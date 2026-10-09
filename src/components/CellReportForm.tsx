@@ -235,7 +235,8 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
   // ---------------------------------------------------------------- gate view
   if (!unlocked) {
     return (
-      <div className="max-w-xl mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
+      <div className="portal-centered-card max-w-xl mx-auto bg-white border border-slate-200/90 rounded-2xl p-6 md:p-8 shadow-sm">
+       <div className="portal-centered-content space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
           <div className="p-2.5 rounded-2xl bg-blue-50 text-blue-700 border border-blue-200">
             <span className="material-symbols-outlined text-[24px]">assignment</span>
@@ -333,6 +334,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
             {isVerifying ? 'Checking code…' : 'Open the report form'}
           </button>
         </div>
+       </div>
       </div>
     );
   }
