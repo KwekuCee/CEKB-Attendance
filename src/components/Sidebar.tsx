@@ -33,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     try { exportMultiSheetExcel(members, attendanceRecords, churches, churchAdmins); }
     catch { exportMultiSectionCSV(members, attendanceRecords, churches, churchAdmins); }
   };
-  const navItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
+  const allNavItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
     { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
     { id: 'group_overview', label: 'Churches', icon: 'account_tree' },
     { id: 'church_admins_directory', label: 'Church Admins', icon: 'badge' },
@@ -52,7 +52,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
-  ].filter(item => isFeatureOn(matrix, user?.role, item.id));
+  ];
+  const navItems = allNavItems.filter(item => isFeatureOn(matrix, user?.role, item.id));
   const menuItem = (id: ViewType, label: string, icon: string) => (
     <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>

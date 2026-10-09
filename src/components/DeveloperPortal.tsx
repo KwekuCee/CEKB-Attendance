@@ -226,7 +226,7 @@ function Overview({ s, a }: any) {
         <Tile label="Check-ins recorded" value={a.tables.attendance_records} hint={`${fmt(s.totals.attendanceToday)} today`} />
         <Tile label="Messages (30 days)" value={a.messaging.total30} hint={`${fmt(a.messaging.last24)} in last 24h`} />
       </div>
-      <Card title="Check-in trend" right={<div className="flex gap-1">{[30, 90].map((r) => <Button key={r} variant={range === r ? 'default' : 'secondary'} size="sm" onClick={() => setRange(r as 30 | 90)}>{r} days</Button>)}</div>}>
+      <Card title="Check-in trend" right={<div className="flex gap-1">{[30, 90].map((r) => <Button key={r} variant={range === r ? 'primary' : 'secondary'} onClick={() => setRange(r as 30 | 90)}>{r} days</Button>)}</div>}>
         <Bars data={series} />
       </Card>
       <div className="grid lg:grid-cols-2 gap-6">
