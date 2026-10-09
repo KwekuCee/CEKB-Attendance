@@ -442,6 +442,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .dashboard-main div[class*="from-blue-"] { background: linear-gradient(135deg, hsl(var(--palette-midnight)), hsl(var(--palette-denim))) !important; border-radius: var(--radius-panel); }
 .dashboard-shell :is(button.bg-blue-600, button.bg-blue-700, button.bg-blue-800, button.bg-slate-900) { background: hsl(var(--palette-midnight)) !important; box-shadow: none !important; }
 .dashboard-shell :is(button.bg-blue-600, button.bg-blue-700, button.bg-blue-800, button.bg-slate-900):hover { background: hsl(var(--palette-navy)) !important; }
+.dashboard-shell .dashboard-sidebar .sidebar-primary-action { background: hsl(var(--card)) !important; color: hsl(var(--palette-midnight)) !important; border-color: hsl(0 0% 100% / .16) !important; }
+.dashboard-shell .dashboard-sidebar .sidebar-primary-action:hover { background: hsl(var(--palette-ice)) !important; }
 .dashboard-main table { border-collapse: separate; border-spacing: 0; }
 .dashboard-main table thead { background: hsl(var(--muted) / .68); }
 .dashboard-main table tbody tr:hover { background: hsl(var(--secondary) / .62); }
