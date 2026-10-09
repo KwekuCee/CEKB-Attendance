@@ -1192,7 +1192,12 @@ export type Database = {
         | "Church Coordinator"
       member_status_enum: "First Timer" | "General Member" | "Alumni"
       promotion_status_enum: "None" | "Flagged" | "Confirmed"
-      user_role_enum: "Superadmin" | "Church Admin" | "Leader" | "Usher"
+      user_role_enum:
+        | "Superadmin"
+        | "Church Admin"
+        | "Leader"
+        | "Usher"
+        | "Church Pastor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1328,7 +1333,13 @@ export const Constants = {
       ],
       member_status_enum: ["First Timer", "General Member", "Alumni"],
       promotion_status_enum: ["None", "Flagged", "Confirmed"],
-      user_role_enum: ["Superadmin", "Church Admin", "Leader", "Usher"],
+      user_role_enum: [
+        "Superadmin",
+        "Church Admin",
+        "Leader",
+        "Usher",
+        "Church Pastor",
+      ],
     },
   },
 } as const

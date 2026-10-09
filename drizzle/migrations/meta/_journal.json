@@ -29,6 +29,13 @@
       "when": 1791466636230,
       "tag": "0003_login_otps",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791554349255,
+      "tag": "0004_add_church_pastor_role",
+      "breakpoints": true
     }
   ]
 }
