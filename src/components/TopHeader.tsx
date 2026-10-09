@@ -42,20 +42,20 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     admin_signup: 'Church Branch Admin Registration',
     self_attendance: 'Self Service Attendance Check-In',
     leader_self_reg: 'Leader Self-Registration',
-    dashboard: 'Dashboard Overview',
-    group_overview: 'Group & Network Overview',
-    leaders: 'Leadership & Cell Directory',
-    leader_registration: 'Leader Official Registration',
+    dashboard: 'Overview',
+    group_overview: 'Churches',
+    leaders: 'Leaders',
+    leader_registration: 'Register a leader',
     members: 'Member Database',
-    attendance: 'Attendance Logs',
+    attendance: 'Attendance',
     reports: 'Growth Analytics',
-    analytics: 'Demographics & Analytics',
-    database_schema: 'Supabase DB Schema',
+    analytics: 'Insights',
+    database_schema: 'Database',
     qr_scanner: 'QR Check-In Station',
     register: 'Member Check-In',
-    church_admins_directory: 'Church Branch Administrators',
+    church_admins_directory: 'Church admins',
     cell_reports: 'Weekly Cell Reports',
-    settings: 'System Settings'
+    settings: 'Settings'
   };
 
   const cleanHeaderSearch = (searchQuery || '').trim().toLowerCase();
@@ -85,10 +85,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           <h1 className="font-headline text-lg md:text-xl text-slate-900 font-bold tracking-tight">
             {viewTitles[currentView] || 'CEKB Admin'}
           </h1>
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold rounded-md">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            Live Portal
-          </span>
+
         </div>
       </div>
 
@@ -200,7 +197,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   <span className="material-symbols-outlined text-[18px] text-blue-200">notifications_active</span>
                   <h3 className="font-semibold text-xs ">Notifications</h3>
                 </div>
-                <span className="text-xs bg-blue-600 text-white font-bold px-2 py-0.5 rounded-full">3 NEW</span>
+                <span className="text-xs bg-blue-600 text-white font-bold px-2 py-0.5 rounded-full">{notifications.filter(n => !n.isRead).length} new</span>
               </div>
               <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
                 {notifications.map(n => (

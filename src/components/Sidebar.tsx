@@ -46,25 +46,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
-    { id: 'dashboard', label: 'Group Pastor Dashboard', icon: 'shield' },
-    { id: 'group_overview', label: 'Group Network Overview', icon: 'account_tree' },
+    { id: 'dashboard', label: 'Overview', icon: 'shield' },
+    { id: 'group_overview', label: 'Churches', icon: 'account_tree' },
     { id: 'church_admins_directory', label: 'Church Admins', icon: 'badge' },
     { id: 'leaders', label: 'Leaders', icon: 'diversity_3' },
-    { id: 'leader_registration', label: 'Leader Self-Reg Portal', icon: 'military_tech' },
-    { id: 'members', label: 'All Church Members', icon: 'group' },
-    { id: 'attendance', label: 'Group Attendance Log', icon: 'fact_check' },
+    { id: 'leader_registration', label: 'Register a leader', icon: 'military_tech' },
+    { id: 'members', label: 'Members', icon: 'group' },
+    { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
-    { id: 'analytics', label: 'Network Analytics', icon: 'analytics' },
-    { id: 'settings', label: 'Superadmin Settings', icon: 'settings' },
+    { id: 'analytics', label: 'Insights', icon: 'analytics' },
+    { id: 'settings', label: 'Settings', icon: 'settings' },
   ] : [
-    { id: 'dashboard', label: `${user?.church || 'Church'} Dashboard`, icon: 'church' },
+    { id: 'dashboard', label: 'Overview', icon: 'church' },
     { id: 'leaders', label: 'PCF & Cell Leaders', icon: 'military_tech' },
     { id: 'members', label: 'Members', icon: 'group' },
-    { id: 'attendance', label: 'Service Attendance Log', icon: 'fact_check' },
+    { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
-    { id: 'analytics', label: 'Branch Analytics', icon: 'analytics' },
+    { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
-    { id: 'settings', label: 'Branch Settings', icon: 'settings' },
+    { id: 'settings', label: 'Settings', icon: 'settings' },
   ];
 
   return (
@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </h1>
               {isSuperadmin ? (
                 <span className="font-label-mono text-[9px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                  Superadmin HQ
+                  Group pastor
                 </span>
               ) : (
                 <span className="font-label-mono text-[9px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 truncate max-w-[120px] block">
@@ -127,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 title="Export multi-sheet report with total members per church, attendance per service, and new members per service"
               >
                 <span className="material-symbols-outlined text-[18px]">download</span>
-                <span>Export System Data</span>
+                <span>Export records</span>
               </button>
 
               <button
@@ -135,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold text-xs py-2 px-3 rounded-xl transition-all active:scale-98 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">settings</span>
-                <span>Superadmin Settings</span>
+                <span>Settings</span>
               </button>
             </>
           ) : (
@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Links */}
         <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1">
           <div className="px-2 pb-1 font-label-mono text-xs font-bold text-slate-400 ">
-            Menu Navigation
+            Workspace
           </div>
           {navItems.map((item) => {
             const isActive = currentView === item.id;
@@ -183,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   {item.icon}
                 </span>
-                <span className="truncate">{item.label}</span>
+                <span className="min-w-0">{item.label}</span>
               </button>
             );
           })}

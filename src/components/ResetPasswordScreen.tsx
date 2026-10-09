@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChurchLogo } from './ChurchLogo';
+import { Button } from './Button';
 import { confirmPasswordReset } from '../lib/supabaseService';
 
 interface ResetPasswordScreenProps {
@@ -82,21 +83,21 @@ export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ token,
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:border-blue-600"
             />
           </div>
-          <button
+          <Button
             type="submit"
             disabled={isSaving}
             className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs py-3.5 rounded-xl transition-all disabled:opacity-60 cursor-pointer"
           >
             {isSaving ? 'Saving...' : 'Save new password'}
-          </button>
+          </Button>
         </form>
 
-        <button
+        <Button variant="ghost"
           onClick={onDone}
           className="w-full mt-4 text-xs text-slate-500 font-semibold hover:text-slate-800 cursor-pointer"
         >
           Back to sign in
-        </button>
+        </Button>
       </div>
     </div>
   );
