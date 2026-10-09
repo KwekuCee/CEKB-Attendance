@@ -656,8 +656,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <Button variant="ghost" onClick={() => setActiveTab('attendance')}>Attendance</Button>
           <Button variant="ghost" onClick={() => setActiveTab('cell_report')}>Cell reports</Button>
         </nav>
-        <Button variant="secondary" className="portal-signin" aria-label="Admin Login" onClick={() => setActiveTab('login')}>
-          <span className="material-symbols-outlined">login</span><span>Admin Login</span>
+        <Button variant="secondary" className="portal-signin" aria-label="Sign In" onClick={() => setActiveTab('login')}>
+          <span className="material-symbols-outlined">login</span><span>Sign In</span>
         </Button>
       </header>
 
