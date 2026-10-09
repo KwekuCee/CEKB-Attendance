@@ -245,3 +245,24 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 @media (max-height: 740px) and (min-width: 901px) { .welcome-scene { min-height: 390px; } .welcome-content { padding-top: 38px; } .welcome-content h1 { font-size: 52px; } .welcome-content h1 span { font-size: 36px; } }
 @media (max-height: 800px) { .scanner-screen > .absolute.inset-0.flex > .flex-1:first-child { flex: .65; } .scanner-screen .pt-6 { padding-top: 14px; } .scanner-screen .mt-4 { margin-top: 10px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+.dashboard-welcome { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 8px 0 26px; border-bottom: 1px solid hsl(var(--border)); }
+.dashboard-eyebrow { color: hsl(var(--muted-foreground)); font-size: 12px; margin-bottom: 10px; }
+.dashboard-welcome h1 { font-family: var(--font-serif); font-size: 32px; font-weight: 500; line-height: 1.2; }
+.dashboard-welcome-detail { color: hsl(var(--muted-foreground)); font-size: 12px; margin-top: 12px; }
+.dashboard-welcome-detail span { margin: 0 8px; }
+.dashboard-welcome-actions { display: flex; align-items: center; gap: 8px; }
+.dashboard-metrics > div { border-top: 2px solid hsl(var(--primary)); padding: 22px; }
+.dashboard-metrics > div:nth-child(2) { border-top-color: hsl(var(--accent)); }
+.dashboard-metrics > div:nth-child(3) { border-top-color: hsl(var(--muted-foreground)); }
+.dashboard-metrics > div:nth-child(4) { border-top-color: hsl(var(--accent)); }
+.dashboard-metrics > div > .mt-3 { margin-top: 20px; }
+.dashboard-metrics .font-display { font-size: 36px; }
+.dashboard-metrics .rounded-full { background: transparent; border-radius: 0; color: hsl(var(--muted-foreground)); font-weight: 400; padding: 0; }
+.dashboard-main div.grid > div.bg-blue-50\/50 { background: transparent; border: 0; border-left: 1px solid hsl(var(--border)); border-radius: 0; }
+.dashboard-main div.grid > div.bg-blue-50\/50:first-child { border-left: 0; }
+@media (max-width: 700px) {
+ .dashboard-welcome { align-items: flex-start; flex-direction: column; gap: 20px; }
+ .dashboard-welcome h1 { font-size: 26px; }
+ .dashboard-welcome .cekb-button { min-height: 44px; }
+ .dashboard-main div.grid > div.bg-blue-50\/50 { border-left: 0; border-top: 1px solid hsl(var(--border)); }
+}

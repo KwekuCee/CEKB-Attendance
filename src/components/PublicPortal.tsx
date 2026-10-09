@@ -1733,21 +1733,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 {isLoggingIn ? (
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
-                    <span>Validating with Database...</span>
+                    <span>Signing in…</span>
                   </span>
                 ) : (
                   <>
-                    <span>Authenticate & Sign In</span>
+                    <span>Sign in</span>
                     <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                   </>
                 )}
               </button>
             </form>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-center text-slate-500 text-xs">
-              <span className="material-symbols-outlined text-emerald-600 text-[16px]">verified_user</span>
-              <span>Direct Database Verification • live database Auth</span>
-            </div>
+
           </div>
         )}
       </main>
