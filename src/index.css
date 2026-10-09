@@ -336,6 +336,15 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .dashboard-main div[class*="from-blue-"] { background: hsl(var(--navigation)); }
 .dashboard-shell #mobile-bottom-navigation { background: hsl(var(--navigation)); color: hsl(var(--navigation-foreground)); }
 .dashboard-shell #mobile-bottom-navigation .text-slate-500 { color: hsl(var(--navigation-muted)); }
+.dashboard-shell :is(.bg-blue-600, .bg-blue-700, .bg-blue-800) { background-color: hsl(var(--primary)); }
+.dashboard-shell :is(.text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800, .text-indigo-600, .text-purple-600) { color: hsl(var(--primary)); }
+.dashboard-shell :is(.bg-blue-50, .bg-indigo-50, .bg-purple-50) { background-color: hsl(var(--secondary)); }
+.dashboard-shell :is(.border-blue-100, .border-blue-200, .border-blue-700) { border-color: hsl(var(--border)); }
+.dashboard-shell :is(button.bg-blue-700, button.bg-blue-800):hover { background-color: var(--royal-blue-dark); }
+.dashboard-shell aside .p-3 > button.bg-blue-50 { background: hsl(var(--navigation-hover)); color: hsl(var(--navigation-foreground)); border-color: hsl(var(--navigation-border)); }
+.dashboard-shell aside > .flex-1 button[class*="bg-blue-700"] { background: hsl(var(--navigation-hover)); }
+.dashboard-shell aside > .flex-1 button[class*="bg-blue-700"] .material-symbols-outlined { color: hsl(var(--leaf-bright)); }
+.dashboard-metrics > div:first-child :is(.text-blue-700, .text-blue-600) { color: hsl(var(--leaf-bright)); }
 
 /* Scanner uses the same mint workspace with an unobstructed live camera. */
 .scanner-screen { --hero-overlay: var(--navigation); }
