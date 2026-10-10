@@ -26,6 +26,17 @@
   <meta name="apple-mobile-web-app-title" content="CEKB" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="icon" type="image/png" href="/favicon.png" />
+  <script>
+    window.__cekbDeferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__cekbDeferredPrompt = e;
+      window.dispatchEvent(new Event('cekb:installable'));
+    });
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    }
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

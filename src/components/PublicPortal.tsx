@@ -43,7 +43,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report'>(
     () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).has('signin') ? 'login' : 'home'))
   );
-  const { isInstalled: isPWAInstalled, openPromptBox } = usePWAInstall();
+  const { isInstalled: isPWAInstalled, triggerInstallOrSave } = usePWAInstall();
 
   // Dynamically derive effective list of churches from DB and registered admins
   const effectiveChurches = useMemo(() => {
@@ -697,7 +697,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         </nav>
         <div className="flex items-center gap-2">
           {!isPWAInstalled && (
-            <Button variant="secondary" aria-label="Install App" onClick={openPromptBox}>
+            <Button variant="secondary" aria-label="Install App" onClick={triggerInstallOrSave}>
               <span className="material-symbols-outlined">install_mobile</span>
               <span className="hidden sm:inline">Get App</span>
             </Button>

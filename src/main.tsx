@@ -15,9 +15,7 @@ if (!root) throw new Error('Application root is missing');
 const isDeveloper = window.location.pathname.replace(/\/+$/, '') === '/developer';
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
 createRoot(root).render(
