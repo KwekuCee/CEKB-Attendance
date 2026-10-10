@@ -361,13 +361,13 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .scanner-screen header > div { background: hsl(var(--navigation-hover)); border-color: hsl(var(--navigation-border)); color: hsl(var(--navigation-foreground)); }
 .scanner-screen header > div span:last-child { color: hsl(var(--navigation-foreground)); }
 .scanner-screen header > button:last-child { background: hsl(var(--navigation-hover)); color: hsl(var(--navigation-foreground)); border-color: hsl(var(--navigation-border)); }
-.scanner-camera { top: 104px; left: calc(50% - 240px); width: 480px; height: 352px; border-radius: var(--radius-panel); overflow: hidden; background: hsl(var(--navigation)); }
-.scanner-layout { padding-top: 104px; }
-.scanner-top-mask { flex: none; height: 16px; background: transparent; }
-.scanner-viewfinder { height: 320px; flex-shrink: 0; width: 480px; align-self: center; }
-.scanner-viewfinder > .flex-1 { background: hsl(var(--scanner-mask) / .5); }
+.scanner-camera { top: 96px; left: calc(50% - 240px); width: 480px; height: 296px; border-radius: var(--radius-panel); overflow: hidden; background: hsl(var(--navigation)); }
+.scanner-layout { padding-top: 96px; }
+.scanner-top-mask { flex: 0 0 8px !important; height: 8px !important; background: transparent !important; backdrop-filter: none !important; }
+.scanner-viewfinder { height: 280px !important; flex: 0 0 280px !important; width: 480px; align-self: center; }
+.scanner-viewfinder > .flex-1 { background: hsl(var(--scanner-mask) / .45); backdrop-filter: none !important; }
 .scanner-screen .border-amber-400 { border-color: hsl(var(--leaf-bright)); }
-.scanner-lower { background: hsl(var(--workspace)); margin-top: 16px; padding-top: 20px; overflow-y: auto; pointer-events: auto; padding-bottom: 30px; }
+.scanner-lower { background: hsl(var(--workspace)); margin-top: 16px; padding-top: 18px; flex: 1 1 0% !important; min-height: 0 !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; pointer-events: auto; padding-bottom: 30px; backdrop-filter: none !important; }
 .scanner-lower > span { color: hsl(var(--muted-foreground)); background: transparent; border: 0; box-shadow: none; font-weight: 500; text-align: center; }
 .scanner-controls { max-width: 512px; margin-top: 16px; }
 .scanner-controls :is(select, input[type=text]) { background: hsl(var(--card)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); min-height: 46px !important; }
@@ -378,17 +378,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .scanner-controls > div { background: hsl(var(--card)); border-color: hsl(var(--border)); }
 .scanner-controls > div button { color: hsl(var(--foreground)); }
 .scanner-controls > div button:hover { background: hsl(var(--secondary)); }
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-height: 760px) {
   .dashboard-main :is(h1,h2) { font-size: 22px; }
   .dashboard-welcome { gap: 16px; }
-  .scanner-screen > header { height: 72px; padding-left: 16px; padding-right: 16px; }
-  .scanner-camera { top: 88px; left: 16px; width: calc(100% - 32px); height: 280px; }
-  .scanner-layout { padding-top: 88px; }
-  .scanner-viewfinder { width: calc(100% - 32px); height: 256px; }
-  .scanner-viewfinder > .relative { width: 256px; flex-shrink: 0; }
-  .scanner-top-mask { height: 12px; }
-  .scanner-lower { margin-top: 12px; padding-top: 14px; }
-  .scanner-controls { margin-top: 12px; }
+  .scanner-screen > header { height: 68px; padding-left: 16px; padding-right: 16px; }
+  .scanner-camera { top: 80px; left: 16px; width: calc(100% - 32px); height: 228px; }
+  .scanner-layout { padding-top: 80px; }
+  .scanner-viewfinder { width: calc(100% - 32px); height: 212px !important; flex: 0 0 212px !important; }
+  .scanner-viewfinder > .relative { width: min(232px, calc(100% - 24px)); height: 100%; flex-shrink: 0; }
+  .scanner-top-mask { flex: 0 0 8px !important; height: 8px !important; }
+  .scanner-lower { margin-top: 14px; padding-top: 14px; flex: 1 1 0% !important; min-height: 0 !important; }
+  .scanner-controls { margin-top: 10px; }
 }
 
 /* Unified rounded surfaces and controls; tables, camera guides and QR images retain their geometry. */
