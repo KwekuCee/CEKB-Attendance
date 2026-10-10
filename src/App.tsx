@@ -55,7 +55,6 @@ import { Button } from './components/Button';
 import { TopHeader } from './components/TopHeader';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { DashboardWalkthrough, hasSeenWalkthrough, getWalkthroughStorageKey } from './components/DashboardWalkthrough';
 const PublicPortal = lazy(() => import('./components/PublicPortal').then(m => ({ default: m.PublicPortal })));
 const DashboardOverview = lazy(() => import('./components/DashboardOverview').then(m => ({ default: m.DashboardOverview })));
 const GroupOverview = lazy(() => import('./components/GroupOverview').then(m => ({ default: m.GroupOverview })));
@@ -243,7 +242,6 @@ export default function App() {
   // Modals
   const [selectedMemberForCard, setSelectedMemberForCard] = useState<Member | null>(null);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
-  const [showWalkthrough, setShowWalkthrough] = useState(false);
 
   // State handlers
   const handleAddMember = (newMember: Member) => {
@@ -458,12 +456,6 @@ export default function App() {
     setChurchAdmins(prev => [newAdmin, ...prev.filter(a => a && (a.adminEmail || '').toLowerCase() !== newAdminEmailLower)]);
     await saveChurchAdminToSupabase(newAdmin);
 
-    // Ensure newly registered Church Pastor / Admin gets the step-by-step walkthrough upon entering dashboard
-    try {
-      localStorage.removeItem(getWalkthroughStorageKey({ email: newAdmin.adminEmail, name: newAdmin.adminName, role: 'Church Pastor' }));
-      localStorage.removeItem(getWalkthroughStorageKey({ email: newAdmin.adminEmail, name: newAdmin.adminName, role: 'Church Admin' }));
-    } catch {}
-
     // 2. Update and persist branch
     const targetBranch: ChurchBranch = branch || {
       id: `CH-${Date.now().toString().slice(-4)}`,
@@ -662,9 +654,6 @@ export default function App() {
     setIsLoggedIn(true);
     setCurrentView('dashboard');
     setDataVersion(v => v + 1);
-    if (!hasSeenWalkthrough(newUserSession)) {
-      setShowWalkthrough(true);
-    }
     toast.showSuccess(
       `Signed In as ${effectiveRole}`,
       `Welcome, ${effectiveName}.${effectiveChurch ? ` Assigned to ${effectiveChurch}.` : ''}`
@@ -704,12 +693,6 @@ export default function App() {
     );
   }
 
-  useEffect(() => {
-    if (isLoggedIn && user && !hasSeenWalkthrough(user)) {
-      setShowWalkthrough(true);
-    }
-  }, [isLoggedIn, user?.email, user?.role, user?.name]);
-
   // Render Public Portal if not logged in or viewing public views
   if (!isLoggedIn) {
     return (
@@ -741,20 +724,12 @@ export default function App() {
   if ((user?.role as string) === 'Usher') {
     return (
       <div className="min-h-screen bg-slate-50">
-        <div className="px-4 py-2.5 bg-blue-700 text-white space-y-2">
-          <div className="flex justify-end">
-            <Button variant="inverse" onClick={() => setShowWalkthrough(true)}>
-              <span className="material-symbols-outlined">school</span>
-              <span>Watch Step-by-Step Walkthrough</span>
-            </Button>
+        <div className="flex items-center justify-between px-4 py-3 bg-blue-700 text-white">
+          <div className="min-w-0">
+            <div className="text-sm font-bold truncate">Signed in as {user.name}</div>
+            <div className="text-xs opacity-90 truncate">{user.church} · You've scanned {(attendanceRecords || []).filter(a => a?.verifiedBy === `${user.name} (QR Scanner)` && (a.date || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length} today</div>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-bold truncate">Signed in as {user.name}</div>
-              <div className="text-xs opacity-90 truncate">{user.church} · You've scanned {(attendanceRecords || []).filter(a => a?.verifiedBy === `${user.name} (QR Scanner)` && (a.date || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length} today</div>
-            </div>
-            <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
-          </div>
+          <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
         </div>
         <Suspense fallback={<ViewLoader />}>
         <QRScannerModal
@@ -765,15 +740,9 @@ export default function App() {
           onConfirmAttendance={handleConfirmAttendance}
           onClose={() => {}}
           onLogout={handleLogout}
-          onStartWalkthrough={() => setShowWalkthrough(true)}
           onNavigate={() => {}}
         />
         </Suspense>
-        <DashboardWalkthrough
-          isOpen={showWalkthrough}
-          user={user}
-          onClose={() => setShowWalkthrough(false)}
-        />
       </div>
     );
   }
@@ -791,7 +760,6 @@ export default function App() {
         churchAdmins={churchAdmins}
         onNavigate={setCurrentView}
         onLogout={handleLogout}
-        onStartWalkthrough={() => setShowWalkthrough(true)}
         isMobileOpen={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -965,7 +933,6 @@ export default function App() {
                   user={user}
                   onConfirmAttendance={handleConfirmAttendance}
                   onClose={() => setCurrentView('dashboard')}
-                  onStartWalkthrough={() => setShowWalkthrough(true)}
                   onNavigate={setCurrentView}
                 />
 
@@ -1037,14 +1004,6 @@ export default function App() {
         )}
       </AnimatePresence>
       </Suspense>
-
-      <DashboardWalkthrough
-        isOpen={showWalkthrough}
-        user={user}
-        currentView={currentView}
-        onNavigate={setCurrentView}
-        onClose={() => setShowWalkthrough(false)}
-      />
 
     </div>
   );

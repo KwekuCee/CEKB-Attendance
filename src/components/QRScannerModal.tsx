@@ -18,7 +18,6 @@ interface QRScannerModalProps {
   onConfirmAttendance: (record: AttendanceRecord) => void;
   onClose: () => void;
   onLogout?: () => void;
-  onStartWalkthrough?: () => void;
   onNavigate: (view: ViewType) => void;
 }
 
@@ -30,7 +29,6 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   onConfirmAttendance,
   onClose,
   onLogout,
-  onStartWalkthrough,
   onNavigate
 }) => {
   const toast = useToast();
@@ -312,13 +310,13 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
       {/* Darkened Overlay Grid with Scanner Corner Guides */}
       <div className="scanner-layout absolute inset-0 flex flex-col z-10 pointer-events-none">
-        <div className="scanner-top-mask shrink-0" />
+        <div className="scanner-top-mask flex-1 bg-slate-950/70 backdrop-blur-xs" />
 
-        <div className="scanner-viewfinder flex shrink-0">
-          <div className="flex-1 bg-slate-950/60" />
+        <div className="scanner-viewfinder flex h-64 md:h-80">
+          <div className="flex-1 bg-slate-950/70 backdrop-blur-xs" />
 
           {/* Target Scanning Box */}
-          <div className="w-64 md:w-80 h-full relative flex items-center justify-center shrink-0">
+          <div className="w-64 md:w-80 relative flex items-center justify-center">
             {/* Corner Guides */}
             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl shadow-lg" />
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl shadow-lg" />
@@ -329,10 +327,10 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
             <div className="absolute left-0 w-full h-[3px] bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 shadow-[0_0_15px_#f59e0b] animate-scanline z-20" />
           </div>
 
-          <div className="flex-1 bg-slate-950/60" />
+          <div className="flex-1 bg-slate-950/70 backdrop-blur-xs" />
         </div>
 
-        <div className="scanner-lower flex-1 min-h-0 flex flex-col items-center pt-5">
+        <div className="scanner-lower flex-1 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center pt-6">
           <span className="text-xs font-bold text-amber-300 bg-slate-900/90 px-4 py-1.5 rounded-full border border-amber-500/30 shadow-lg">
             Hold the pass inside the frame — it records on its own
           </span>
@@ -418,24 +416,16 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       </div>
 
       {/* Top Overlay Bar */}
-      <header className="absolute top-0 left-0 w-full z-30 px-4 pt-4 pb-3 flex justify-between items-center gap-2 bg-gradient-to-b from-slate-950/90 to-transparent">
-        <div className="flex items-center gap-2">
-          {onLogout ? (
-            <Button variant="inverse" onClick={onLogout} className="scanner-logout" aria-label="Log out">
-              <span className="material-symbols-outlined">logout</span> Log out
-            </Button>
-          ) : (
-            <Button variant="inverse" onClick={onClose} aria-label="Close Scanner" className="scanner-close">
-              <span className="material-symbols-outlined">close</span>
-            </Button>
-          )}
-          {onStartWalkthrough && (
-            <Button variant="inverse" onClick={onStartWalkthrough} aria-label="Watch Step-by-Step Walkthrough" title="Watch Step-by-Step Walkthrough">
-              <span className="material-symbols-outlined">school</span>
-              <span className="hidden sm:inline">Walkthrough</span>
-            </Button>
-          )}
-        </div>
+      <header className="absolute top-0 left-0 w-full z-30 px-4 pt-6 pb-4 flex justify-between items-center bg-gradient-to-b from-slate-950/90 to-transparent">
+        {onLogout ? (
+          <Button variant="inverse" onClick={onLogout} className="scanner-logout" aria-label="Log out">
+            <span className="material-symbols-outlined">logout</span> Log out
+          </Button>
+        ) : (
+          <Button variant="inverse" onClick={onClose} aria-label="Close Scanner" className="scanner-close">
+            <span className="material-symbols-outlined">close</span>
+          </Button>
+        )}
 
         <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-700">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

@@ -14,13 +14,6 @@ BEGIN
 END $$;
 
 ALTER TABLE public.user_profiles DROP CONSTRAINT IF EXISTS user_profiles_role_check;
-ALTER TABLE public.user_profiles
-    ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
-
-ALTER TABLE public.leaders
-    ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
 
 -- 2. Ensure churches has per-service start times for on-time vs late check-in tracking
 ALTER TABLE public.churches

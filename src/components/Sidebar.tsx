@@ -16,14 +16,13 @@ interface SidebarProps {
   churchAdmins?: ChurchAdminAccount[];
   onNavigate: (view: ViewType) => void;
   onLogout: () => void;
-  onStartWalkthrough?: () => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView, user, members = [], attendanceRecords = [], churches = [], churchAdmins = [],
-  onNavigate, onLogout, onStartWalkthrough, isMobileOpen = false, onCloseMobile,
+  onNavigate, onLogout, isMobileOpen = false, onCloseMobile,
 }) => {
   const [showSupportChat, setShowSupportChat] = useState(false);
   const [matrix, setMatrix] = useState<FeatureMatrix | null>(null);
@@ -85,21 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {menuItem('settings', 'Settings', 'settings')}
         </div>
         <div className="sidebar-account">
-          {onStartWalkthrough && (
-            <Button
-              variant="ghost"
-              className="sidebar-menu-item mb-2"
-              onClick={() => {
-                onStartWalkthrough();
-                onCloseMobile?.();
-              }}
-            >
-              <span className="sidebar-menu-icon">
-                <span className="material-symbols-outlined" aria-hidden="true">school</span>
-              </span>
-              <span className="sidebar-menu-label">Watch Step-by-Step Walkthrough</span>
-            </Button>
-          )}
           <p className="sidebar-caption">User account</p>
           <div className="sidebar-account-row">
             <span className="sidebar-avatar" aria-hidden="true">{user?.name?.trim().charAt(0).toUpperCase() || 'C'}</span>
