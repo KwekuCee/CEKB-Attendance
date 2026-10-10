@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Leader, Member, AttendanceRecord, AuthSessionUser } from '../types';
 import { buildLeaderAttendanceTree, flattenLeaderNode } from '../utils/analyticsUtils';
 import { Button } from './Button';
+import { DashboardWalkthrough, hasSeenWalkthrough } from './DashboardWalkthrough';
 
 interface Props {
   user: AuthSessionUser;
@@ -13,6 +14,14 @@ interface Props {
 
 /** A leader's own view: their members and the totals for everyone under them. */
 export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance, onLogout }) => {
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+
+  useEffect(() => {
+    if (!hasSeenWalkthrough(user)) {
+      setShowWalkthrough(true);
+    }
+  }, [user.email, user.name, user.role]);
+
   const same = (v?: string) => (v || '').toLowerCase() === (user.church || '').toLowerCase();
   const scoped = useMemo(() => ({
     leaders: leaders.filter(l => same(l.church)),
@@ -36,9 +45,19 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
             <h1>Welcome, {user.name}</h1>
             <p className="dashboard-welcome-detail">{me ? `${me.leaderType} · ${me.cellOrPcfName || ''}` : 'Leader account'}</p>
           </div>
-          <div className="dashboard-welcome-actions">
-            <Button onClick={() => { window.location.href = '/cell-report'; }}><span className="material-symbols-outlined">assignment</span> Submit cell report</Button>
-            <Button variant="secondary" onClick={onLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
+          <div className="flex flex-col items-stretch sm:items-end gap-2">
+            <Button variant="secondary" onClick={() => setShowWalkthrough(true)}>
+              <span className="material-symbols-outlined">school</span>
+              <span>Watch Step-by-Step Walkthrough</span>
+            </Button>
+            <div className="dashboard-welcome-actions flex flex-wrap items-center gap-2">
+              <Button onClick={() => { window.location.href = '/cell-report'; }}>
+                <span className="material-symbols-outlined">assignment</span> Submit cell report
+              </Button>
+              <Button variant="secondary" onClick={onLogout}>
+                <span className="material-symbols-outlined">logout</span> Log out
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -89,7 +108,36 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
             </section>
           </>
         )}
+
+        {/* Account Footer Card with Walkthrough Button directly above User & Logout */}
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-2">
+            <Button variant="secondary" onClick={() => setShowWalkthrough(true)}>
+              <span className="material-symbols-outlined">school</span>
+              <span>Watch Step-by-Step Walkthrough</span>
+            </Button>
+            <div className="flex items-center gap-2.5 pt-1">
+              <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center">
+                {user.name?.trim().charAt(0).toUpperCase() || 'L'}
+              </span>
+              <div className="text-xs">
+                <strong className="block text-slate-900">{user.name}</strong>
+                <span className="text-slate-500">{me ? `${me.leaderType} · ${user.church}` : `Leader · ${user.church}`}</span>
+              </div>
+            </div>
+          </div>
+          <Button variant="secondary" onClick={onLogout}>
+            <span className="material-symbols-outlined">logout</span>
+            <span>Log out</span>
+          </Button>
+        </section>
       </div>
+
+      <DashboardWalkthrough
+        isOpen={showWalkthrough}
+        user={user}
+        onClose={() => setShowWalkthrough(false)}
+      />
     </div>
   );
 };

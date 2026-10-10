@@ -78,7 +78,9 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 ALTER TABLE public.user_profiles DROP CONSTRAINT IF EXISTS user_profiles_role_check;
 ALTER TABLE public.user_profiles
     ADD COLUMN IF NOT EXISTS email_verification_token TEXT,
-    ADD COLUMN IF NOT EXISTS email_verification_sent_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS email_verification_sent_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
 
 -- 4. CHURCH ADMIN ACCOUNTS DIRECTORY
 CREATE TABLE IF NOT EXISTS public.church_admin_accounts (
