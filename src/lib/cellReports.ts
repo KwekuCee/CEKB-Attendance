@@ -5,10 +5,11 @@
 // saved reports for the dashboards goes through the usual portal gateway, so
 // branch admins automatically see only their own branch.
 
-import { portalDb, getPortalToken } from './portalDb';
+import { portalDb, getPortalToken, loadLocalStore, saveLocalStore } from './portalDb';
 import type { CellReport } from '../types';
 
-const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/cell-report`;
+const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const FUNCTION_URL = RAW_SUPABASE_URL ? `${RAW_SUPABASE_URL}/functions/v1/cell-report` : '';
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
 /** Rows of the printed report sheet — each row has a Cell and an Outreach column. */
@@ -49,6 +50,89 @@ export interface CellReportSubmission {
 }
 
 async function callFunction<T = any>(payload: Record<string, unknown>): Promise<{ data: T | null; error: string | null }> {
+  if (!FUNCTION_URL) {
+    const store = loadLocalStore();
+    const action = String(payload.action || '');
+    if (!store.tables.report_codes) store.tables.report_codes = [];
+    if (!store.tables.cell_reports) store.tables.cell_reports = [];
+
+    if (action === 'list_codes') {
+      return { data: { codes: store.tables.report_codes } as unknown as T, error: null };
+    }
+    if (action === 'rotate_code') {
+      const churchName = String(payload.churchName || 'CE Korle Bu Central');
+      const code = `CEKB-${Math.floor(1000 + Math.random() * 9000)}`;
+      const existing = store.tables.report_codes.find(
+        (r: any) => String(r.church_name || '').toLowerCase() === churchName.toLowerCase(),
+      );
+      if (existing) {
+        existing.code_hint = code;
+        existing.updated_at = new Date().toISOString();
+      } else {
+        store.tables.report_codes.push({
+          church_name: churchName,
+          code_hint: code,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      saveLocalStore(store);
+      return { data: { code, churchName } as unknown as T, error: null };
+    }
+    if (action === 'verify_code') {
+      const churchName = String(payload.churchName || '');
+      const leaderCode = String(payload.leaderCode || '').trim().toUpperCase();
+      const foundLeader = (store.tables.leaders || []).find(
+        (l: any) => String(l.leader_code || l.id || '').toUpperCase() === leaderCode,
+      );
+      return {
+        data: {
+          ok: true,
+          churchName,
+          leader: foundLeader
+            ? {
+                fullName: foundLeader.full_name,
+                cellOrPcfName: foundLeader.cell_or_pcf_name,
+                leaderType: foundLeader.leader_type,
+              }
+            : null,
+        } as unknown as T,
+        error: null,
+      };
+    }
+    if (action === 'submit') {
+      const churchName = String(payload.churchName || '');
+      const rep = (payload.report || {}) as CellReportSubmission;
+      const id = `rep-${Date.now()}`;
+      const attCell = Number(rep.reportGrid?.totalAttendance?.cell || 0) + Number(rep.reportGrid?.totalAttendance?.outreach || 0);
+      const ftCell = Number(rep.reportGrid?.totalFirstTimers?.cell || 0) + Number(rep.reportGrid?.totalFirstTimers?.outreach || 0);
+      const offCell = Number(rep.reportGrid?.totalOffering?.cell || 0) + Number(rep.reportGrid?.totalOffering?.outreach || 0);
+      const soulsWon = Array.isArray(rep.soulsWonList)
+        ? rep.soulsWonList.filter((s) => s && (s.name || s.contact)).length
+        : 0;
+      store.tables.cell_reports.unshift({
+        id,
+        church_name: churchName,
+        leader_name: rep.leaderName || '',
+        cell_name: rep.cellName || '',
+        outreach_centre: rep.outreachCentre || '',
+        report_date: rep.reportDate || new Date().toISOString().slice(0, 10),
+        report_grid: rep.reportGrid || {},
+        evangelism: rep.evangelism || {},
+        souls_won_list: rep.soulsWonList || [],
+        cell_attendance: rep.cellAttendance || [],
+        sunday_register: rep.sundayRegister || [],
+        total_attendance: attCell,
+        total_first_timers: ftCell,
+        total_souls_won: soulsWon,
+        total_offering: offCell,
+        submitted_by: rep.leaderName || 'Leader',
+        created_at: new Date().toISOString(),
+      });
+      saveLocalStore(store);
+      return { data: { ok: true, id } as unknown as T, error: null };
+    }
+    return { data: null, error: null };
+  }
   try {
     const token = getPortalToken();
     const res = await fetch(FUNCTION_URL, {

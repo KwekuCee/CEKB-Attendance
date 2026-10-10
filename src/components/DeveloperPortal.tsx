@@ -3,7 +3,8 @@ import { Button } from './Button';
 import { PasswordInput } from './PasswordInput';
 import { ChurchLogo } from './ChurchLogo';
 import { rawPortal } from '../lib/rawPortal';
-import { ROLE_LABELS } from '../lib/features';
+import { FEATURES, ROLE_LABELS, FEATURE_ROLES, isFeatureOn, type FeatureMatrix } from '../lib/features';
+import { SUPABASE_SQL_SCHEMA } from '../data/supabase_schema';
 
 const DEV_TOKEN_KEY = 'cekb_dev_token';
 type Tab = 'overview' | 'churches' | 'growth' | 'storage' | 'messaging' | 'audit' | 'health' | 'settings';
@@ -325,11 +326,48 @@ function Churches({ a, act }: any) {
 }
 
 function Growth({ s, a }: any) {
-  const now = new Date(); const m = now.toISOString().slice(0, 7);
+  const now = new Date();
+  const m = now.toISOString().slice(0, 7);
   const newThisMonth = a.churches.filter((c: any) => String(c.createdAt).startsWith(m)).length;
   const users = Object.values(a.roleCounts as Record<string, number>).reduce((t, n) => t + n, 0);
   const active = a.churches.filter((c: any) => c.active).length;
   const ratio = (x: number, y: number) => (y ? (x / y).toFixed(1) : '0');
+
+  // Build a continuous 12-month growth series so line charts always plot smoothly
+  const growthByMonth = new Map<string, { churches: number; members: number }>();
+  for (const g of a.growth || []) {
+    growthByMonth.set(String(g.month), { churches: Number(g.churches || 0), members: Number(g.members || 0) });
+  }
+  const months12 = Array.from({ length: 12 }, (_, idx) => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (11 - idx), 1));
+    const key = d.toISOString().slice(0, 7);
+    const item = growthByMonth.get(key) || { churches: 0, members: 0 };
+    return { month: key, label: key.slice(2), churches: item.churches, members: item.members };
+  });
+  let cumChurches = 0;
+  let cumMembers = 0;
+  const cumulativeMonths = months12.map((pt) => {
+    cumChurches += pt.churches;
+    cumMembers += pt.members;
+    return { ...pt, cumChurches, cumMembers };
+  });
+
+  // Daily check-ins and 7-day rolling average over 90 days
+  const dailyCheckins = (a.series || []).map((d: any) => ({
+    label: String(d.date || '').slice(5),
+    value: Number(d.count || 0),
+  }));
+  const rolling7Checkins = dailyCheckins.map((pt: any, idx: number, arr: any[]) => {
+    const win = arr.slice(Math.max(0, idx - 6), idx + 1);
+    const avg = win.reduce((sum: number, x: any) => sum + x.value, 0) / Math.max(1, win.length);
+    return { label: pt.label, value: Math.round(avg * 10) / 10 };
+  });
+
+  const roleParts = Object.entries(a.roleCounts as Record<string, number>).map(([r, n]) => ({
+    label: ROLE_LABELS[r] || r,
+    value: Number(n || 0),
+  }));
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -342,24 +380,120 @@ function Growth({ s, a }: any) {
         <Tile label="Accounts per church" value={ratio(users, a.churches.length)} />
         <Tile label="Check-ins per member (90d)" value={ratio(a.series.reduce((t: number, d: any) => t + d.count, 0), s.totals.members)} />
       </div>
+      <Card title="Check-in usage & 7-day moving average (90 days)">
+        <SmoothLine
+          height={210}
+          series={[
+            { name: 'Daily check-ins', data: dailyCheckins },
+            { name: '7-day average', data: rolling7Checkins },
+          ]}
+        />
+      </Card>
       <div className="grid lg:grid-cols-2 gap-6">
-        <Card title="New churches per month">{a.growth.length ? <Bars height={140} data={a.growth.map((g: any) => ({ label: g.month, value: g.churches }))} /> : <p className="text-sm text-muted-foreground">No data yet.</p>}</Card>
-        <Card title="New members per month">{a.growth.length ? <Bars height={140} data={a.growth.map((g: any) => ({ label: g.month, value: g.members }))} /> : <p className="text-sm text-muted-foreground">No data yet.</p>}</Card>
-        <Card title="Accounts by type"><div className="space-y-3">{Object.entries(a.roleCounts).map(([r, n]: any) => <HBar key={r} label={ROLE_LABELS[r] || r} value={n} max={Math.max(...Object.values(a.roleCounts as Record<string, number>))} />)}</div></Card>
-        <Card title="Most engaged churches (30d check-ins)"><div className="space-y-3">{[...a.churches].sort((x: any, y: any) => y.checkins30 - x.checkins30).slice(0, 6).map((c: any, _i: number, arr: any[]) => <HBar key={c.name} label={c.name} value={c.checkins30} max={arr[0].checkins30} />)}</div></Card>
+        <Card title="New churches per month">
+          <SmoothLine
+            height={190}
+            series={[
+              { name: 'New churches', data: cumulativeMonths.map((g) => ({ label: g.label, value: g.churches })) },
+              { name: 'Cumulative (12m)', data: cumulativeMonths.map((g) => ({ label: g.label, value: g.cumChurches })) },
+            ]}
+          />
+        </Card>
+        <Card title="New members per month">
+          <SmoothLine
+            height={190}
+            series={[
+              { name: 'New members', data: cumulativeMonths.map((g) => ({ label: g.label, value: g.members })) },
+              { name: 'Cumulative (12m)', data: cumulativeMonths.map((g) => ({ label: g.label, value: g.cumMembers })) },
+            ]}
+          />
+        </Card>
+        <Card title="Accounts by type">
+          {roleParts.length ? (
+            <Donut parts={roleParts} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No accounts yet.</p>
+          )}
+        </Card>
+        <Card title="Most engaged churches (30d check-ins)">
+          <div className="space-y-3">
+            {[...a.churches]
+              .sort((x: any, y: any) => y.checkins30 - x.checkins30)
+              .slice(0, 6)
+              .map((c: any, _i: number, arr: any[]) => (
+                <HBar key={c.name} label={c.name} value={c.checkins30} max={arr[0]?.checkins30 || 1} />
+              ))}
+            {!a.churches.length && <p className="text-sm text-muted-foreground">No churches yet.</p>}
+          </div>
+        </Card>
       </div>
     </div>
   );
 }
 
-function Storage({ a }: any) {
+function Storage({ a, token, reload, notify }: any) {
   const tables = Object.entries(a.tables as Record<string, number>).sort((x, y) => y[1] - x[1]);
   const total = tables.reduce((t, [, n]) => t + n, 0);
   const sorted = [...a.churches].sort((x: any, y: any) => y.rows - x.rows);
   const [archived, setArchived] = useState('');
+  const [lastBackup, setLastBackup] = useState('');
+  const [busyBackup, setBusyBackup] = useState(false);
+  const [busyRestore, setBusyRestore] = useState(false);
+  const [passphrase, setPassphrase] = useState('');
+  const [showSchema, setShowSchema] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleBackup = async () => {
+    if (!token) return;
+    setBusyBackup(true);
+    const r = await rawPortal({ action: 'devAction', op: 'backup' }, token);
+    setBusyBackup(false);
+    if (!r?.success || !r.data) {
+      notify?.(r?.error || 'Backup failed.');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement('a');
+    el.href = url;
+    el.download = `cekb-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    el.click();
+    URL.revokeObjectURL(url);
+    const stamp = new Date().toLocaleString();
+    setLastBackup(stamp);
+    notify?.('Backup downloaded');
+    reload?.();
+  };
+
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !token) return;
+    try {
+      setBusyRestore(true);
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      const r = await rawPortal({ action: 'devAction', op: 'restore', backup }, token);
+      setBusyRestore(false);
+      if (r?.success) {
+        const res = r.restored || {};
+        notify?.(`Restored ${res.settings ?? 0} settings, ${res.services ?? 0} services, ${res.churches ?? 0} churches`);
+        reload?.();
+      } else {
+        notify?.(r?.error || 'Restore failed.');
+      }
+    } catch {
+      setBusyRestore(false);
+      notify?.('This file is not a valid CEKB backup.');
+    }
+  };
+
   const exportArchive = async () => {
-    const pass = window.prompt('Choose a passphrase to encrypt this backup (keep it safe):');
-    if (!pass) return;
+    const pass = passphrase.trim();
+    if (!pass) {
+      notify?.('Enter an encryption passphrase first.');
+      return;
+    }
     const payload = new TextEncoder().encode(JSON.stringify({ exportedAt: new Date().toISOString(), churches: a.churches, tables: a.tables, growth: a.growth }));
     const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
@@ -369,7 +503,10 @@ function Storage({ a }: any) {
     const url = URL.createObjectURL(blob); const el = document.createElement('a');
     el.href = url; el.download = `cekb-archive-${new Date().toISOString().slice(0, 10)}.enc`; el.click(); URL.revokeObjectURL(url);
     setArchived(new Date().toLocaleString());
+    setPassphrase('');
+    notify?.('Encrypted archive downloaded');
   };
+
   const ok = a.integrity.orphanAtt === 0 && a.integrity.orphanMem === 0;
   return (
     <div className="space-y-6">
@@ -380,9 +517,31 @@ function Storage({ a }: any) {
         <Tile label="Integrity" value={ok ? 'Healthy' : 'Needs review'} />
       </div>
       <div className="grid lg:grid-cols-2 gap-6">
-        <Card title="Table rows breakdown"><div className="space-y-3">{tables.map(([t, n]) => <HBar key={t} label={t.replace(/_/g, ' ')} value={n} max={tables[0][1]} />)}</div></Card>
         <Card title="Churches by storage footprint">
           <Table head={['Church', 'Rows', 'Est. size']} empty="No churches yet." rows={sorted.map((c: any) => [c.name, fmt(c.rows), bytes(c.estBytes)])} />
+        </Card>
+        <Card title="Backup & restore configuration">
+          <p className="text-sm text-muted-foreground mb-4">
+            Download a JSON backup of global platform settings, service programs, and church statuses, or restore a previous backup file. Personal member records are never included.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={handleBackup} disabled={busyBackup}>
+              <span className="material-symbols-outlined">download</span>
+              <span>{busyBackup ? 'Creating backup…' : 'Backup configuration'}</span>
+            </Button>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={busyRestore}>
+              <span className="material-symbols-outlined">upload_file</span>
+              <span>{busyRestore ? 'Restoring…' : 'Restore backup'}</span>
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleRestoreFile}
+              className="hidden"
+            />
+          </div>
+          {lastBackup && <p className="mt-3 text-xs text-muted-foreground">Last backup created {lastBackup}</p>}
         </Card>
         <Card title="Database integrity & consistency">
           <div className="space-y-2 text-sm">
@@ -394,10 +553,48 @@ function Storage({ a }: any) {
         </Card>
         <Card title="Encrypted archives">
           <p className="text-sm text-muted-foreground mb-3">Download an AES-256 encrypted backup of church-level totals. Personal records are never included.</p>
-          <Button onClick={exportArchive}>Create encrypted archive</Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="Passphrase to encrypt archive"
+              className="flex-1 rounded-xl border border-input bg-background px-3 py-2 text-sm"
+            />
+            <Button onClick={exportArchive} disabled={!passphrase.trim()}>Create encrypted archive</Button>
+          </div>
           {archived && <p className="mt-2 text-sm">Last archive created {archived}</p>}
         </Card>
       </div>
+      <Card
+        title="Database schema & SQL update script"
+        right={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+                notify?.('SQL schema copied to clipboard');
+              }}
+            >
+              <span className="material-symbols-outlined">content_copy</span>
+              <span>Copy SQL</span>
+            </Button>
+            <Button variant="secondary" onClick={() => setShowSchema((v) => !v)}>
+              {showSchema ? 'Hide SQL' : 'View SQL'}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Idempotent PostgreSQL DDL script for Supabase SQL Editor (tables, triggers, rate-limiting RPCs, RLS policies, and default platform settings).
+        </p>
+        {showSchema && (
+          <pre className="mt-4 max-h-96 overflow-auto rounded-2xl border border-border bg-muted/50 p-4 text-xs font-mono">
+            {SUPABASE_SQL_SCHEMA}
+          </pre>
+        )}
+      </Card>
     </div>
   );
 }
@@ -405,7 +602,9 @@ function Storage({ a }: any) {
 function Messaging({ a, act }: any) {
   const m = a.messaging;
   const rate = m.total30 ? Math.round((m.sent30 / m.total30) * 100) : 100;
-  const [title, setTitle] = useState(''); const [message, setMessage] = useState('');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [alsoEmail, setAlsoEmail] = useState(true);
   const busiest = Object.entries(m.byChurch as Record<string, number>).sort((x, y) => y[1] - x[1]).slice(0, 6);
   return (
     <div className="space-y-6">
@@ -427,10 +626,33 @@ function Messaging({ a, act }: any) {
         </Card>
         <Card title="Send announcement to all churches">
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Sent as developer@gcycattendance.online</p>
+            <p className="text-xs text-muted-foreground">
+              Sent as <strong>GCYC Developer &lt;developer@gcycattendance.online&gt;</strong>
+            </p>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title, e.g. System upgrade" className="w-full rounded-xl border border-input bg-background px-4 py-2" />
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Message to every church" className="w-full rounded-xl border border-input bg-background px-4 py-2" />
-            <Button disabled={!title.trim() || !message.trim()} onClick={() => { act({ op: 'broadcast', title, message }, 'Announcement sent'); setTitle(''); setMessage(''); }}>Send announcement</Button>
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={alsoEmail}
+                onChange={(e) => setAlsoEmail(e.target.checked)}
+              />
+              <span>Also send by email to all church pastors and admins</span>
+            </label>
+            <Button
+              disabled={!title.trim() || !message.trim()}
+              onClick={() => {
+                act(
+                  { op: 'broadcast', title, message, email: alsoEmail },
+                  alsoEmail ? 'Announcement sent & emailed to church staff' : 'Announcement sent'
+                );
+                setTitle('');
+                setMessage('');
+              }}
+            >
+              Send announcement
+            </Button>
           </div>
         </Card>
       </div>
@@ -438,16 +660,25 @@ function Messaging({ a, act }: any) {
         <Table head={['When', 'Template', 'Status', 'Reason']} empty="No failed deliveries." rows={m.failures.map((f: any) => [when(f.at), f.template, <Badge ok={false}>{f.status}</Badge>, f.reason])} />
       </Card>
       <Card title="Announcements sent">
-        <Table head={['When', 'Title', 'From', 'Audience']} empty="No announcements yet." rows={a.announcements.map((n: any) => [when(n.created_at), n.title, n.sender_name || '—', n.target_audience])} />
+        <Table head={['When', 'Title', 'From', 'Audience']} empty="No announcements yet." rows={a.announcements.map((n: any) => [when(n.created_at), n.title, n.sender_name || 'GCYC Developer <developer@gcycattendance.online>', n.target_audience])} />
       </Card>
     </div>
   );
 }
 
 function Audit({ a }: any) {
-  const [cat, setCat] = useState('All'); const [q, setQ] = useState('');
+  const PAGE_SIZE = 10;
+  const [cat, setCat] = useState('All');
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
   const cats = useMemo(() => ['All', ...Array.from(new Set(a.logs.map((l: any) => l.category)))] as string[], [a.logs]);
-  const list = a.logs.filter((l: any) => (cat === 'All' || l.category === cat) && `${l.action} ${l.church || ''}`.toLowerCase().includes(q.toLowerCase()));
+  const list = useMemo(
+    () => a.logs.filter((l: any) => (cat === 'All' || l.category === cat) && `${l.action} ${l.church || ''}`.toLowerCase().includes(q.toLowerCase())),
+    [a.logs, cat, q]
+  );
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = list.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const critical = a.logs.filter((l: any) => ['Security', 'System', 'Church', 'Settings'].includes(l.category)).length;
   return (
     <div className="space-y-6">
@@ -457,8 +688,57 @@ function Audit({ a }: any) {
         <Tile label="Developer actions" value={a.logs.filter((l: any) => l.actor === 'Developer').length} />
         <Tile label="Categories" value={cats.length - 1} />
       </div>
-      <Card title="Event timeline" right={<div className="flex gap-2"><select value={cat} onChange={(e) => setCat(e.target.value)} className="rounded-xl border border-input bg-background px-3 py-2 text-sm">{cats.map((c) => <option key={c}>{c}</option>)}</select><input placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} className="rounded-xl border border-input bg-background px-3 py-2 text-sm" /></div>}>
-        <Table head={['When', 'Category', 'Event', 'Church', 'Actor']} empty="No events." rows={list.map((l: any) => [when(l.at), l.category, l.action, l.church || '—', l.actor])} />
+      <Card
+        title="Event timeline"
+        right={
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={cat}
+              onChange={(e) => { setCat(e.target.value); setPage(1); }}
+              className="rounded-xl border border-input bg-background px-3 py-2 text-sm"
+            >
+              {cats.map((c) => <option key={c}>{c}</option>)}
+            </select>
+            <input
+              placeholder="Search"
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(1); }}
+              className="rounded-xl border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+        }
+      >
+        <Table
+          head={['When', 'Category', 'Event', 'Church', 'Actor']}
+          empty="No events."
+          rows={pageItems.map((l: any) => [when(l.at), l.category, l.action, l.church || '—', l.actor])}
+        />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>
+            {list.length === 0
+              ? 'Showing 0 events (10 per page)'
+              : `Showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, list.length)} of ${fmt(list.length)} events (10 per page)`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="px-2 font-semibold text-foreground tabular-nums">
+              Page {safePage} of {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
         <p className="mt-2 text-xs text-muted-foreground">Events involving individual people are summarised so personal names stay private.</p>
       </Card>
     </div>
@@ -491,15 +771,66 @@ function Health({ s, a, act }: any) {
 }
 
 function Settings({ a, act }: any) {
-  const [p, setP] = useState<any>(() => ({ platformName: 'CEKB Group', tagline: 'Every presence counts.', supportEmail: 'support@gcycattendance.online', senderName: 'CE Korle Bu', primaryColor: '#000f22', maintenance: false, allowRegistrations: true, allowLeaderSignup: true, plan: 'Free', maxChurches: 100, ...(a.platform || {}) }));
+  const [p, setP] = useState<any>(() => ({
+    platformName: 'CEKB Group',
+    tagline: 'Every presence counts.',
+    supportEmail: 'support@gcycattendance.online',
+    senderName: 'CE Korle Bu',
+    primaryColor: '#000f22',
+    maintenance: false,
+    maintenanceMessage: 'We are making improvements. Please check back shortly.',
+    announcementBanner: '',
+    allowRegistrations: true,
+    allowLeaderSignup: true,
+    allowSelfRegistration: true,
+    allowSelfCheckin: true,
+    allowCellReports: true,
+    allowUsherAccounts: true,
+    sessionHours: 12,
+    requireGroupOtp: true,
+    maxChurches: 100,
+    plan: 'Free',
+    birthdayEmails: true,
+    weeklySummary: true,
+    reportReminders: true,
+    welcomeEmails: true,
+    timezone: 'Africa/Accra',
+    currency: 'GHS',
+    auditRetentionDays: 365,
+    ...(a.platform || {}),
+  }));
+
+  const [matrix, setMatrix] = useState<FeatureMatrix>(() => a.featureMatrix || {});
+
   const set = (k: string, v: any) => setP((x: any) => ({ ...x, [k]: v }));
-  const field = (k: string, label: string, type = 'text') => (
+  const toggleFeature = (role: string, id: string) => {
+    setMatrix((prev) => ({
+      ...prev,
+      [role]: {
+        ...(prev[role] || {}),
+        [id]: !isFeatureOn(prev, role, id),
+      },
+    }));
+  };
+
+  const field = (k: string, label: string, type = 'text', placeholder?: string) => (
     <label className="block space-y-1"><span className="text-sm font-semibold">{label}</span>
-      <input type={type} value={p[k] ?? ''} onChange={(e) => set(k, type === 'number' ? Number(e.target.value) : e.target.value)} className="w-full rounded-xl border border-input bg-background px-4 py-2" /></label>
+      <input
+        type={type}
+        value={p[k] ?? ''}
+        placeholder={placeholder}
+        onChange={(e) => set(k, type === 'number' ? Number(e.target.value) : e.target.value)}
+        className="w-full rounded-xl border border-input bg-background px-4 py-2"
+      />
+    </label>
   );
   const toggle = (k: string, label: string) => (
-    <label className="flex items-center justify-between gap-3 text-sm"><span>{label}</span><input type="checkbox" className="h-4 w-4 accent-primary" checked={!!p[k]} onChange={(e) => set(k, e.target.checked)} /></label>
+    <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+      <span>{label}</span>
+      <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!p[k]} onChange={(e) => set(k, e.target.checked)} />
+    </label>
   );
+
   return (
     <div className="space-y-6">
       <div className="grid lg:grid-cols-2 gap-6">
@@ -510,20 +841,117 @@ function Settings({ a, act }: any) {
             <p className="text-muted-foreground">Sign-in attempts are rate-limited and every sign-in is recorded in the audit log.</p>
           </div>
         </Card>
-        <Card title="Platform identity">{<div className="space-y-3">{field('platformName', 'Platform name')}{field('tagline', 'Tagline')}{field('supportEmail', 'Support email', 'email')}</div>}</Card>
-        <Card title="Platform branding">{<div className="space-y-3">{field('primaryColor', 'Primary colour', 'color')}{field('senderName', 'Email sender name')}</div>}</Card>
-        <Card title="Global autonomy & controls"><div className="space-y-3">{toggle('maintenance', 'Maintenance mode')}{toggle('allowRegistrations', 'Allow new church registrations')}{toggle('allowLeaderSignup', 'Allow leader sign-up')}</div></Card>
-        <Card title="Commercial plans"><div className="space-y-3">
-          <label className="block space-y-1"><span className="text-sm font-semibold">Current plan</span>
-            <select value={p.plan} onChange={(e) => set('plan', e.target.value)} className="w-full rounded-xl border border-input bg-background px-4 py-2">{['Free', 'Standard', 'Premium', 'Enterprise'].map((x) => <option key={x}>{x}</option>)}</select></label>
-          {field('maxChurches', 'Church limit', 'number')}</div></Card>
-        <Card title="System emails"><div className="space-y-2 text-sm">
-          <p>Outgoing sender: <strong>CE Korle Bu &lt;support@gcycattendance.online&gt;</strong></p>
-          <p>Developer announcements: <strong>developer@gcycattendance.online</strong></p>
-          <p className="text-muted-foreground">Templates: sign-up, verification, password reset, sign-in code, QR passes, birthday reminders, weekly summary, report reminders, staff appointments.</p>
-        </div></Card>
+        <Card title="Platform identity">
+          <div className="space-y-3">
+            {field('platformName', 'Platform name')}
+            {field('tagline', 'Tagline')}
+            {field('supportEmail', 'Support email', 'email')}
+          </div>
+        </Card>
+        <Card title="Platform branding & regional defaults">
+          <div className="space-y-3">
+            {field('primaryColor', 'Primary colour', 'color')}
+            {field('senderName', 'Email sender name')}
+            <div className="grid grid-cols-2 gap-3">
+              {field('timezone', 'Timezone', 'text', 'Africa/Accra')}
+              {field('currency', 'Currency', 'text', 'GHS')}
+            </div>
+            {field('auditRetentionDays', 'Audit log retention (days)', 'number')}
+          </div>
+        </Card>
+        <Card title="Global autonomy & portal access controls">
+          <div className="space-y-3">
+            {toggle('maintenance', 'Maintenance mode')}
+            {toggle('allowRegistrations', 'Allow new church registrations')}
+            {toggle('allowLeaderSignup', 'Allow leader sign-up')}
+            {toggle('allowSelfRegistration', 'Allow member self-registration')}
+            {toggle('allowSelfCheckin', 'Allow member self check-in')}
+            {toggle('allowCellReports', 'Allow weekly cell report submissions')}
+            {toggle('allowUsherAccounts', 'Allow appointing ushers & branch admins')}
+          </div>
+        </Card>
+        <Card title="Maintenance & announcement banner">
+          <div className="space-y-3">
+            {field('maintenanceMessage', 'Maintenance screen message', 'text', 'We are making improvements. Please check back shortly.')}
+            {field('announcementBanner', 'Public announcement banner (leave blank to hide)', 'text', 'e.g. Sunday service starts at 8:00 AM across all branches')}
+          </div>
+        </Card>
+        <Card title="Authentication & session security">
+          <div className="space-y-3">
+            {toggle('requireGroupOtp', 'Require two-step email code for Group Pastor sign-in')}
+            {field('sessionHours', 'Session duration (hours, 1–72)', 'number')}
+          </div>
+        </Card>
+        <Card title="Automated emails & scheduled jobs">
+          <div className="space-y-3">
+            {toggle('birthdayEmails', 'Daily birthday reminder emails')}
+            {toggle('weeklySummary', 'Monday weekly summary email to Group Pastor')}
+            {toggle('reportReminders', 'Weekly missing cell report reminders to leaders')}
+            {toggle('welcomeEmails', 'Welcome & verification emails for new accounts')}
+          </div>
+        </Card>
+        <Card title="Commercial plans">
+          <div className="space-y-3">
+            <label className="block space-y-1"><span className="text-sm font-semibold">Current plan</span>
+              <select value={p.plan} onChange={(e) => set('plan', e.target.value)} className="w-full rounded-xl border border-input bg-background px-4 py-2">{['Free', 'Standard', 'Premium', 'Enterprise'].map((x) => <option key={x}>{x}</option>)}</select>
+            </label>
+            {field('maxChurches', 'Church limit', 'number')}
+          </div>
+        </Card>
+        <Card title="System emails">
+          <div className="space-y-2 text-sm">
+            <p>Outgoing sender: <strong>{p.senderName || 'CE Korle Bu'} &lt;{p.supportEmail || 'support@gcycattendance.online'}&gt;</strong></p>
+            <p>Developer announcements: <strong>GCYC Developer &lt;developer@gcycattendance.online&gt;</strong></p>
+            <p className="text-muted-foreground">Templates: sign-up, verification, password reset, sign-in code, QR passes, birthday reminders, weekly summary, report reminders, staff appointments.</p>
+          </div>
+        </Card>
       </div>
-      <Button onClick={() => act({ op: 'saveSetting', key: 'platform_config', value: p }, 'Settings saved')}>Save settings</Button>
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={() => act({ op: 'saveSetting', key: 'platform_config', value: p }, 'Platform settings saved')}>
+          Save settings
+        </Button>
+      </div>
+      <Card
+        title="Role permissions & feature matrix"
+        right={
+          <Button
+            variant="secondary"
+            onClick={() => act({ op: 'saveSetting', key: 'feature_matrix', value: matrix }, 'Feature matrix saved')}
+          >
+            Save feature matrix
+          </Button>
+        }
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left">
+                <th className="p-2.5">Feature</th>
+                {FEATURE_ROLES.map((r) => (
+                  <th key={r} className="p-2.5 text-center whitespace-nowrap">{ROLE_LABELS[r] || r}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {FEATURES.map((item) => (
+                <tr key={item.id} className="border-b border-border/60">
+                  <td className="p-2.5 font-semibold">{item.label}</td>
+                  {FEATURE_ROLES.map((r) => (
+                    <td key={r} className="p-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={isFeatureOn(matrix, r, item.id)}
+                        onChange={() => toggleFeature(r, item.id)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

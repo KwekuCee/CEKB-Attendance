@@ -11,6 +11,7 @@ import { HeroSection } from './HeroSection';
 import { Button } from './Button';
 import { CellReportForm } from './CellReportForm';
 import { rawPortal } from '../lib/rawPortal';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface PublicPortalProps {
   members: Member[];
@@ -42,6 +43,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report'>(
     () => (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cell-report' ? 'cell_report' : (new URLSearchParams(window.location.search).has('signin') ? 'login' : 'home'))
   );
+  const { isInstalled: isPWAInstalled, openPromptBox } = usePWAInstall();
 
   // Dynamically derive effective list of churches from DB and registered admins
   const effectiveChurches = useMemo(() => {
@@ -693,9 +695,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <Button variant="ghost" onClick={() => setActiveTab('attendance')}>Attendance</Button>
           <Button variant="ghost" onClick={() => setActiveTab('cell_report')}>Cell reports</Button>
         </nav>
-        <Button variant="secondary" className="portal-signin" aria-label="Sign In" onClick={() => setActiveTab('login')}>
-          <span className="material-symbols-outlined">login</span><span>Sign In</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isPWAInstalled && (
+            <Button variant="secondary" aria-label="Install App" onClick={openPromptBox}>
+              <span className="material-symbols-outlined">install_mobile</span>
+              <span className="hidden sm:inline">Get App</span>
+            </Button>
+          )}
+          <Button variant="secondary" className="portal-signin" aria-label="Sign In" onClick={() => setActiveTab('login')}>
+            <span className="material-symbols-outlined">login</span><span>Sign In</span>
+          </Button>
+        </div>
       </header>
 
       {/* Main Content Area */}

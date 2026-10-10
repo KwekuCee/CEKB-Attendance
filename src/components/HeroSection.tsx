@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button } from './Button';
-import communityImage from '../assets/community-welcome.jpg';
+import communityImage from '../assets/images/hero_congregation_1791607505269.jpg';
 
 type Tab = 'home' | 'attendance' | 'leader_reg' | 'admin_signup' | 'login' | 'cell_report';
 interface HeroSectionProps { onNavigate: (tab: Tab) => void; }
@@ -18,7 +18,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onNavigate }) => {
   return (
     <section className="welcome-page">
       <div className="welcome-scene">
-        <img src={communityImage} alt="A welcoming Ghanaian church congregation" width={1600} height={912} className="welcome-image" fetchPriority="high" />
+        <img src={communityImage} alt="A welcoming Ghanaian church congregation" width={1600} height={912} className="welcome-image" fetchPriority="high" referrerPolicy="no-referrer" />
         <div className="welcome-shade" />
         <motion.div className="welcome-content" initial={reducedMotion ? false : { opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <p className="welcome-eyebrow"><span /> CEKB Group · Christ Embassy Korle Bu</p>
