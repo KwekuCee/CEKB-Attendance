@@ -4,6 +4,7 @@ import { sendMail as sendGmail } from '../_shared/mailer.ts';
 import { getPortalSession } from '../_shared/portal-session.ts';
 import { authenticateCronRequest } from '../_shared/cron-auth.ts';
 import { isScheduledCall } from '../_shared/app-cron.ts';
+import { getPlatformConfig } from '../_shared/platform.ts';
 
 const corsHeaders = {
   ...baseCorsHeaders,
@@ -31,6 +32,9 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  const cfg = await getPlatformConfig(admin);
+  if (cfg.maintenance || !cfg.birthdayEmails) return json({ success: true, skipped: 'Disabled in platform settings' });
 
   try {
     // Tomorrow, month and day only (year is ignored).

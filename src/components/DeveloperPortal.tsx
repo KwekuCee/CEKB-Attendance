@@ -3,15 +3,14 @@ import { Button } from './Button';
 import { PasswordInput } from './PasswordInput';
 import { ChurchLogo } from './ChurchLogo';
 import { rawPortal } from '../lib/rawPortal';
-import { FEATURES, FEATURE_ROLES, ROLE_LABELS, type FeatureMatrix } from '../lib/features';
+import { ROLE_LABELS } from '../lib/features';
 
 const DEV_TOKEN_KEY = 'cekb_dev_token';
-type Tab = 'overview' | 'churches' | 'features' | 'growth' | 'storage' | 'messaging' | 'audit' | 'health' | 'settings';
+type Tab = 'overview' | 'churches' | 'growth' | 'storage' | 'messaging' | 'audit' | 'health' | 'settings';
 const NAV: { group: string; items: { id: Tab; label: string; icon: string }[] }[] = [
   { group: 'Oversight', items: [
     { id: 'overview', label: 'Overview', icon: 'space_dashboard' },
     { id: 'churches', label: 'Churches', icon: 'church' },
-    { id: 'features', label: 'Features', icon: 'toggle_on' },
     { id: 'growth', label: 'Growth & Usage', icon: 'trending_up' },
   ] },
   { group: 'Platform', items: [
@@ -95,11 +94,12 @@ export default function DeveloperPortal() {
 
   const title = NAV.flatMap((g) => g.items).find((i) => i.id === tab)?.label;
   return (
-    <div className="dashboard-shell min-h-screen md:flex">
-      <aside className={`dashboard-sidebar dev-sidebar ${menuOpen ? 'flex' : 'hidden'} md:flex flex-col`}>
-        <div className="flex items-center gap-3 p-5">
-          <ChurchLogo />
-          <div><strong className="block font-headline">CEKB Console</strong><span className="sidebar-caption">Developer</span></div>
+    <div className="dashboard-shell dev-shell min-h-screen">
+      {menuOpen && <div className="sidebar-backdrop fixed inset-0 z-40 md:hidden" onClick={() => setMenuOpen(false)} />}
+      <aside aria-label="Developer navigation" className={`dashboard-sidebar dev-sidebar ${menuOpen ? 'is-open' : ''}`}>
+        <div className="dev-brand">
+          <img src="/church-logo.png" alt="CEKB logo" />
+          <div><strong>CEKB Console</strong><span className="sidebar-caption">Developer</span></div>
         </div>
         <nav className="sidebar-navigation flex-1" aria-label="Developer menu">
           {NAV.map((g) => (
@@ -122,7 +122,7 @@ export default function DeveloperPortal() {
           </div>
         </div>
       </aside>
-      <main className="dashboard-workspace flex-1 min-w-0 p-5 md:p-8 space-y-6">
+      <main className="dashboard-workspace dev-workspace min-w-0 p-5 md:p-8 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button variant="secondary" className="md:hidden" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu"><span className="material-symbols-outlined">menu</span></Button>
@@ -140,9 +140,8 @@ export default function DeveloperPortal() {
           <>
             {tab === 'overview' && <Overview s={stats} a={a} />}
             {tab === 'churches' && <Churches a={a} act={act} />}
-            {tab === 'features' && <Features a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
-            {tab === 'storage' && <Storage a={a} />}
+            {tab === 'storage' && <Storage a={a} token={token} reload={() => token && load(token)} notify={(m: string) => { setNotice(m); setTimeout(() => setNotice(''), 4000); }} />}
             {tab === 'messaging' && <Messaging a={a} act={act} />}
             {tab === 'audit' && <Audit a={a} />}
             {tab === 'health' && <Health s={stats} a={a} act={act} />}
@@ -183,6 +182,56 @@ function Bars({ data, height = 160 }: { data: { label: string; value: number }[]
         ))}
       </div>
       <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{data[0]?.label}</span>{data[peak]?.value > 0 && <span>Peak: {fmt(data[peak].value)} on {data[peak].label}</span>}<span>{data[data.length - 1]?.label}</span></div>
+    </div>
+  );
+}
+function SmoothLine({ series, height = 220, format = fmt }: { series: { name: string; data: { label: string; value: number }[] }[]; height?: number; format?: (n: number) => string }) {
+  const W = 800, H = height, P = { l: 40, r: 12, t: 14, b: 26 };
+  const n = Math.max(1, ...series.map((s) => s.data.length));
+  const max = Math.max(1, ...series.flatMap((s) => s.data.map((d) => d.value)));
+  const x = (i: number) => P.l + (n === 1 ? 0 : (i / (n - 1)) * (W - P.l - P.r));
+  const y = (v: number) => H - P.b - (v / max) * (H - P.t - P.b);
+  const path = (d: { value: number }[]) => d.map((p, i) => {
+    if (i === 0) return `M${x(0)},${y(p.value)}`;
+    const p0 = d[Math.max(0, i - 2)], p1 = d[i - 1], p2 = p, p3 = d[Math.min(d.length - 1, i + 1)];
+    const c1x = x(i - 1) + (x(i) - x(Math.max(0, i - 2))) / 6, c1y = y(p1.value) + (y(p2.value) - y(p0.value)) / 6;
+    const c2x = x(i) - (x(Math.min(d.length - 1, i + 1)) - x(i - 1)) / 6, c2y = y(p2.value) - (y(p3.value) - y(p1.value)) / 6;
+    return `C${c1x},${Math.min(H - P.b, c1y)} ${c2x},${Math.min(H - P.b, c2y)} ${x(i)},${y(p2.value)}`;
+  }).join(' ');
+  const [hover, setHover] = useState<number | null>(null);
+  const colors = ['hsl(var(--primary))', 'hsl(var(--navigation))', 'hsl(var(--muted-foreground))'];
+  const labels = series[0]?.data || [];
+  const ticks = [0, 0.5, 1].map((f) => Math.round(max * f));
+  const peakIdx = labels.reduce((p, d, i) => (d.value > (labels[p]?.value ?? -1) ? i : p), 0);
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; setHover(Math.max(0, Math.min(n - 1, Math.round(((px - P.l) / (W - P.l - P.r)) * (n - 1))))); }}>
+        <defs>{series.map((_, k) => <linearGradient key={k} id={`dev-fill-${k}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={colors[k % 3]} stopOpacity="0.28" /><stop offset="100%" stopColor={colors[k % 3]} stopOpacity="0" /></linearGradient>)}</defs>
+        {ticks.map((t) => <g key={t}><line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="hsl(var(--border))" strokeDasharray="4 6" /><text x={P.l - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="hsl(var(--muted-foreground))">{format(t)}</text></g>)}
+        {series.map((s, k) => s.data.length > 0 && <g key={s.name}>
+          {k === 0 && <path d={`${path(s.data)} L${x(s.data.length - 1)},${H - P.b} L${x(0)},${H - P.b} Z`} fill={`url(#dev-fill-${k})`} />}
+          <path d={path(s.data)} fill="none" stroke={colors[k % 3]} strokeWidth={k === 0 ? 3 : 2} strokeDasharray={k === 0 ? undefined : '6 5'} strokeLinecap="round" />
+        </g>)}
+        {labels[peakIdx]?.value > 0 && <circle cx={x(peakIdx)} cy={y(labels[peakIdx].value)} r="5" fill="hsl(var(--primary))" stroke="hsl(var(--card))" strokeWidth="2" />}
+        {hover != null && <g><line x1={x(hover)} x2={x(hover)} y1={P.t} y2={H - P.b} stroke="hsl(var(--border))" />{series.map((s, k) => s.data[hover] && <circle key={k} cx={x(hover)} cy={y(s.data[hover].value)} r="4" fill={colors[k % 3]} />)}</g>}
+        {[0, Math.floor((n - 1) / 2), n - 1].map((i) => labels[i] && <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} fontSize="11" fill="hsl(var(--muted-foreground))">{labels[i].label}</text>)}
+      </svg>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <div className="flex gap-3">{series.map((s, k) => <span key={s.name} className="flex items-center gap-1"><span className="inline-block h-2 w-4 rounded-full" style={{ background: colors[k % 3] }} />{s.name}</span>)}</div>
+        <span>{hover != null && labels[hover] ? `${labels[hover].label}: ${series.map((s) => `${s.name} ${format(s.data[hover]?.value ?? 0)}`).join(' · ')}` : labels[peakIdx]?.value > 0 ? `Peak ${format(labels[peakIdx].value)} on ${labels[peakIdx].label}` : 'No activity yet'}</span>
+      </div>
+    </div>
+  );
+}
+function Donut({ parts }: { parts: { label: string; value: number }[] }) {
+  const total = Math.max(1, parts.reduce((t, p) => t + p.value, 0));
+  const colors = ['hsl(var(--primary))', 'hsl(var(--navigation))', 'hsl(var(--muted-foreground))', 'hsl(var(--primary) / 0.45)', 'hsl(var(--border))'];
+  let acc = 0;
+  return (
+    <div className="flex items-center gap-6">
+      <svg viewBox="0 0 42 42" className="h-36 w-36 -rotate-90">{parts.map((p, i) => { const len = (p.value / total) * 100; const el = <circle key={p.label} cx="21" cy="21" r="15.9" fill="none" stroke={colors[i % 5]} strokeWidth="6" strokeDasharray={`${len} ${100 - len}`} strokeDashoffset={-acc} />; acc += len; return el; })}</svg>
+      <div className="space-y-2 text-sm">{parts.map((p, i) => <p key={p.label} className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ background: colors[i % 5] }} /><span className="font-semibold">{p.label}</span><span className="text-muted-foreground tabular-nums">{fmt(p.value)} · {Math.round((p.value / total) * 100)}%</span></p>)}</div>
     </div>
   );
 }
@@ -227,11 +276,11 @@ function Overview({ s, a }: any) {
         <Tile label="Messages (30 days)" value={a.messaging.total30} hint={`${fmt(a.messaging.last24)} in last 24h`} />
       </div>
       <Card title="Check-in trend" right={<div className="flex gap-1">{[30, 90].map((r) => <Button key={r} variant={range === r ? 'primary' : 'secondary'} onClick={() => setRange(r as 30 | 90)}>{r} days</Button>)}</div>}>
-        <Bars data={series} />
+        <SmoothLine series={[{ name: 'Check-ins', data: series }]} />
       </Card>
       <div className="grid lg:grid-cols-2 gap-6">
         <Card title="Church growth trajectory">
-          {growth.length ? <Bars height={120} data={growth.map((g: any) => ({ label: g.month, value: g.members }))} /> : <p className="text-sm text-muted-foreground">No growth data yet.</p>}
+          {growth.length ? <SmoothLine height={170} series={[{ name: 'New members', data: growth.map((g: any) => ({ label: g.month, value: g.members })) }]} /> : <p className="text-sm text-muted-foreground">No growth data yet.</p>}
           <p className="mt-2 text-xs text-muted-foreground">New members per month (last 12 months)</p>
         </Card>
         <Card title="Flagged registrations">
@@ -272,26 +321,6 @@ function Churches({ a, act }: any) {
               {['Active', 'Inactive', 'Suspended'].map((s) => <option key={s}>{s}</option>)}</select>])} />
       </Card>
     </div>
-  );
-}
-
-function Features({ a, act }: any) {
-  const [m, setM] = useState<FeatureMatrix>(() => a.featureMatrix || {});
-  const on = (r: string, f: string) => m[r]?.[f] !== false;
-  const toggle = (r: string, f: string) => setM((p) => ({ ...p, [r]: { ...(p[r] || {}), [f]: !on(r, f) } }));
-  return (
-    <Card title="Feature entitlements by account type" right={<Button onClick={() => act({ op: 'saveSetting', key: 'feature_matrix', value: m }, 'Features saved')}>Save changes</Button>}>
-      <p className="mb-4 text-sm text-muted-foreground">Unticked features are hidden from that account's menu entirely.</p>
-      <div className="overflow-x-auto rounded-2xl border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted"><tr><th className="p-3 text-left">Feature</th>{FEATURE_ROLES.map((r) => <th key={r} className="p-3 text-center whitespace-nowrap">{ROLE_LABELS[r]}</th>)}</tr></thead>
-          <tbody>{FEATURES.map((f) => (
-            <tr key={f.id} className="border-t border-border"><td className="p-3 font-semibold">{f.label}</td>
-              {FEATURE_ROLES.map((r) => <td key={r} className="p-3 text-center"><input type="checkbox" className="h-4 w-4 accent-primary" checked={on(r, f.id)} onChange={() => toggle(r, f.id)} aria-label={`${f.label} for ${ROLE_LABELS[r]}`} /></td>)}
-            </tr>))}</tbody>
-        </table>
-      </div>
-    </Card>
   );
 }
 

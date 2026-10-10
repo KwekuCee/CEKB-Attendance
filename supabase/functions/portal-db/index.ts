@@ -1,5 +1,6 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
 import { sendMail } from '../_shared/mailer.ts';
+import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -17,6 +18,13 @@ const corsHeaders = {
 };
 
 const SESSION_TTL_HOURS = 12;
+let platformCache: { at: number; cfg: PlatformConfig } | null = null;
+async function platform(fresh = false): Promise<PlatformConfig> {
+  if (!fresh && platformCache && Date.now() - platformCache.at < 15000) return platformCache.cfg;
+  const cfg = await getPlatformConfig(admin);
+  platformCache = { at: Date.now(), cfg };
+  return cfg;
+}
 const SENSITIVE_COLUMNS = ['password_hash', 'password'];
 
 /** Columns visitors (not signed in) may read, per table. */
@@ -151,7 +159,7 @@ async function createSession(user: {
     user_name: user.name || null,
     role: user.role,
     church_name: user.church || null,
-    expires_at: new Date(Date.now() + SESSION_TTL_HOURS * 3600 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + (user.role === 'Developer' ? 8 : Math.min(72, Math.max(1, Number((await platform()).sessionHours) || SESSION_TTL_HOURS))) * 3600 * 1000).toISOString(),
   });
   return token;
 }
@@ -179,6 +187,22 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   const isRead = op === 'select';
   if (SUPERADMIN_ONLY.has(table) && (session?.role !== 'Superadmin' || !isRead)) {
     return json({ error: { message: 'Only the group account can view this.' } }, 403);
+  }
+
+  if (!session && !isRead) {
+    const cfg = await platform();
+    const rows0 = (Array.isArray(body.values) ? body.values : [body.values]) as Array<Record<string, unknown>>;
+    if (table === 'churches') {
+      if (!cfg.allowRegistrations) return json({ error: { message: 'New church registrations are closed right now.' } }, 403);
+      if ((await countOf('churches')) >= Number(cfg.maxChurches || 0)) return json({ error: { message: 'The platform has reached its church limit. Please contact support.' } }, 403);
+    }
+    if (table === 'user_profiles' && rows0.some((r) => r?.role !== 'Leader') && !cfg.allowRegistrations) return json({ error: { message: 'New church registrations are closed right now.' } }, 403);
+    if ((table === 'leaders' || (table === 'user_profiles' && rows0.some((r) => r?.role === 'Leader'))) && !cfg.allowLeaderSignup) return json({ error: { message: 'Leader sign-up is closed right now.' } }, 403);
+    if (table === 'members' && !cfg.allowSelfRegistration) return json({ error: { message: 'Self registration is paused right now.' } }, 403);
+    if (table === 'attendance_records' && !cfg.allowSelfCheckin) return json({ error: { message: 'Self check-in is paused right now.' } }, 403);
+  }
+  if (session && table === 'user_profiles' && !isRead && op !== 'delete' && session.role !== 'Superadmin' && !(await platform()).allowUsherAccounts) {
+    return json({ error: { message: 'Creating staff accounts is paused by the platform administrator.' } }, 403);
   }
 
   if (!session) {
@@ -516,7 +540,7 @@ async function handleDevAnalytics(session: Session | null) {
     admin.from('leaders').select('church_name').limit(100000),
     admin.from('cell_reports').select('church_name, created_at').limit(100000),
     admin.from('email_send_log').select('template_name, status, error_message, created_at, metadata').gte('created_at', since30).order('created_at', { ascending: false }).limit(5000),
-    admin.from('audit_logs').select('id, actor, church_name, action, category, icon, created_at').order('created_at', { ascending: false }).limit(300),
+    admin.from('audit_logs').select('id, actor, church_name, action, category, icon, created_at').order('created_at', { ascending: false }).limit(1000),
     admin.from('user_profiles').select('role, church_name, admin_verified, created_at'),
     Promise.all(DEV_TABLES.map(async (t) => [t, await countOf(t)] as const)),
     admin.from('announcements').select('title, target_audience, sender_name, created_at').order('created_at', { ascending: false }).limit(20),
@@ -600,15 +624,65 @@ async function handleDevAction(body: any, session: Session | null) {
     const k = String(body.key);
     if (!['feature_matrix', 'platform_config'].includes(k)) return json({ error: 'Bad key' }, 400);
     await admin.from('admin_settings').upsert({ setting_key: k, setting_value: body.value ?? {}, is_global: true, setting_type: 'json' }, { onConflict: 'setting_key' });
-    await log(`Updated ${k.replace('_', ' ')}`, 'Settings');
+    platformCache = null;
+    if (k === 'platform_config' && body.value?.maintenance) await admin.from('portal_sessions').delete().neq('role', 'Developer');
+    await log(`Updated ${k.replace('_', ' ')}${k === 'platform_config' ? (body.value?.maintenance ? ' — maintenance ON' : ' — maintenance off') : ''}`, 'Settings');
     return json({ success: true });
   }
   if (op === 'broadcast') {
     const title = String(body.title || '').trim().slice(0, 200), message = String(body.message || '').trim().slice(0, 5000);
     if (!title || !message) return json({ error: 'Title and message required.' }, 400);
     await admin.from('announcements').insert({ title, message, target_audience: 'All Churches', sender_name: 'developer@gcycattendance.online', church_id: null });
-    await log(`Broadcast announcement: ${title}`);
-    return json({ success: true });
+    let emailed = 0;
+    if (body.email) {
+      const { data: staff } = await admin.from('user_profiles').select('email').in('role', ['Superadmin', 'Church Pastor', 'Church Admin']);
+      const to = Array.from(new Set((staff || []).map((r: any) => String(r.email || '').toLowerCase()).filter((e) => e.includes('@'))));
+      const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+      const html = `<h2>${esc(title)}</h2>${esc(message).split('\n').map((l) => `<p>${l}</p>`).join('')}<p style="color:#5b6b80;font-size:13px">— GCYC Developer</p>`;
+      for (let i = 0; i < to.length; i += 10) {
+        const res = await Promise.all(to.slice(i, i + 10).map((addr) => sendMail({ to: addr, subject: title, html, from: 'GCYC Developer <developer@gcycattendance.online>', replyTo: 'developer@gcycattendance.online' })));
+        emailed += res.filter((r) => r.ok).length;
+        await admin.from('email_send_log').insert(res.map((r) => ({ template_name: 'developer_broadcast', recipient_email: 'staff', status: r.ok ? 'sent' : 'failed', error_message: r.ok ? null : r.error?.slice(0, 500) })));
+      }
+    }
+    await log(`Broadcast announcement: ${title}${body.email ? ` (emailed ${emailed} staff)` : ''}`);
+    return json({ success: true, emailed });
+  }
+  if (op === 'backup') {
+    const [{ data: settings }, { data: services }, { data: churches }] = await Promise.all([
+      admin.from('admin_settings').select('setting_key, setting_value, setting_type, is_global').eq('is_global', true),
+      admin.from('service_types').select('name, description, is_global, is_active, church_id').eq('is_global', true),
+      admin.from('churches').select('name, status'),
+    ]);
+    await log('Created configuration backup', 'System');
+    return json({ success: true, data: { version: 1, createdAt: new Date().toISOString(), settings: settings || [], services: services || [], churchStatuses: churches || [] } });
+  }
+  if (op === 'restore') {
+    const b = body.backup;
+    if (!b || b.version !== 1 || !Array.isArray(b.settings)) return json({ error: 'This file is not a valid CEKB backup.' }, 400);
+    const allowed = new Set(['feature_matrix', 'platform_config']);
+    const settings = b.settings.filter((r: any) => r && typeof r.setting_key === 'string').slice(0, 200)
+      .map((r: any) => ({ setting_key: r.setting_key, setting_value: r.setting_value ?? {}, setting_type: r.setting_type || 'json', is_global: true }));
+    if (settings.length) await admin.from('admin_settings').upsert(settings, { onConflict: 'setting_key' });
+    let services = 0;
+    for (const sv of (Array.isArray(b.services) ? b.services : []).slice(0, 200)) {
+      const name = String(sv?.name || '').trim().slice(0, 120);
+      if (!name) continue;
+      const { data: ex } = await admin.from('service_types').select('id').eq('is_global', true).ilike('name', name).maybeSingle();
+      if (ex) await admin.from('service_types').update({ description: sv.description ?? null, is_active: sv.is_active !== false }).eq('id', ex.id);
+      else await admin.from('service_types').insert({ name, description: sv.description ?? null, is_global: true, is_active: sv.is_active !== false, church_id: null });
+      services++;
+    }
+    let churches = 0;
+    for (const c of (Array.isArray(b.churchStatuses) ? b.churchStatuses : []).slice(0, 1000)) {
+      if (!c?.name || !['Active', 'Inactive', 'Suspended'].includes(c.status)) continue;
+      const { count } = await admin.from('churches').update({ status: c.status }, { count: 'exact' }).eq('name', String(c.name));
+      churches += count || 0;
+    }
+    platformCache = null;
+    void allowed;
+    await log(`Restored configuration backup from ${String(b.createdAt || 'unknown date').slice(0, 25)} (${settings.length} settings, ${services} services, ${churches} church statuses)`, 'System');
+    return json({ success: true, restored: { settings: settings.length, services, churches } });
   }
   if (op === 'purgeSessions') {
     await admin.from('portal_sessions').delete().lt('expires_at', new Date().toISOString());
@@ -658,6 +732,18 @@ Deno.serve(async (req) => {
     }
 
     const session = await getSession(req);
+
+    if (body.action === 'platformStatus') {
+      const c = await platform();
+      return json({ data: { maintenance: !!c.maintenance, maintenanceMessage: c.maintenanceMessage, platformName: c.platformName, tagline: c.tagline,
+        announcementBanner: c.announcementBanner, allowRegistrations: c.allowRegistrations, allowLeaderSignup: c.allowLeaderSignup,
+        allowSelfRegistration: c.allowSelfRegistration, allowSelfCheckin: c.allowSelfCheckin, allowCellReports: c.allowCellReports, supportEmail: c.supportEmail } });
+    }
+    const devAction = ['devLogin', 'devStats', 'devAnalytics', 'devAction', 'logout'].includes(String(body.action));
+    if (!devAction && session?.role !== 'Developer') {
+      const c = await platform();
+      if (c.maintenance) return json({ success: false, maintenance: true, error: { message: c.maintenanceMessage || 'The system is under maintenance.' } }, 503);
+    }
 
     switch (body.action) {
       case 'query':

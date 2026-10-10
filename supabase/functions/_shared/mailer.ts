@@ -7,6 +7,9 @@ export interface SendMailOptions {
   subject: string;
   html: string;
   fromName?: string;
+  /** Full sender, e.g. 'GCYC Developer <developer@gcycattendance.online>'. */
+  from?: string;
+  replyTo?: string;
   attachments?: GmailAttachment[];
 }
 
@@ -71,12 +74,12 @@ async function sendResend(opts: SendMailOptions): Promise<SendMailResult> {
   if (!key) return { ok: false, error: 'RESEND_API_KEY not configured' };
 
   const body: Record<string, unknown> = {
-    from: MAIL_FROM,
+    from: opts.from || MAIL_FROM,
     to: Array.isArray(opts.to) ? opts.to : [opts.to],
     subject: opts.subject,
     html: opts.html,
     text: htmlToText(opts.html),
-    reply_to: 'support@gcycattendance.online',
+    reply_to: opts.replyTo || 'support@gcycattendance.online',
     headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
   };
 

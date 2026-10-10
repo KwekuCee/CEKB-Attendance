@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ToastProvider } from './context/ToastContext';
 import { MobileOpeningScreen } from './components/MobileOpeningScreen';
+import { MaintenanceGate } from './components/MaintenanceGate';
 import './index.css';
 
 const DeveloperPortal = lazy(() => import('./components/DeveloperPortal'));
@@ -20,9 +21,11 @@ createRoot(root).render(
           <DeveloperPortal />
         </Suspense>
       ) : (
-        <MobileOpeningScreen>
-          <App />
-        </MobileOpeningScreen>
+        <MaintenanceGate>
+          <MobileOpeningScreen>
+            <App />
+          </MobileOpeningScreen>
+        </MaintenanceGate>
       )}
     </ToastProvider>
   </StrictMode>,
