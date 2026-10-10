@@ -405,14 +405,36 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
         growth: [{ month: new Date().toISOString().slice(0, 7), churches: churches.length, members: (store.tables.members || []).length }],
         tables: tablesCount,
         roleCounts,
-        flagged: [],
+        flagged: (store.tables.user_profiles || []).filter((p: any) => !p.admin_verified).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at })),
+        pendingRegistrations: (store.tables.user_profiles || []).filter((p: any) => !p.admin_verified).map((p: any) => ({
+          id: p.id,
+          email: p.email,
+          username: p.username,
+          fullName: p.full_name,
+          role: p.role,
+          church: p.church_name,
+          since: p.created_at,
+          verified: false,
+        })),
+        recentMessages: (store.tables.email_send_log || []).slice(0, 100).map((m: any) => ({
+          id: m.id,
+          template: m.template_name,
+          recipient: m.recipient_email || 'staff',
+          status: m.status || 'sent',
+          error: m.error_message || null,
+          at: m.created_at,
+          church: m.metadata?.church || null,
+        })),
+        serviceTypes: store.tables.service_types || [],
+        smsConfig: getSetting('sms_config'),
+        smsTemplates: getSetting('sms_templates'),
         messaging: {
-          total30: 0,
-          sent30: 0,
-          failed30: 0,
-          pending: 0,
-          last24: 0,
-          sms30: 0,
+          total30: (store.tables.email_send_log || []).length,
+          sent30: (store.tables.email_send_log || []).filter((m: any) => m.status === 'sent').length,
+          failed30: (store.tables.email_send_log || []).filter((m: any) => m.status === 'failed').length,
+          pending: (store.tables.email_send_log || []).filter((m: any) => m.status === 'pending').length,
+          last24: (store.tables.email_send_log || []).length,
+          sms30: (store.tables.email_send_log || []).filter((m: any) => m.metadata?.channel === 'sms').length,
           failures: [],
           reasons: {},
           byChurch: {},
@@ -440,6 +462,199 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     if (op === 'setChurchStatus') {
       const ch = (store.tables.churches || []).find((c: any) => c.name === payload.name);
       if (ch) ch.status = payload.status;
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'createChurch') {
+      const name = String(payload.name || '').trim();
+      const list = store.tables.churches || [];
+      if (list.some((c: any) => c.name.toLowerCase() === name.toLowerCase())) {
+        return { success: false, error: 'Church already exists.' };
+      }
+      const newCh = {
+        id: `ch-${Date.now()}`,
+        name,
+        pastor_name: payload.pastor_name || 'Pastor in Charge',
+        zone: payload.zone || 'Zone 1 (Korle Bu)',
+        status: payload.status || 'Active',
+        members_count: 0,
+        created_at: new Date().toISOString(),
+      };
+      list.push(newCh);
+      store.tables.churches = list;
+      saveLocalStore(store);
+      return { success: true, church: newCh };
+    }
+    if (op === 'updateChurch') {
+      const name = String(payload.name || '').trim();
+      const ch = (store.tables.churches || []).find((c: any) => c.name === name || c.id === payload.id);
+      if (ch) {
+        if (payload.newName) ch.name = String(payload.newName).trim();
+        if (payload.pastor_name !== undefined) ch.pastor_name = String(payload.pastor_name).trim();
+        if (payload.zone !== undefined) ch.zone = String(payload.zone).trim();
+        if (payload.status !== undefined) ch.status = String(payload.status);
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'deleteChurch') {
+      const name = String(payload.name || '').trim();
+      const id = payload.id;
+      store.tables.churches = (store.tables.churches || []).filter((c: any) => c.name !== name && c.id !== id);
+      // Unbind members and leaders
+      if (store.tables.members) {
+        store.tables.members.forEach((m: any) => { if (m.church_name === name) m.church_name = null; });
+      }
+      if (store.tables.leaders) {
+        store.tables.leaders.forEach((l: any) => { if (l.church_name === name) l.church_name = null; });
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'recalculateChurchCounts') {
+      for (const ch of store.tables.churches || []) {
+        const count = (store.tables.members || []).filter((m: any) => m.church_name === ch.name || m.church_id === ch.id).length;
+        ch.members_count = count;
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'approveRegistration') {
+      const id = payload.id;
+      const email = String(payload.email || '').trim().toLowerCase();
+      const prof = (store.tables.user_profiles || []).find((p: any) => p.id === id || p.email?.toLowerCase() === email);
+      if (prof) prof.admin_verified = true;
+      const adm = (store.tables.church_admin_accounts || []).find((a: any) => a.id === id || a.admin_email?.toLowerCase() === email);
+      if (adm) { adm.email_verified = true; adm.status = 'Active'; }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'updateRegistration') {
+      const id = payload.id;
+      const email = String(payload.email || '').trim().toLowerCase();
+      const prof = (store.tables.user_profiles || []).find((p: any) => p.id === id || p.email?.toLowerCase() === email);
+      if (prof) {
+        if (payload.fullName) prof.full_name = payload.fullName;
+        if (payload.role) prof.role = payload.role;
+        if (payload.church) prof.church_name = payload.church;
+        if (payload.phone) prof.phone = payload.phone;
+        if (payload.email) prof.email = payload.email;
+        if (payload.verified !== undefined) prof.admin_verified = Boolean(payload.verified);
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'resendVerification') {
+      const email = String(payload.email || '').trim();
+      const list = store.tables.email_send_log || [];
+      list.unshift({
+        id: `mail-${Date.now()}`,
+        template_name: 'verification_email',
+        recipient_email: email,
+        status: 'sent',
+        created_at: new Date().toISOString(),
+      });
+      store.tables.email_send_log = list;
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'setPasswordRegistration') {
+      const id = payload.id;
+      const email = String(payload.email || '').trim().toLowerCase();
+      const prof = (store.tables.user_profiles || []).find((p: any) => p.id === id || p.email?.toLowerCase() === email);
+      if (prof) {
+        prof.password = payload.password;
+        prof.admin_verified = true;
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'deleteRegistration') {
+      const id = payload.id;
+      const email = String(payload.email || '').trim().toLowerCase();
+      store.tables.user_profiles = (store.tables.user_profiles || []).filter((p: any) => p.id !== id && p.email?.toLowerCase() !== email);
+      store.tables.church_admin_accounts = (store.tables.church_admin_accounts || []).filter((a: any) => a.id !== id && a.admin_email?.toLowerCase() !== email);
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'saveSmsConfig') {
+      const list = store.tables.admin_settings || [];
+      const ex = list.find((s: any) => s.setting_key === 'sms_config');
+      if (ex) ex.setting_value = payload.config;
+      else list.push({ id: `sms-conf`, setting_key: 'sms_config', setting_value: payload.config, is_global: true });
+      store.tables.admin_settings = list;
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'saveSmsTemplate') {
+      const tpl = payload.template;
+      const list = store.tables.admin_settings || [];
+      let ex = list.find((s: any) => s.setting_key === 'sms_templates');
+      if (!ex) {
+        ex = { id: `sms-tpls`, setting_key: 'sms_templates', setting_value: [], is_global: true };
+        list.push(ex);
+      }
+      const tpls = Array.isArray(ex.setting_value) ? ex.setting_value : [];
+      const idx = tpls.findIndex((t: any) => t.id === tpl.id || t.name === tpl.name);
+      const toSave = { ...tpl, id: tpl.id || `sms-${Date.now()}`, updated_at: new Date().toISOString() };
+      if (idx >= 0) tpls[idx] = toSave;
+      else tpls.push(toSave);
+      ex.setting_value = tpls;
+      store.tables.admin_settings = list;
+      saveLocalStore(store);
+      return { success: true, template: toSave };
+    }
+    if (op === 'deleteSmsTemplate') {
+      const id = String(payload.id || '');
+      const list = store.tables.admin_settings || [];
+      const ex = list.find((s: any) => s.setting_key === 'sms_templates');
+      if (ex && Array.isArray(ex.setting_value)) {
+        ex.setting_value = ex.setting_value.filter((t: any) => t.id !== id && t.name !== id);
+      }
+      store.tables.admin_settings = list;
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'sendTestSms') {
+      const list = store.tables.email_send_log || [];
+      list.unshift({
+        id: `sms-${Date.now()}`,
+        template_name: 'test_sms',
+        recipient_email: payload.phone,
+        status: 'sent',
+        metadata: { channel: 'sms', preview: payload.message },
+        created_at: new Date().toISOString(),
+      });
+      store.tables.email_send_log = list;
+      saveLocalStore(store);
+      return { success: true, timestamp: new Date().toISOString() };
+    }
+    if (op === 'createServiceType') {
+      const list = store.tables.service_types || [];
+      list.push({
+        id: `svc-${Date.now()}`,
+        name: payload.name,
+        description: payload.description || '',
+        is_global: true,
+        is_active: payload.is_active !== false,
+      });
+      store.tables.service_types = list;
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'updateServiceType') {
+      const list = store.tables.service_types || [];
+      const item = list.find((s: any) => s.id === payload.id);
+      if (item) {
+        if (payload.name) item.name = payload.name;
+        if (payload.description !== undefined) item.description = payload.description;
+        if (payload.is_active !== undefined) item.is_active = payload.is_active;
+      }
+      saveLocalStore(store);
+      return { success: true };
+    }
+    if (op === 'deleteServiceType') {
+      store.tables.service_types = (store.tables.service_types || []).filter((s: any) => s.id !== payload.id);
       saveLocalStore(store);
       return { success: true };
     }

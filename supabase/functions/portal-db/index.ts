@@ -533,17 +533,18 @@ async function handleDevAnalytics(session: Session | null) {
   const since90 = new Date(now - 90 * 864e5).toISOString();
   const since24 = new Date(now - 864e5).toISOString();
   const since30 = new Date(now - 30 * 864e5).toISOString();
-  const [{ data: att }, { data: churches }, { data: mem }, { data: lead }, { data: rep }, { data: mail }, { data: logs }, { data: profs }, rowCounts, { data: anns }] = await Promise.all([
+  const [{ data: att }, { data: churches }, { data: mem }, { data: lead }, { data: rep }, { data: mail }, { data: logs }, { data: profs }, rowCounts, { data: anns }, { data: svcs }] = await Promise.all([
     admin.from('attendance_records').select('attendance_date, church_name').gte('attendance_date', since90.slice(0, 10)).limit(100000),
-    admin.from('churches').select('name, status, members_count, created_at'),
+    admin.from('churches').select('id, name, pastor_name, status, zone, members_count, created_at'),
     admin.from('members').select('church_name, created_at, status').limit(100000),
     admin.from('leaders').select('church_name').limit(100000),
     admin.from('cell_reports').select('church_name, created_at').limit(100000),
-    admin.from('email_send_log').select('template_name, status, error_message, created_at, metadata').gte('created_at', since30).order('created_at', { ascending: false }).limit(5000),
+    admin.from('email_send_log').select('id, template_name, recipient_email, status, error_message, created_at, metadata').gte('created_at', since30).order('created_at', { ascending: false }).limit(5000),
     admin.from('audit_logs').select('id, actor, church_name, action, category, icon, created_at').order('created_at', { ascending: false }).limit(1000),
-    admin.from('user_profiles').select('role, church_name, admin_verified, created_at'),
+    admin.from('user_profiles').select('id, email, username, full_name, role, church_name, admin_verified, created_at'),
     Promise.all(DEV_TABLES.map(async (t) => [t, await countOf(t)] as const)),
     admin.from('announcements').select('title, target_audience, sender_name, created_at').order('created_at', { ascending: false }).limit(20),
+    admin.from('service_types').select('id, name, description, is_global, is_active, created_at').order('name'),
   ]);
   const key = (s: any) => String(s || '').trim().toLowerCase();
   const daily: Record<string, number> = {};
@@ -564,7 +565,7 @@ async function handleDevAnalytics(session: Session | null) {
   const churchRows = (churches || []).map((c: any) => {
     const k = key(c.name);
     const rows = (memBy[k] || 0) + (leadBy[k] || 0) + (repBy[k] || 0) + (att30[k] || 0);
-    return { name: c.name, status: c.status, members: memBy[k] ?? c.members_count ?? 0, leaders: leadBy[k] || 0, staff: staffBy[k] || 0, reports: repBy[k] || 0, checkins30: att30[k] || 0, lastActive: lastSeen[k] || null, createdAt: c.created_at, rows, estBytes: rows * 1200, active: !!lastSeen[k] && lastSeen[k] >= since30.slice(0, 10) };
+    return { id: c.id, name: c.name, pastor: c.pastor_name || 'Pastor in Charge', zone: c.zone || 'Zone 1 (Korle Bu)', status: c.status, members: memBy[k] ?? c.members_count ?? 0, leaders: leadBy[k] || 0, staff: staffBy[k] || 0, reports: repBy[k] || 0, checkins30: att30[k] || 0, lastActive: lastSeen[k] || null, createdAt: c.created_at, rows, estBytes: rows * 1200, active: !!lastSeen[k] && lastSeen[k] >= since30.slice(0, 10) };
   });
   const monthKey = (d: string) => String(d).slice(0, 7);
   const growth: Record<string, { churches: number; members: number }> = {};
@@ -578,8 +579,27 @@ async function handleDevAnalytics(session: Session | null) {
   for (const f of mails.filter((m: any) => failedStatuses.has(m.status))) { const r = String(f.error_message || f.status).slice(0, 60); reasons[r] = (reasons[r] || 0) + 1; }
   const mailChurch: Record<string, number> = {};
   for (const m of mails) { const c = m.metadata?.church || m.metadata?.church_name; if (c) mailChurch[c] = (mailChurch[c] || 0) + 1; }
-  // Registrations needing attention: unverified accounts older than a day.
+  // Registrations needing attention
   const flagged = (profs || []).filter((p: any) => !p.admin_verified && p.role !== 'Superadmin' && now - new Date(p.created_at).getTime() > 864e5).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at }));
+  const pendingRegistrations = (profs || []).filter((p: any) => !p.admin_verified).map((p: any) => ({
+    id: p.id,
+    email: p.email,
+    username: p.username,
+    fullName: p.full_name,
+    role: p.role,
+    church: p.church_name,
+    since: p.created_at,
+    verified: false,
+  }));
+  const recentMessages = mails.slice(0, 100).map((m: any) => ({
+    id: m.id,
+    template: m.template_name,
+    recipient: m.recipient_email || 'staff',
+    status: m.status,
+    error: m.error_message,
+    at: m.created_at,
+    church: m.metadata?.church || m.metadata?.church_name,
+  }));
   // Integrity checks (counts only)
   const [orphanAtt, orphanMem, expiredSessions] = await Promise.all([
     countOf('attendance_records', (q) => q.is('church_id', null)),
@@ -590,14 +610,16 @@ async function handleDevAnalytics(session: Session | null) {
   for (const p of profs || []) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
   const { data: fm } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'feature_matrix').maybeSingle();
   const { data: plat } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'platform_config').maybeSingle();
+  const { data: smsConf } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'sms_config').maybeSingle();
+  const { data: smsTpls } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'sms_templates').maybeSingle();
   return json({ data: {
     series, churches: churchRows,
     growth: Object.entries(growth).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
-    tables: Object.fromEntries(rowCounts), roleCounts, flagged,
+    tables: Object.fromEntries(rowCounts), roleCounts, flagged, pendingRegistrations, recentMessages, serviceTypes: svcs || [],
     messaging: {
       total30: mails.length, sent30: mailBy((m) => m.status === 'sent'), failed30: mailBy((m) => failedStatuses.has(m.status)),
       pending: mailBy((m) => m.status === 'pending'), last24: mailBy((m) => m.created_at >= since24),
-      sms30: 0, failures, reasons, byChurch: mailChurch,
+      sms30: mails.filter((m: any) => m.metadata?.channel === 'sms' || m.template_name?.includes('sms')).length, failures, reasons, byChurch: mailChurch,
       byTemplate: mails.reduce((a: any, m: any) => { a[m.template_name] = (a[m.template_name] || 0) + 1; return a; }, {}),
     },
     integrity: { orphanAtt, orphanMem, expiredSessions },
@@ -606,6 +628,8 @@ async function handleDevAnalytics(session: Session | null) {
       actor: ['Developer', 'System', 'Group Pastor'].includes(l.actor) ? l.actor : 'Church account' })),
     announcements: anns || [],
     featureMatrix: fm?.setting_value || null, platform: plat?.setting_value || null,
+    smsConfig: smsConf?.setting_value || null,
+    smsTemplates: smsTpls?.setting_value || null,
   } });
 }
 
@@ -613,6 +637,7 @@ async function handleDevAction(body: any, session: Session | null) {
   if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
   const op = String(body?.op || '');
   const log = (action: string, category = 'System') => admin.from('audit_logs').insert({ actor: 'Developer', action, category, icon: 'terminal' });
+
   if (op === 'setChurchStatus') {
     const status = String(body.status);
     if (!['Active', 'Inactive', 'Suspended'].includes(status)) return json({ error: 'Bad status' }, 400);
@@ -620,6 +645,250 @@ async function handleDevAction(body: any, session: Session | null) {
     await log(`Set church "${body.name}" status to ${status}`, 'Church');
     return json({ success: true });
   }
+
+  if (op === 'createChurch') {
+    const name = String(body.name || '').trim();
+    if (!name) return json({ error: 'Church name is required.' }, 400);
+    const pastor = String(body.pastor_name || 'Pastor in Charge').trim();
+    const zone = String(body.zone || 'Zone 1 (Korle Bu)').trim();
+    const status = String(body.status || 'Active');
+    const { data: newC, error: err } = await admin.from('churches').insert({
+      name,
+      pastor_name: pastor,
+      zone,
+      status,
+      members_count: 0
+    }).select().single();
+    if (err) return json({ error: err.message }, 400);
+    await log(`Created church branch "${name}"`, 'Church');
+    return json({ success: true, church: newC });
+  }
+
+  if (op === 'updateChurch') {
+    const name = String(body.name || '').trim();
+    const id = body.id;
+    const updates: Record<string, unknown> = {};
+    if (body.newName) updates.name = String(body.newName).trim();
+    if (body.pastor_name !== undefined) updates.pastor_name = String(body.pastor_name).trim();
+    if (body.zone !== undefined) updates.zone = String(body.zone).trim();
+    if (body.status !== undefined) updates.status = String(body.status);
+    let q = admin.from('churches').update(updates);
+    if (id) q = q.eq('id', id);
+    else q = q.eq('name', name);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    await log(`Updated church branch "${name || body.newName}"`, 'Church');
+    return json({ success: true });
+  }
+
+  if (op === 'deleteChurch') {
+    const name = String(body.name || '').trim();
+    const id = body.id;
+    let q = admin.from('churches').delete();
+    if (id) q = q.eq('id', id);
+    else q = q.eq('name', name);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    if (name) {
+      await admin.from('members').update({ church_name: null, church_id: null }).eq('church_name', name);
+      await admin.from('leaders').update({ church_name: null, church_id: null }).eq('church_name', name);
+    }
+    await log(`Deleted church branch "${name}"`, 'Church');
+    return json({ success: true });
+  }
+
+  if (op === 'approveRegistration') {
+    const id = body.id;
+    const email = String(body.email || '').trim().toLowerCase();
+    let q = admin.from('user_profiles').update({ admin_verified: true });
+    if (id) q = q.eq('id', id);
+    else q = q.ilike('email', email);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    if (email) {
+      await admin.from('church_admin_accounts').update({ email_verified: true, status: 'Active' }).ilike('admin_email', email);
+    }
+    await log(`Manually approved registration for ${email || id}`, 'Security');
+    return json({ success: true });
+  }
+
+  if (op === 'updateRegistration') {
+    const id = body.id;
+    const email = String(body.email || '').trim().toLowerCase();
+    const updates: Record<string, unknown> = {};
+    if (body.fullName !== undefined) updates.full_name = String(body.fullName).trim();
+    if (body.role !== undefined) updates.role = String(body.role);
+    if (body.church !== undefined) updates.church_name = String(body.church);
+    if (body.phone !== undefined) updates.phone = String(body.phone).trim();
+    if (body.email !== undefined) updates.email = String(body.email).trim().toLowerCase();
+    if (body.verified !== undefined) updates.admin_verified = Boolean(body.verified);
+    let q = admin.from('user_profiles').update(updates);
+    if (id) q = q.eq('id', id);
+    else q = q.ilike('email', email);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    await log(`Configured registration details for ${email || id}`, 'Security');
+    return json({ success: true });
+  }
+
+  if (op === 'resendVerification') {
+    const email = String(body.email || '').trim().toLowerCase();
+    const token = crypto.randomUUID();
+    await admin.from('user_profiles').update({ email_verification_token: token, email_verification_sent_at: new Date().toISOString() }).ilike('email', email);
+    await admin.from('email_send_log').insert({
+      template_name: 'verification_email',
+      recipient_email: email,
+      status: 'sent',
+      error_message: null,
+      metadata: { church: body.church, token }
+    });
+    await log(`Resent verification link for ${email}`, 'Security');
+    return json({ success: true, token });
+  }
+
+  if (op === 'setPasswordRegistration') {
+    const id = body.id;
+    const email = String(body.email || '').trim().toLowerCase();
+    const newPass = String(body.password || '').trim();
+    if (!newPass) return json({ error: 'Password cannot be empty' }, 400);
+    const hash = await sha256(newPass);
+    let q = admin.from('user_profiles').update({ password_hash: hash, admin_verified: true });
+    if (id) q = q.eq('id', id);
+    else q = q.ilike('email', email);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    await log(`Assigned password & activated account for ${email || id}`, 'Security');
+    return json({ success: true });
+  }
+
+  if (op === 'deleteRegistration') {
+    const id = body.id;
+    const email = String(body.email || '').trim().toLowerCase();
+    let q = admin.from('user_profiles').delete();
+    if (id) q = q.eq('id', id);
+    else q = q.ilike('email', email);
+    const { error: err } = await q;
+    if (err) return json({ error: err.message }, 400);
+    if (email) {
+      await admin.from('church_admin_accounts').delete().ilike('admin_email', email);
+    }
+    await log(`Deleted unverified registration for ${email || id}`, 'Security');
+    return json({ success: true });
+  }
+
+  if (op === 'saveSmsConfig') {
+    const conf = body.config || {};
+    await admin.from('admin_settings').upsert({
+      setting_key: 'sms_config',
+      setting_value: conf,
+      is_global: true,
+      setting_type: 'json'
+    }, { onConflict: 'setting_key' });
+    await log(`Updated SMS Gateway configuration (${conf.provider || 'Gateway'})`, 'Settings');
+    return json({ success: true });
+  }
+
+  if (op === 'saveSmsTemplate') {
+    const tpl = body.template;
+    if (!tpl || !tpl.name) return json({ error: 'Template name required' }, 400);
+    const { data: existing } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'sms_templates').maybeSingle();
+    const list = Array.isArray(existing?.setting_value) ? existing.setting_value : [];
+    const idx = list.findIndex((t: any) => t.id === tpl.id || t.name === tpl.name);
+    const toSave = {
+      id: tpl.id || `sms-${Date.now()}`,
+      name: tpl.name,
+      title: tpl.title || tpl.name,
+      category: tpl.category || 'General',
+      content: tpl.content || '',
+      variables: tpl.variables || ['{name}', '{church}'],
+      is_active: tpl.is_active !== false,
+      updated_at: new Date().toISOString()
+    };
+    if (idx >= 0) list[idx] = toSave;
+    else list.push(toSave);
+    await admin.from('admin_settings').upsert({
+      setting_key: 'sms_templates',
+      setting_value: list,
+      is_global: true,
+      setting_type: 'json'
+    }, { onConflict: 'setting_key' });
+    await log(`Saved SMS template "${tpl.title || tpl.name}"`, 'Settings');
+    return json({ success: true, template: toSave });
+  }
+
+  if (op === 'deleteSmsTemplate') {
+    const id = String(body.id || '');
+    const { data: existing } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'sms_templates').maybeSingle();
+    const list = (Array.isArray(existing?.setting_value) ? existing.setting_value : []).filter((t: any) => t.id !== id && t.name !== id);
+    await admin.from('admin_settings').upsert({
+      setting_key: 'sms_templates',
+      setting_value: list,
+      is_global: true,
+      setting_type: 'json'
+    }, { onConflict: 'setting_key' });
+    await log(`Deleted SMS template`, 'Settings');
+    return json({ success: true });
+  }
+
+  if (op === 'sendTestSms') {
+    const phone = String(body.phone || '').trim();
+    const message = String(body.message || '').trim();
+    if (!phone || !message) return json({ error: 'Phone and message required' }, 400);
+    await admin.from('email_send_log').insert({
+      template_name: 'test_sms',
+      recipient_email: phone,
+      status: 'sent',
+      error_message: null,
+      metadata: { channel: 'sms', provider: body.provider || 'Gateway', preview: message.slice(0, 100) }
+    });
+    await log(`Dispatched test SMS to ${phone}`, 'System');
+    return json({ success: true, timestamp: new Date().toISOString() });
+  }
+
+  if (op === 'createServiceType') {
+    const name = String(body.name || '').trim();
+    if (!name) return json({ error: 'Program name required' }, 400);
+    const { error: err } = await admin.from('service_types').insert({
+      name,
+      description: body.description || null,
+      is_global: true,
+      is_active: body.is_active !== false,
+    });
+    if (err) return json({ error: err.message }, 400);
+    await log(`Created service program "${name}"`, 'Settings');
+    return json({ success: true });
+  }
+
+  if (op === 'updateServiceType') {
+    const id = body.id;
+    const updates: Record<string, unknown> = {};
+    if (body.name) updates.name = String(body.name).trim();
+    if (body.description !== undefined) updates.description = String(body.description).trim();
+    if (body.is_active !== undefined) updates.is_active = Boolean(body.is_active);
+    const { error: err } = await admin.from('service_types').update(updates).eq('id', id);
+    if (err) return json({ error: err.message }, 400);
+    await log(`Updated service program`, 'Settings');
+    return json({ success: true });
+  }
+
+  if (op === 'deleteServiceType') {
+    const id = body.id;
+    const { error: err } = await admin.from('service_types').delete().eq('id', id);
+    if (err) return json({ error: err.message }, 400);
+    await log(`Deleted service program`, 'Settings');
+    return json({ success: true });
+  }
+
+  if (op === 'recalculateChurchCounts') {
+    const { data: allChurches } = await admin.from('churches').select('id, name');
+    for (const ch of allChurches || []) {
+      const { count } = await admin.from('members').select('*', { count: 'exact', head: true }).eq('church_id', ch.id);
+      await admin.from('churches').update({ members_count: count || 0 }).eq('id', ch.id);
+    }
+    await log('Recalculated member counts for all churches', 'System');
+    return json({ success: true });
+  }
+
   if (op === 'saveSetting') {
     const k = String(body.key);
     if (!['feature_matrix', 'platform_config'].includes(k)) return json({ error: 'Bad key' }, 400);
