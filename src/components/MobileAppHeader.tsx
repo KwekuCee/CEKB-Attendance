@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { AuthSessionUser } from '../types';
 import { ViewType } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
@@ -23,24 +23,20 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
   onOpenMobileMenu,
   onLogout,
 }) => {
-  const { isInstalled, installPWA } = usePWAInstall();
+  const { isInstalled, isIOS, triggerInstallOrSave } = usePWAInstall();
   const toast = useToast();
-  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   const logoUrl = '/church-logo.png';
 
   const handleInstallClick = async () => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as unknown as { MSStream?: boolean }).MSStream;
-    if (isIOS) {
-      setShowIOSInstructions(true);
-      return;
-    }
-
-    const success = await installPWA();
+    const success = await triggerInstallOrSave();
     if (success) {
-      toast.showSuccess('App Installed!', 'CEKB App added to your device home screen.');
-    } else {
-      setShowIOSInstructions(true);
+      toast.showSuccess(
+        isIOS ? 'Saving to Device' : 'App Install Triggered',
+        isIOS
+          ? 'Allow the profile download to save the CEKB app icon to your Home Screen.'
+          : 'CEKB App installation has been started on your device.'
+      );
     }
   };
 
@@ -152,60 +148,6 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
           </div>
         </div>
       </header>
-
-      {/* iOS & Android Manual Installation Modal */}
-      {showIOSInstructions && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full shadow-sm text-slate-900 space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200">
-                  <span className="material-symbols-outlined text-[22px]">install_mobile</span>
-                </div>
-                <h3 className="font-headline font-bold text-base text-slate-900">
-                  Install Mobile App
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowIOSInstructions(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed font-body">
-              Add this app directly to your home screen so it opens like an app for quick check-ins:
-            </p>
-
-            <div className="space-y-3 text-xs bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-              <div className="flex items-start gap-2.5">
-                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full shrink-0">
-                  iOS
-                </span>
-                <p className="text-slate-700">
-                  Tap Safari's <strong className="text-slate-900">Share button</strong> <span className="material-symbols-outlined text-[14px] inline-block align-middle">share</span> then select <strong className="text-blue-700">"Add to Home Screen"</strong>.
-                </p>
-              </div>
-              <div className="flex items-start gap-2.5 border-t border-slate-200 pt-2.5">
-                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full shrink-0">
-                  Android
-                </span>
-                <p className="text-slate-700">
-                  Tap Chrome's <strong className="text-slate-900">Three Dots menu</strong> <span className="material-symbols-outlined text-[14px] inline-block align-middle">more_vert</span> then select <strong className="text-blue-700">"Install app"</strong>.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowIOSInstructions(false)}
-              className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer shadow-xs active:scale-98"
-            >
-              Got It
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 };

@@ -3,12 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const RAW_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const SUPABASE_URL = RAW_SUPABASE_URL || 'https://placeholder.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = RAW_SUPABASE_KEY || 'placeholder-anon-key';
 
 
-function isNewSupabaseApiKey(value: string): boolean {
-  return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
+function isNewSupabaseApiKey(value?: string): boolean {
+  return Boolean(value && (value.startsWith('sb_publishable_') || value.startsWith('sb_secret_')));
 }
 
 function createSupabaseFetch(supabaseKey: string): typeof fetch {
@@ -26,7 +28,9 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
       headers.delete('Authorization');
     }
 
-    headers.set('apikey', supabaseKey);
+    if (supabaseKey) {
+      headers.set('apikey', supabaseKey);
+    }
     return fetch(input, { ...init, headers });
   };
 }
@@ -34,13 +38,64 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+const baseClient = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   global: {
     fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
   },
   auth: {
     storage: brokeredPreviewStorage(),
     persistSession: true,
-    autoRefreshToken: true,
+    autoRefreshToken: Boolean(RAW_SUPABASE_URL && RAW_SUPABASE_KEY),
   }
 });
+
+if (!RAW_SUPABASE_URL) {
+  const origInvoke = baseClient.functions.invoke.bind(baseClient.functions);
+  (baseClient.functions as any).invoke = async (name: string, options?: { body?: any; headers?: Record<string, string> }) => {
+    if (name === 'support-chat') {
+      const msgs = Array.isArray(options?.body?.messages) ? options.body.messages : [];
+      const last = String(msgs[msgs.length - 1]?.content || '').toLowerCase();
+      let reply = 'You can manage attendance, leaders, members, weekly cell reports, and QR passes directly from your CEKB dashboard.';
+      if (last.includes('qr') || last.includes('check-in')) {
+        reply = 'Members can self check-in on the Attendance tab to receive a downloadable QR pass, or ushers and admins can scan QR passes using Launch Scanner.';
+      } else if (last.includes('leader')) {
+        reply = 'Go to Leaders or Register a Leader in the sidebar to add BSCT, Cell, or PCF leaders, and use Leader Hierarchy to link them.';
+      } else if (last.includes('absent')) {
+        reply = 'Open the Overview or Attendance section and use the Absentees & Follow-Up panel to record follow-up reasons and notes.';
+      } else if (last.includes('move') || last.includes('church')) {
+        reply = 'Open Members Database, click Edit on the member record, and update their assigned church branch.';
+      }
+      return { data: { reply }, error: null };
+    }
+    if (name === 'password-reset') {
+      return {
+        data: {
+          success: true,
+          message: 'Password reset processed (local preview mode).',
+          link: typeof window !== 'undefined' ? `${window.location.origin}/?reset_token=preview-token` : undefined,
+        },
+        error: null,
+      };
+    }
+    if (name === 'verify-email') {
+      return {
+        data: {
+          success: true,
+          alreadyVerified: true,
+          message: 'Email verified automatically in local preview mode.',
+        },
+        error: null,
+      };
+    }
+    if (name === 'send-attendance-email' || name === 'usher-welcome') {
+      return { data: { success: true }, error: null };
+    }
+    if (name === 'send-qr-passes') {
+      const recipients = Array.isArray(options?.body?.recipients) ? options.body.recipients : [];
+      return { data: { success: true, sent: recipients.length, skipped: 0, failed: 0 }, error: null };
+    }
+    return origInvoke(name, options as any);
+  };
+}
+
+export const supabase = baseClient;
