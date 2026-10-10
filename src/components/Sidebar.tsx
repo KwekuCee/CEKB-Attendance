@@ -66,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isMobileOpen && <div className="sidebar-backdrop fixed inset-0 z-40 md:hidden" onClick={onCloseMobile} />}
       <aside aria-label="Dashboard navigation" className={`dashboard-sidebar fixed flex flex-col z-50 transition-transform duration-300 ease-in-out ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="sidebar-brand">
-          <img src="/church-logo.png" alt="CEKB Logo" className="sidebar-brand-logo" />
+          <img src="/icon-512.png" alt="CEKB Logo" className="sidebar-brand-logo" />
           <h1>CEKB<span>Group</span></h1>
           {onCloseMobile && <Button variant="ghost" className="sidebar-close md:hidden" aria-label="Close navigation" onClick={onCloseMobile}><span className="material-symbols-outlined" aria-hidden="true">close</span></Button>}
         </div>

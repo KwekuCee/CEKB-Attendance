@@ -691,19 +691,24 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <ChurchLogo className="portal-logo" alt="CEKB Logo" />
           <span><strong>CEKB Group</strong><small>Christ Embassy Korle Bu</small></span>
         </Button>
-        <nav className="portal-header-links" aria-label="Main navigation">
-          <Button variant="ghost" onClick={() => setActiveTab('attendance')}>Attendance</Button>
-          <Button variant="ghost" onClick={() => setActiveTab('cell_report')}>Cell reports</Button>
-        </nav>
-        <div className="flex items-center gap-2">
-          {!isPWAInstalled && (
-            <Button variant="secondary" aria-label="Install App" onClick={triggerInstallOrSave}>
-              <span className="material-symbols-outlined">install_mobile</span>
-              <span className="hidden sm:inline">Get App</span>
-            </Button>
-          )}
-          <Button variant="secondary" className="portal-signin" aria-label="Sign In" onClick={() => setActiveTab('login')}>
-            <span className="material-symbols-outlined">login</span><span>Sign In</span>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="secondary"
+            aria-label="Get App"
+            onClick={triggerInstallOrSave}
+            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 font-semibold text-xs rounded-xl"
+          >
+            <span className="material-symbols-outlined text-[18px]">install_mobile</span>
+            <span>Get App</span>
+          </Button>
+          <Button
+            variant="primary"
+            className="portal-signin flex items-center gap-2 px-4 sm:px-5 py-2 font-bold text-xs rounded-xl"
+            aria-label="Sign In"
+            onClick={() => setActiveTab('login')}
+          >
+            <span className="material-symbols-outlined text-[18px]">login</span>
+            <span>Sign In</span>
           </Button>
         </div>
       </header>
@@ -712,7 +717,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       <main className={`portal-main flex-1 w-full mx-auto ${activeTab === 'home' ? 'portal-main--home' : 'portal-main--form'}`}>
         {/* HOMEPAGE HERO — shown only on the landing tab */}
         {activeTab === 'home' && (
-          <HeroSection onNavigate={(tab) => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }} />
+          <HeroSection
+            onNavigate={(tab) => { setActiveTab(tab); if (tab === 'attendance') setAttSuccessPass(null); }}
+          />
         )}
 
         {/* Action Tabs Switcher — hidden on the hero landing page */}

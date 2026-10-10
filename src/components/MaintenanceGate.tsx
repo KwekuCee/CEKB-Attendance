@@ -21,7 +21,7 @@ export function MaintenanceGate({ children }: { children: React.ReactNode }) {
   if (!status?.maintenance) return <>{children}</>;
   return (
     <main className="maintenance-home min-h-screen flex flex-col items-center justify-center gap-6 p-8 text-center">
-      <img src="/church-logo.png" alt="CEKB logo" className="h-24 w-24 rounded-3xl bg-card p-2 shadow-xl" />
+      <img src="/icon-512.png" alt="CEKB logo" className="h-24 w-24 rounded-3xl bg-card p-2 shadow-xl" />
       <div className="space-y-3 max-w-xl">
         <p className="text-xs uppercase tracking-[0.3em] opacity-70">Christ Embassy Korle Bu</p>
         <h1 className="text-4xl md:text-6xl font-headline">{status.platformName || 'CEKB Group'}</h1>

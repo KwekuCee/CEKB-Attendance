@@ -26,7 +26,7 @@ export const MobileAppHeader: React.FC<MobileAppHeaderProps> = ({
   const { isInstalled, isIOS, triggerInstallOrSave } = usePWAInstall();
   const toast = useToast();
 
-  const logoUrl = '/church-logo.png';
+  const logoUrl = '/icon-512.png';
 
   const handleInstallClick = async () => {
     const success = await triggerInstallOrSave();

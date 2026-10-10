@@ -99,7 +99,7 @@ export default function DeveloperPortal() {
       {menuOpen && <div className="sidebar-backdrop fixed inset-0 z-40 md:hidden" onClick={() => setMenuOpen(false)} />}
       <aside aria-label="Developer navigation" className={`dashboard-sidebar dev-sidebar ${menuOpen ? 'is-open' : ''}`}>
         <div className="dev-brand">
-          <img src="/church-logo.png" alt="CEKB logo" />
+          <img src="/icon-512.png" alt="CEKB logo" />
           <div><strong>CEKB Console</strong><span className="sidebar-caption">Developer</span></div>
         </div>
         <nav className="sidebar-navigation flex-1" aria-label="Developer menu">
