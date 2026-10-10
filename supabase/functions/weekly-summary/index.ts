@@ -4,6 +4,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { sendMail } from '../_shared/mailer.ts';
 import { isScheduledCall } from '../_shared/app-cron.ts';
 import { getPortalSession } from '../_shared/portal-session.ts';
+import { getPlatformConfig } from '../_shared/platform.ts';
 
 const corsHeaders = { ...baseCorsHeaders, 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-session, x-cron-token' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -16,6 +17,8 @@ Deno.serve(async (req) => {
     if (!s || (s as any).role !== 'Superadmin') return json({ success: false, message: 'Only the group account can send this summary.' }, 401);
   }
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const cfg = await getPlatformConfig(db);
+  if (cfg.maintenance || (!cfg.weeklySummary && !cfg.reportReminders)) return json({ success: true, skipped: 'Disabled in platform settings' });
   const since = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
 
   const [{ data: churches }, { data: att }, { data: mem }, { data: reps }, { data: leaders }, { data: supers }] = await Promise.all([
@@ -47,10 +50,10 @@ Deno.serve(async (req) => {
 
   let sent = 0;
   // Gentle reminder to each leader who has not sent a report this week.
-  for (const r of rows) for (const l of r.missing as any[]) {
+  if (cfg.reportReminders) for (const r of rows) for (const l of r.missing as any[]) {
     if (!l.email) continue;
     await sendMail({ to: l.email, subject: 'Reminder: your weekly cell report', html: `<h2 style="color:#1d4ed8;margin:0 0 8px">Hello ${esc(l.full_name)},</h2><p>We haven't received your cell report for the past week yet. Please submit it from the <strong>Submit Cell Report</strong> button on <a href="https://gcycattendance.online">gcycattendance.online</a>.</p><p>Thank you for serving!</p>` });
   }
-  for (const s of supers || []) if (s.email && (await sendMail({ to: s.email, subject: 'CEKB weekly summary', html })).ok) sent++;
+  if (cfg.weeklySummary) for (const s of supers || []) if (s.email && (await sendMail({ to: s.email, subject: 'CEKB weekly summary', html })).ok) sent++;
   return json({ success: true, sent, branches: rows.length });
 });

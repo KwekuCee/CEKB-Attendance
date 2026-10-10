@@ -8,6 +8,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { rateLimit } from '../_shared/rate-limit.ts';
 import { getPortalSession } from '../_shared/portal-session.ts';
+import { getPlatformConfig } from '../_shared/platform.ts';
 
 declare const Deno: { env: { get(key: string): string | undefined } };
 
@@ -135,6 +136,9 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const action = str(body?.action, 40);
     const session = await getPortalSession(req);
+    const cfg = await getPlatformConfig();
+    if (cfg.maintenance) return new Response(JSON.stringify({ success: false, error: cfg.maintenanceMessage }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!cfg.allowCellReports && (action === 'verify_code' || action === 'submit' || action === 'leader_login')) return new Response(JSON.stringify({ success: false, error: 'Cell report submissions are paused.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     if (action === 'verify_code' || action === 'submit') {
       const limited =
         action === 'verify_code'
