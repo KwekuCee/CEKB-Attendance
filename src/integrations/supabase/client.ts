@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const RAW_SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
-const SUPABASE_URL = RAW_SUPABASE_URL || 'https://placeholder.supabase.co';
+const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
+const RAW_SUPABASE_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
+const SUPABASE_URL = RAW_SUPABASE_URL || 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = RAW_SUPABASE_KEY || 'placeholder-anon-key';
 
 

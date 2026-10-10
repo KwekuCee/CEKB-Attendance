@@ -1,9 +1,9 @@
 // Calls portal-db actions that return their own top-level shape (login-like actions).
 import { getPortalToken, runLocalPortal } from './portalDb';
 
-const RAW_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const RAW_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const URL = RAW_URL ? `${RAW_URL}/functions/v1/portal-db` : '';
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
 export async function rawPortal(payload: Record<string, unknown>, token?: string | null): Promise<any> {
   if (!URL) {

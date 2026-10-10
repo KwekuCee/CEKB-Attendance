@@ -1171,7 +1171,9 @@ export async function fetchServiceTypesFromSupabase(): Promise<string[]> {
     }
 
     const serviceNames = data.map((r: any) => r.name);
-    localStorage.setItem('cekbu_global_services', JSON.stringify(serviceNames));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('cekbu_global_services', JSON.stringify(serviceNames));
+    }
     return serviceNames;
   } catch (err) {
     console.warn('Error in fetchServiceTypesFromSupabase:', err);

@@ -4,9 +4,9 @@
 // the small slice of the Supabase query builder the app uses and sends each
 // query to the server, which checks the signed-in session before touching data.
 
-const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const FUNCTIONS_BASE = RAW_SUPABASE_URL ? `${RAW_SUPABASE_URL}/functions/v1/portal-db` : '';
-const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
 import { supabase as cloudClient } from '../integrations/supabase/client';
 

@@ -3,13 +3,13 @@ import { portalDb } from './portalDb';
 
 // The backend is managed by Lovable Cloud. Tables are reachable only from
 // secure server code, so the app talks to them through the portal data API.
-export const SUPABASE_DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || '';
-export const SUPABASE_DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+export const SUPABASE_DEFAULT_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
+export const SUPABASE_DEFAULT_ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 export const SUPABASE_DEFAULT_PUBLISHABLE_KEY = SUPABASE_DEFAULT_ANON_KEY;
 
 export const supabase = portalDb as unknown as SupabaseClient;
 
-export const isSupabaseConfigured = Boolean(SUPABASE_DEFAULT_URL && SUPABASE_DEFAULT_ANON_KEY);
+export const isSupabaseConfigured = Boolean(SUPABASE_DEFAULT_URL);
 
 export function getSupabase(): SupabaseClient | null {
   return supabase;

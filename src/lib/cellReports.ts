@@ -8,9 +8,9 @@
 import { portalDb, getPortalToken, loadLocalStore, saveLocalStore } from './portalDb';
 import type { CellReport } from '../types';
 
-const RAW_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const FUNCTION_URL = RAW_SUPABASE_URL ? `${RAW_SUPABASE_URL}/functions/v1/cell-report` : '';
-const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+const ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
 /** Rows of the printed report sheet — each row has a Cell and an Outreach column. */
 export const GRID_ROWS: Array<{ key: string; label: string; type?: 'text' | 'number' | 'datetime' | 'money' | 'heading' }> = [
