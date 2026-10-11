@@ -207,7 +207,9 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
 
   if (!session) {
     if (isRead && !PUBLIC_READ[table]) {
-      return json({ error: { message: 'Please sign in to view this data.' } }, 401);
+      // Signed-out visitors simply get no private rows (not an error), so the
+      // public pages never break when a background read runs before sign-in.
+      return json({ data: body.single ? null : [], error: null });
     }
     if (!isRead && !(PUBLIC_WRITE.has(table) && (op === 'insert' || op === 'upsert'))) {
       return json({ error: { message: 'Please sign in to make this change.' } }, 401);
