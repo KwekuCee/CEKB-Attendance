@@ -36,6 +36,13 @@
       "when": 1791554349255,
       "tag": "0004_add_church_pastor_role",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791696234354,
+      "tag": "0005_lock_sms_templates",
+      "breakpoints": true
     }
   ]
 }
