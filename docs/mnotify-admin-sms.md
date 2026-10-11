@@ -1,32 +1,93 @@
-# mNotify administrator update SMS
+# mNotify Sender IDs and SMS
 
-## Configure the API key
+## Verified provider API
 
-In Lovable, add the secret named **`MNOTIFY_API_KEY`** with the API key from your mNotify/BMS developer settings. It is read only by the Supabase Edge Function and must not be added to a `VITE_` variable, the browser, or `admin_settings`. For local Edge Function development, configure the same name with the Supabase CLI secrets mechanism.
+The integration uses the current [BMS/mNotify OpenAPI documentation](https://developer.bms.africa/openapi14.yaml), which is the destination of `https://developer.mnotify.com`.
 
-The function sends through the documented mNotify BMS quick SMS API:
+| Feature | Documented endpoint and behavior |
+| --- | --- |
+| Register Sender ID | `POST https://api.mnotify.com/api/senderid/register?key=...`, JSON `{ "sender_name": "...", "purpose": "..." }`; response includes `status`, `code`, and `summary.status` (for example `Pending`). |
+| Check Sender ID | `POST https://api.mnotify.com/api/senderid/status?key=...`, JSON `{ "sender_name": "..." }`; response includes `summary.status` (for example `Approved`). |
+| Send quick SMS | `POST https://api.mnotify.com/api/sms/quick?key=...`, JSON `recipient` (array), `sender`, `message`; success uses `status: "success"`, `code: "2000"` and `summary._id`, `numbers_sent`, `credit_used`, `credit_left`. |
+| SMS balance | `GET https://api.mnotify.com/api/balance/sms?key=...`; response includes `balance` and `bonus`. |
+| Delivery report | `GET https://api.mnotify.com/api/campaign/{campaign_id}?key=...`; response contains `report[]` with `_id`, `recipient`, `status`, `campaign_id` and other report fields. |
 
-- `POST https://api.mnotify.com/api/sms/quick?key=...`
-- JSON body: `recipient` (Ghana local-format phone numbers), `sender` (approved Sender ID), and `message`
-- A successful provider response is identified by `status: "success"` and `code: "2000"`. The returned campaign ID and provider credit totals are recorded in the SMS delivery log.
+The current docs do **not** define a cost-quote endpoint or specify an SMS unit tariff. The Developer Console therefore requires a manually configured **mNotify credits per SMS page** rate. The user-facing estimate is local and uses GSM-7/Unicode page rules; before dispatch the server checks the live SMS balance and after dispatch records mNotify's actual `credit_used`. Actual provider charging can differ from the estimate. Delivery reasons are displayed only when mNotify includes them in a report.
 
-Reference: [mNotify/BMS API v2 documentation](https://developer.bms.africa/), SMS → Quick Bulk SMS.
+## Secrets and initial setup
 
-## Enable and send
+Set these as Supabase/Lovable **Edge Function secrets**, never as `VITE_` variables:
 
-1. Register and get the Sender ID approved in the mNotify dashboard first. Registration/approval remains a manual dashboard process.
-2. In the Developer Console → SMS Gateway & Templates, set the approved Sender ID (1–11 ASCII letters or digits) and enable administrator update SMS.
-3. A Developer can send updates to verified Church Admin accounts platform-wide. A signed-in Church Admin or Church Pastor can send to verified Church Admin accounts in their own church. Recipients are selected server-side; arbitrary recipients cannot be supplied.
-4. Only Ghana local numbers matching `0` followed by nine digits are sent. Accounts without a valid phone number are counted as skipped.
+- `MNOTIFY_API_KEY`: the mNotify/BMS developer API key.
+- `MNOTIFY_POLL_SECRET`: a strong random secret used only by the scheduled poll request.
 
-The send result reports accepted and failed recipients and the credits mNotify says it used. Acceptance is not a final handset delivery receipt. mNotify's documented quick-send endpoint provides a campaign ID for later delivery-status checks; automated polling and final delivery receipts are not implemented.
+The mailer uses the application's existing `RESEND_API_KEY` and Gmail fallback configuration. No mNotify credentials are stored in `admin_settings`, responses, or browser code.
 
-The API key is never returned to the browser. Existing SMS provider credentials in `sms_config` are not used; the server reads only `MNOTIFY_API_KEY`.
+Apply the database schema through the normal Supabase migration process:
 
-## Local development fallback
+```text
+supabase/migrations/20261011200000_mnotify_sender_id_and_campaigns.sql
+```
 
-Remote portal requests fail with an error by default; they are never silently replayed against local demo state. To explicitly opt into the local fallback during development, set `VITE_ENABLE_LOCAL_PORTAL=true`. Keep it `false` (or unset) in Lovable/production so a failed server save cannot look successful locally.
+It creates `sender_id_requests`, `sender_id_status_history`, `admin_alerts`, `sms_campaigns`, and `sms_recipients`, plus indexes and the `mnotify_management` default settings row. The Developer Console full-schema and updates SQL exports include the same tables. All these tables have RLS enabled, revoke access from `PUBLIC`, `anon`, and `authenticated`, and grant access only to `service_role`. This app uses portal sessions rather than Supabase Auth for user identity, so ownership and role checks are enforced in `portal-db` before any service-role query: users can only view their own sender requests/campaigns; only the Developer can view the cross-account operational dashboard or manually approve/reject requests.
 
-## Database setup SQL
+The migration is provided for review and has **not** been applied to the live database by this change. Do not run it against production until you have reviewed the SQL.
 
-Both Developer Console SQL downloads (full schema and incremental updates) end by revoking table access from `PUBLIC`, `anon`, and `authenticated`, enabling row-level security, and granting access to `service_role` only. Apply the Supabase migrations for the authoritative deployment path; the final table/function hardening migration is `20261011180000_harden_portal_tables.sql`.
+## Scheduled approval and delivery polling
+
+The `mnotifyScheduledPoll` action checks pending Sender IDs at most every 10 minutes and campaign reports every 5 minutes, stopping after 72 hours. To enable it:
+
+1. Deploy the updated `portal-db` Edge Function and set the two Edge Function secrets above.
+2. Ensure the Supabase `pg_cron`, `pg_net`, and Vault extensions are enabled.
+3. In Supabase SQL Editor, place your own project URL, service-role key, and the exact `MNOTIFY_POLL_SECRET` value into Vault. Do not save these values in this repository:
+
+```sql
+select vault.create_secret('https://YOUR_PROJECT_REF.supabase.co', 'mnotify_project_url');
+select vault.create_secret('YOUR_SERVICE_ROLE_KEY', 'mnotify_poll_service_role_key');
+select vault.create_secret('YOUR_MNOTIFY_POLL_SECRET', 'mnotify_poll_secret');
+```
+
+4. Schedule the authenticated server-to-server request:
+
+```sql
+select cron.schedule(
+  'mnotify-status-poll',
+  '*/5 * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'mnotify_project_url')
+      || '/functions/v1/portal-db',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'mnotify_poll_service_role_key'),
+      'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'mnotify_poll_service_role_key'),
+      'x-mnotify-poll-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'mnotify_poll_secret')
+    ),
+    body := '{"action":"mnotifyScheduledPoll"}'::jsonb
+  );
+  $job$
+);
+```
+
+The Developer Console also has a manual "Poll pending statuses" control; users can manually refresh their own Sender ID or campaign reports if the schedule is not installed. Open Sender IDs & SMS pages refresh their displayed dashboard every 30 seconds; the tables are not exposed to browser-side Supabase Realtime because their RLS access is service-role-only.
+
+## User workflow
+
+Church Admins and Church Pastors open **Settings > Branch Profile > Sender IDs & SMS**:
+
+1. Submit a 1-11 character alphanumeric Sender ID (spaces are allowed) and a purpose of at least 30 characters. Duplicate active names are rejected. Names containing reserved terms such as bank, MTN, GOV, ECG, or police are flagged for Developer review.
+2. The request is persisted before the provider call. mNotify registration failures remain saved and can be retried; submissions are limited to five per account per day.
+3. Each new request queues an SMS alert to the configured admin number, default `+233550160237`, from the configured approved alert ID, default `CEKBU DEV`. The alert message includes the sender ID, purpose, and submitting account name, truncates to 160 characters, and retries up to three times. Failed alerts are visible in Developer oversight. The alert sender ID must already be approved in mNotify.
+4. The account can refresh approval status. Only verified Sender IDs appear in its send form. Developer can also mark a request verified/rejected after handling it in the mNotify dashboard. Users receive email and, where a verified phone is available, SMS notifications with usage guidance.
+5. Compose SMS to up to 100 Ghanaian numbers. Local `0XXXXXXXXX` and international `+233XXXXXXXXX` forms are normalized and duplicates removed. The live estimate shows encoding, page count, recipient count, total pages, and configured credit estimate. The server rechecks the mNotify balance, records an idempotency key before sending, and saves the provider campaign ID and per-recipient result.
+6. Campaign details show accepted/failed status, actual credits, per-recipient delivery reports and CSV export. A manual refresh is available; automated report polling stops 72 hours after send.
+
+The Developer **SMS Gateway & Templates** page shows sender requests/purpose/status, retry and review controls, aggregate campaign spend/delivery, masked admin alert outcomes, live balance and configurable alert phone, alert sender ID, credits-per-page rate and low-balance threshold. In accordance with the Developer privacy boundary, this cross-account page does not expose account email/name or recipients' phone numbers.
+
+## Notes and limitations
+
+- API keys are sent in the provider's query-string `key` parameter because that is how mNotify documents authentication. The key is only added in the Edge Function and never returned or logged.
+- Provider success means accepted/queued, not delivered to a handset. Delivery status comes later from the documented campaign report.
+- `CEKBU DEV` must be an approved sender ID in the mNotify dashboard for the alert to arrive. If it is not approved, the request still saves and Developer oversight flags the failed alert.
+- SMS pricing is an estimate in provider credits, not a currency quote. Configure the rate based on the account's current mNotify tariff.
+- Approval status refresh and report polling require the database migration, deployed Edge Function, the secrets above, and (for automatic refresh) the optional cron schedule.

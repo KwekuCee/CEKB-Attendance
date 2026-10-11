@@ -10,7 +10,9 @@ BEGIN
         'portal_sessions', 'login_otps', 'password_reset_tokens', 'rate_limit_hits',
         'request_rate_limits', 'email_verification_tokens', 'church_report_codes',
         'email_send_log', 'email_send_state', 'email_unsubscribe_tokens',
-        'suppressed_emails', 'app_cron_tokens', 'sms_templates'
+        'suppressed_emails', 'app_cron_tokens', 'sms_templates',
+        'sender_id_requests', 'sender_id_status_history', 'admin_alerts',
+        'sms_campaigns', 'sms_recipients'
     ]
     LOOP
         IF to_regclass(format('public.%I', table_name)) IS NULL THEN

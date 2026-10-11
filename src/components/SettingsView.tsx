@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { motion } from 'motion/react';
 import { UserProfile, AuthSessionUser, ChurchBranch, ViewType, AuditLogItem, Member, Leader, AttendanceRecord, ChurchAdminAccount } from '../types';
@@ -29,6 +29,7 @@ import { ReportCodesPanel } from './ReportCodesPanel';
 import { UshersPanel } from './UshersPanel';
 import { Button } from './Button';
 import { rawPortal } from '../lib/rawPortal';
+import { estimateSmsCost } from '../lib/smsPricing';
 
 interface SettingsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -626,6 +627,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Tab Content Cards */}
       <div className="space-y-6">
+        {(['Superadmin', 'Church Admin', 'Church Pastor'] as string[]).includes(user.role) && activeTab === 'profile' && (
+          <SenderSmsWorkspace />
+        )}
         {canSendAdminSms && activeTab === 'profile' && <AdminSmsUpdates user={user} />}
         {activeTab === 'profile' && (
           <ReportCodesPanel
@@ -1660,6 +1664,309 @@ function AdminSmsUpdates({ user }: { user: UserProfile | AuthSessionUser }) {
           {' '}Acceptance is not a final handset delivery receipt.
         </p>
       )}
+    </section>
+  );
+}
+
+function SenderSmsWorkspace() {
+  const [dashboard, setDashboard] = useState<any>(null);
+  const [senderName, setSenderName] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [editingId, setEditingId] = useState('');
+  const [selectedSenderId, setSelectedSenderId] = useState('');
+  const [recipients, setRecipients] = useState('');
+  const [message, setMessage] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [deliveryFilter, setDeliveryFilter] = useState('All');
+  const pendingSend = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  const load = async () => {
+    const result = await rawPortal({ action: 'mnotifyUser', op: 'dashboard' });
+    if (result?.success) {
+      setDashboard(result);
+      const approved = (result.senderIds || []).find((item: any) => item.status === 'verified');
+      if (approved && !selectedSenderId) setSelectedSenderId(approved.id);
+    } else {
+      setError(result?.error?.message || 'Could not load your SMS dashboard.');
+    }
+  };
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const recipientResult = useMemo(() => {
+    const found = new Set<string>();
+    const invalid: string[] = [];
+    for (const input of recipients.split(/[\s,;]+/)) {
+      if (!input) continue;
+      if (!/^\+?[\d().-]+$/.test(input)) {
+        invalid.push(input);
+        continue;
+      }
+      const digits = input.replace(/\D/g, '');
+      const local = digits.startsWith('233') && digits.length === 12 ? `0${digits.slice(3)}` : digits;
+      if (/^0\d{9}$/.test(local)) found.add(local);
+      else invalid.push(input);
+    }
+    return { valid: [...found], invalid };
+  }, [recipients]);
+  const validRecipients = recipientResult.valid;
+  const estimate = estimateSmsCost(message, validRecipients.length, Number(dashboard?.unitRate || 0));
+  const verifiedSenders = (dashboard?.senderIds || []).filter((item: any) => item.status === 'verified');
+
+  const submitSender = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await rawPortal({
+        action: 'mnotifyUser',
+        op: 'submitSenderId',
+        id: editingId || undefined,
+        senderName,
+        purpose,
+      });
+      if (!result?.success) {
+        setError(result?.error?.message || 'Could not submit the Sender ID request.');
+      } else {
+        setNotice(result.providerAccepted
+          ? `Sender ID submitted to mNotify. Admin alert: ${result.alertStatus}.`
+          : `Your request was saved, but mNotify submission failed. ${result.senderId?.submission_error || ''} Admin alert: ${result.alertStatus}.`);
+        setEditingId('');
+        setSenderName('');
+        setPurpose('');
+        await load();
+      }
+    } catch {
+      setError('Could not reach the SMS service. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refreshSender = async (id: string) => {
+    setBusy(true);
+    setError('');
+    const result = await rawPortal({ action: 'mnotifyUser', op: 'refreshSenderId', id });
+    if (result?.success) {
+      setNotice(result.pending ? 'mNotify still reports this Sender ID as pending.' : `Sender ID status: ${result.status}.`);
+      await load();
+    } else setError(result?.error?.message || 'Could not refresh approval status.');
+    setBusy(false);
+  };
+
+  const sendSms = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedSenderId || !message.trim() || !validRecipients.length) return;
+    const confirmMessage =
+      `${validRecipients.length} recipient(s), ${estimate.pagesPerMessage} page(s) each, ${estimate.totalPages} total pages, estimated ${estimate.estimatedCost} credits. Continue?`;
+    if (!window.confirm(confirmMessage)) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const fingerprint = `${selectedSenderId}|${message.trim()}|${validRecipients.join(',')}`;
+      if (!pendingSend.current || pendingSend.current.fingerprint !== fingerprint) {
+        pendingSend.current = { fingerprint, key: crypto.randomUUID() };
+      }
+      const result = await rawPortal({
+        action: 'mnotifyUser',
+        op: 'sendSms',
+        senderIdRequestId: selectedSenderId,
+        recipients,
+        message: message.trim(),
+        idempotencyKey: pendingSend.current.key,
+      });
+      if (!result?.success) {
+        setError(result?.error?.message || result?.error || 'SMS was not accepted.');
+      } else {
+        pendingSend.current = null;
+        setNotice(result.duplicate
+          ? `This send request was already submitted and was not sent twice. Current campaign status: ${result.status}.`
+          : `mNotify accepted ${result.accepted} message(s), failed ${result.failed}. Actual credits used: ${result.creditsUsed}. Delivery receipts may update after sending.`);
+        setMessage('');
+        setRecipients('');
+        await load();
+      }
+    } catch {
+      setError('Could not reach the SMS service. Check campaign history before retrying.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refreshCampaign = async (id: string) => {
+    setBusy(true);
+    const result = await rawPortal({ action: 'mnotifyUser', op: 'refreshCampaign', id });
+    if (result?.success) {
+      setNotice(`Delivery report refreshed: ${result.counts.delivered} delivered, ${result.counts.failed} failed, ${result.counts.pending} pending.`);
+      await load();
+    } else setError(result?.error?.message || 'Could not fetch the delivery report.');
+    setBusy(false);
+  };
+
+  const exportRecipients = (campaign: any) => {
+    const recipientsToExport = (campaign.recipients || []).filter((row: any) => deliveryFilter === 'All' || row.status === deliveryFilter);
+    const rows = [['Recipient', 'Status', 'Failure reason'], ...recipientsToExport.map((row: any) => [row.recipient_phone, row.status, row.failure_reason || ''])];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.href = url;
+    link.download = `sms-delivery-${campaign.id}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-6">
+      <div>
+        <h2 className="text-lg font-headline font-bold">Sender IDs & SMS</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Register a Sender ID with its purpose, track approval, then send SMS with a live page and cost estimate.
+        </p>
+      </div>
+
+      <form onSubmit={submitSender} className="grid gap-3 md:grid-cols-[1fr_2fr_auto] items-end">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Sender ID</span>
+          <input
+            required
+            maxLength={11}
+            pattern="[A-Za-z0-9 ]{1,11}"
+            value={senderName}
+            onChange={(event) => setSenderName(event.target.value)}
+            placeholder="Up to 11 letters, digits, spaces"
+            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Purpose (at least 30 characters)</span>
+          <textarea
+            required
+            minLength={30}
+            maxLength={1000}
+            rows={2}
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+            placeholder="Explain what messages you plan to send using this ID."
+          />
+        </label>
+        <Button type="submit" disabled={busy || purpose.trim().length < 30}>
+          {busy ? 'Submitting…' : editingId ? 'Resubmit request' : 'Register Sender ID'}
+        </Button>
+      </form>
+
+      {dashboard?.senderIds?.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="font-semibold">Your Sender ID requests</h3>
+          {dashboard.senderIds.map((sender: any) => (
+            <div key={sender.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+              <div>
+                <strong>{sender.sender_name}</strong>
+                <p className="text-xs text-muted-foreground">{sender.purpose}</p>
+                <p className="text-xs text-muted-foreground">
+                  Status: {sender.status}{sender.submission_error ? ` · ${sender.submission_error}` : ''}{sender.rejection_reason ? ` · ${sender.rejection_reason}` : ''}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {['submitted', 'pending'].includes(sender.status) && (
+                  <Button variant="secondary" disabled={busy} onClick={() => void refreshSender(sender.id)}>Refresh status</Button>
+                )}
+                {['failed', 'rejected'].includes(sender.status) && (
+                  <Button variant="secondary" onClick={() => {
+                    setEditingId(sender.id);
+                    setSenderName(sender.sender_name);
+                    setPurpose(sender.purpose);
+                  }}>Edit & resubmit</Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {verifiedSenders.length > 0 && (
+        <>
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+            Select your approved Sender ID on the SMS form. Sender IDs may be up to 11 characters. GSM-7 messages use 160 characters per first page and 153 per additional page; Unicode uses 70/67. Do not send spam or content against mNotify terms.
+          </div>
+          <form onSubmit={sendSms} className="space-y-3">
+            <h3 className="font-semibold">Send an SMS</h3>
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Verified Sender ID</span>
+              <select value={selectedSenderId} onChange={(event) => setSelectedSenderId(event.target.value)} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm">
+                {verifiedSenders.map((sender: any) => <option key={sender.id} value={sender.id}>{sender.sender_name}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Ghana recipient numbers (comma, space, or newline separated; max 100)</span>
+              <textarea value={recipients} onChange={(event) => setRecipients(event.target.value)} rows={3} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" placeholder="0241234567, +233201234567" />
+              <span className="text-xs text-muted-foreground">{validRecipients.length} valid unique recipient(s). Numbers are normalized to local Ghana format before sending.</span>
+              {(recipientResult.invalid.length > 0 || validRecipients.length > 100) && (
+                <span className="block text-xs text-destructive">
+                  {recipientResult.invalid.length > 0 && `Invalid number(s): ${recipientResult.invalid.slice(0, 10).join(', ')}. `}
+                  {validRecipients.length > 100 && 'A campaign is limited to 100 unique recipients.'}
+                </span>
+              )}
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Message</span>
+              <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} maxLength={1000} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
+              <span className="text-xs text-muted-foreground">
+                {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · estimated {dashboard?.unitRate ? estimate.estimatedCost : 'rate not configured'} credits
+              </span>
+            </label>
+            <Button type="submit" disabled={busy || !message.trim() || !validRecipients.length || recipientResult.invalid.length > 0 || validRecipients.length > 100 || !dashboard?.unitRate}>
+              {busy ? 'Sending…' : 'Review cost & send'}
+            </Button>
+          </form>
+        </>
+      )}
+
+      {(dashboard?.campaigns || []).length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">SMS campaign and delivery history</h3>
+            <label className="flex items-center gap-2 text-xs">
+              <span>Recipient status</span>
+              <select value={deliveryFilter} onChange={(event) => setDeliveryFilter(event.target.value)} className="rounded-lg border border-input bg-background px-2 py-1">
+                <option>All</option><option value="delivered">Delivered</option><option value="failed">Failed</option><option value="pending">Pending</option>
+              </select>
+            </label>
+          </div>
+          {dashboard.campaigns.map((campaign: any) => (
+            <details key={campaign.id} className="rounded-xl border border-border p-3">
+              <summary className="cursor-pointer flex flex-wrap justify-between gap-2 text-sm">
+                <span>{campaign.sender_name} · {new Date(campaign.created_at).toLocaleString()}</span>
+                <span>{campaign.status} · {campaign.recipient_count} recipient(s) · {(campaign.recipients || []).filter((r: any) => r.status === 'delivered').length} delivered / {(campaign.recipients || []).filter((r: any) => r.status === 'failed').length} failed / {(campaign.recipients || []).filter((r: any) => r.status === 'pending').length} pending · estimate {campaign.estimated_cost}, actual {campaign.actual_credits ?? 'pending'} credits</span>
+              </summary>
+              <p className="my-2 whitespace-pre-wrap text-sm">{campaign.message}</p>
+              <div className="flex flex-wrap gap-2">
+                {campaign.provider_campaign_id && <Button variant="secondary" disabled={busy} onClick={() => void refreshCampaign(campaign.id)}>Refresh delivery status</Button>}
+                <Button variant="secondary" onClick={() => exportRecipients(campaign)}>Export recipients CSV</Button>
+              </div>
+              <div className="mt-3 overflow-auto">
+                <table className="w-full text-left text-xs">
+                  <thead><tr><th className="p-2">Recipient</th><th className="p-2">Status</th><th className="p-2">Failure reason</th></tr></thead>
+                  <tbody>{(campaign.recipients || []).filter((recipient: any) => deliveryFilter === 'All' || recipient.status === deliveryFilter).map((recipient: any) => (
+                    <tr key={recipient.recipient_phone} className="border-t border-border">
+                      <td className="p-2">{recipient.recipient_phone}</td><td className="p-2">{recipient.status}</td><td className="p-2">{recipient.failure_reason || '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+      {notice && <p role="status" className="rounded-xl bg-muted/60 p-3 text-sm">{notice}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </section>
   );
 }

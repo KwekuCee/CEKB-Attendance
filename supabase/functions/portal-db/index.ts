@@ -1,8 +1,16 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
 import { sendMail } from '../_shared/mailer.ts';
-import { sendMnotifySms } from '../_shared/mnotify.ts';
+import {
+  getMnotifyCampaignReport,
+  getMnotifySenderIdStatus,
+  getMnotifySmsBalance,
+  registerMnotifySenderId,
+  sendMnotifyMessage,
+  sendMnotifySms,
+} from '../_shared/mnotify.ts';
 import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
+import { estimateSmsCost } from '../../../src/lib/smsPricing.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -119,6 +127,16 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+async function logMnotifyFailure(operation: string) {
+  const { error } = await admin.from('audit_logs').insert({
+    actor: 'System',
+    action: `mNotify ${operation} request failed; provider details withheld.`,
+    category: 'Messaging',
+    icon: 'warning',
+  });
+  if (error) console.error('Could not record mNotify API failure:', error.message);
 }
 
 async function sha256(value: string) {
@@ -813,8 +831,552 @@ async function handleAdminSms(body: any, session: Session | null) {
   return json({ success: true, sms: result.sms });
 }
 
+const SMS_MANAGER_ROLES = new Set(['Superadmin', 'Church Admin', 'Church Pastor']);
+const RESERVED_SENDER_TERMS = ['bank', 'mtn', 'vodafone', 'telecel', 'airteltigo', 'gov', 'government', 'police', 'ecg'];
+
+async function getMnotifyManagementConfig() {
+  const { data, error } = await admin.from('admin_settings').select('setting_value')
+    .eq('setting_key', 'mnotify_management').maybeSingle();
+  if (error) throw new Error('Could not load mNotify management settings.');
+  const saved = data?.setting_value && typeof data.setting_value === 'object' ? data.setting_value : {};
+  return {
+    adminPhone: typeof saved.adminPhone === 'string' ? saved.adminPhone : '',
+    alertSenderId: typeof saved.alertSenderId === 'string' ? saved.alertSenderId : '',
+    unitRate: Number.isFinite(Number(saved.unitRate)) && saved.unitRate !== null ? Number(saved.unitRate) : null,
+    lowBalanceThreshold: Number.isFinite(Number(saved.lowBalanceThreshold)) ? Number(saved.lowBalanceThreshold) : 0,
+    lowBalanceAlerted: saved.lowBalanceAlerted === true,
+    lastBalance: saved.lastBalance !== null && saved.lastBalance !== undefined && Number.isFinite(Number(saved.lastBalance))
+      ? Number(saved.lastBalance)
+      : null,
+    balanceCheckedAt: typeof saved.balanceCheckedAt === 'string' ? saved.balanceCheckedAt : null,
+  };
+}
+
+async function saveMnotifyBalance(balance: number) {
+  const config = await getMnotifyManagementConfig();
+  const { error } = await admin.from('admin_settings').upsert({
+    setting_key: 'mnotify_management',
+    setting_value: { ...config, lastBalance: balance, balanceCheckedAt: new Date().toISOString() },
+    setting_type: 'json',
+    is_global: true,
+  }, { onConflict: 'setting_key' });
+  if (error) throw new Error('Could not save the latest mNotify balance.');
+}
+
+function senderNeedsReview(senderName: string) {
+  const normalized = senderName.toLowerCase().replace(/\s+/g, '');
+  return RESERVED_SENDER_TERMS.some((term) => normalized.includes(term));
+}
+
+async function addSenderStatusHistory(id: string, actor: string, from: string | null, to: string, reason?: string | null) {
+  const { error } = await admin.from('sender_id_status_history').insert({
+    sender_id_request_id: id,
+    changed_by: actor,
+    from_status: from,
+    to_status: to,
+    reason: reason || null,
+  });
+  if (error) console.error('Could not record sender-ID status history:', error.message);
+}
+
+async function sendSenderRequestAlert(sender: any, existingAlertId?: string) {
+  const cfg = await getMnotifyManagementConfig();
+  const normalizedPhone = normalizeGhanaPhone(cfg.adminPhone);
+  const alert = {
+    sender_id_request_id: sender.id,
+    channel: 'sms',
+    recipient: normalizedPhone ? `***${normalizedPhone.slice(-4)}` : 'invalid-configured-phone',
+    status: 'pending',
+    attempts: 0,
+  };
+  let alertId = existingAlertId;
+  if (!alertId) {
+    const { data: alertRow, error: insertError } = await admin.from('admin_alerts').insert(alert).select('id').single();
+    alertId = alertRow?.id;
+    if (insertError || !alertId) {
+      console.error('Could not create sender-ID admin alert record:', insertError?.message);
+      return { status: 'failed', error: 'Could not record admin alert.' };
+    }
+  }
+  if (!normalizedPhone || !/^[A-Za-z0-9 ]{1,11}$/.test(cfg.alertSenderId)) {
+    await admin.from('admin_alerts').update({
+      status: 'failed',
+      attempts: 0,
+      error_message: 'Configure a valid admin phone and approved alert sender ID.',
+    }).eq('id', alertId);
+    return { status: 'failed', error: 'Admin alert settings are incomplete.' };
+  }
+
+  const prefix = `New Sender ID request: ${sender.sender_name} | Purpose: `;
+  const suffix = ` | User: ${(sender.user_name || 'Portal user').slice(0, 22)}. Create it in mNotify dashboard.`;
+  const message = `${prefix}${String(sender.purpose || '').slice(0, Math.max(0, 158 - prefix.length - suffix.length))}${suffix}`.slice(0, 160);
+  let lastError = 'mNotify did not accept the alert.';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await sendMnotifySms([normalizedPhone], cfg.alertSenderId, message);
+    if (result.accepted > 0) {
+      await admin.from('admin_alerts').update({
+        status: 'sent',
+        attempts: attempt,
+        provider_campaign_id: result.campaignIds[0] || null,
+        error_message: null,
+        sent_at: new Date().toISOString(),
+      }).eq('id', alertId);
+      return { status: 'sent', error: null };
+    }
+    lastError = result.error || lastError;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+  }
+  await admin.from('admin_alerts').update({
+    status: 'failed',
+    attempts: 3,
+    error_message: lastError.slice(0, 300),
+  }).eq('id', alertId);
+  return { status: 'failed', error: lastError };
+}
+
+function senderStatusFromMnotify(payload: Record<string, any> | null): 'submitted' | 'verified' | 'rejected' | null {
+  const raw = String(payload?.summary?.status || payload?.summary?.['sender status'] || '').toLowerCase();
+  if (raw.includes('approv') || raw.includes('verif')) return 'verified';
+  if (raw.includes('reject') || raw.includes('declin')) return 'rejected';
+  if (raw.includes('pending') || raw.includes('submit')) return 'submitted';
+  return null;
+}
+
+async function notifySenderOwner(sender: any, status: 'verified' | 'rejected', reason?: string | null) {
+  const { data: profile } = await admin.from('user_profiles')
+    .select('email, full_name, phone, admin_verified')
+    .ilike('email', sender.user_email)
+    .maybeSingle();
+  const email = String(profile?.email || sender.user_email || '').trim();
+  const name = String(profile?.full_name || sender.user_name || 'there');
+  const instructions = 'Use this approved Sender ID on the Send SMS page. Sender IDs must be at most 11 characters. A single SMS page supports up to 160 GSM-7 characters (70 Unicode characters); longer messages use multiple pages. Do not send spam or content that violates mNotify terms.';
+  const subject = status === 'verified' ? `Sender ID ${sender.sender_name} approved` : `Sender ID ${sender.sender_name} needs changes`;
+  const body = status === 'verified'
+    ? `<p>Hello ${name.replace(/[&<>"]/g, '')},</p><p>Your Sender ID <strong>${sender.sender_name}</strong> is approved and ready to use.</p><p>${instructions}</p>`
+    : `<p>Hello ${name.replace(/[&<>"]/g, '')},</p><p>Your Sender ID <strong>${sender.sender_name}</strong> was not approved. ${String(reason || 'Please contact your administrator for details.').replace(/[&<>"]/g, '')}</p><p>You can submit a corrected request from SMS Settings.</p>`;
+  let emailSent = false;
+  if (email.includes('@')) {
+    const result = await sendMail({ to: email, subject, html: body });
+    emailSent = result.ok;
+    await admin.from('email_send_log').insert({
+      template_name: 'mnotify_sender_id_status',
+      recipient_email: email,
+      status: result.ok ? 'sent' : 'failed',
+      error_message: result.ok ? null : 'Sender ID status notification email could not be delivered.',
+      metadata: { church: sender.church_name, sender_id: sender.sender_name, status },
+    });
+  }
+  let smsSent = false;
+  if (profile?.admin_verified === true) {
+    const phone = normalizeGhanaPhone(profile.phone);
+    const { data: cfgRow } = await admin.from('admin_settings').select('setting_value')
+      .eq('setting_key', 'sms_config').maybeSingle();
+    const configuredSender = String((cfgRow?.setting_value as any)?.senderId || '');
+    if (phone && /^[A-Za-z0-9 ]{1,11}$/.test(configuredSender)) {
+      const notification = status === 'verified'
+        ? `${sender.sender_name} is approved. ${instructions}`
+        : `${sender.sender_name} was rejected: ${reason || 'Please check your email and resubmit.'}`;
+      smsSent = (await sendMnotifySms([phone], configuredSender, notification.slice(0, 1000))).accepted > 0;
+      await admin.from('email_send_log').insert({
+        template_name: 'mnotify_sender_id_status_sms',
+        recipient_email: 'verified phone',
+        recipient_phone: 'verified user phone',
+        channel: 'sms',
+        status: smsSent ? 'sent' : 'failed',
+        error_message: smsSent ? null : 'Sender ID status notification SMS could not be delivered.',
+        metadata: { church: sender.church_name, sender_id: sender.sender_name, status },
+      });
+    }
+  }
+  return { emailSent, smsSent };
+}
+
+async function setSenderStatus(sender: any, status: 'verified' | 'rejected', actor: string, reason?: string | null) {
+  if (sender.status === status && sender.notification_sent_at) return { success: true, notification: { emailSent: false, smsSent: false } };
+  const { error } = await admin.from('sender_id_requests').update({
+    status,
+    reviewed_by: actor,
+    reviewed_at: new Date().toISOString(),
+    rejection_reason: status === 'rejected' ? (reason || 'No reason provided.').slice(0, 500) : null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', sender.id);
+  if (error) return { success: false, error: 'Could not update sender-ID approval.' };
+  await addSenderStatusHistory(sender.id, actor, sender.status, status, reason);
+  const notification = await notifySenderOwner(sender, status, reason);
+  await admin.from('sender_id_requests').update({
+    notification_sent_at: notification.emailSent || notification.smsSent ? new Date().toISOString() : null,
+  }).eq('id', sender.id);
+  return { success: true, notification };
+}
+
+async function refreshSenderStatus(sender: any) {
+  const result = await getMnotifySenderIdStatus(sender.sender_name);
+  if (!result.ok) {
+    await logMnotifyFailure('Sender ID status');
+    return { success: false, error: result.error || 'Could not refresh sender-ID status.' };
+  }
+  const status = senderStatusFromMnotify(result.payload);
+  if (!status) return { success: true, status: sender.status, pending: true };
+  if (status === sender.status) {
+    await admin.from('sender_id_requests').update({ updated_at: new Date().toISOString() }).eq('id', sender.id);
+    return { success: true, status };
+  }
+  if (status === 'verified' || status === 'rejected') {
+    const updated = await setSenderStatus(sender, status, 'mNotify API', result.payload?.summary?.reason || null);
+    return { ...updated, status };
+  }
+  await admin.from('sender_id_requests').update({ status: 'submitted', updated_at: new Date().toISOString() }).eq('id', sender.id);
+  await addSenderStatusHistory(sender.id, 'mNotify API', sender.status, 'submitted');
+  return { success: true, status: 'submitted' };
+}
+
+async function pollMnotifyPending() {
+  const senderCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const reportCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const expiryCutoff = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const [{ data: senders }, { data: campaigns }] = await Promise.all([
+    admin.from('sender_id_requests').select('*').eq('submission_status', 'submitted')
+      .in('status', ['pending', 'submitted']).lt('updated_at', senderCutoff).limit(100),
+    admin.from('sms_campaigns').select('*').in('status', ['sent', 'partial'])
+      .not('provider_campaign_id', 'is', null).gte('created_at', expiryCutoff)
+      .or(`last_polled_at.is.null,last_polled_at.lt.${reportCutoff}`).limit(100),
+  ]);
+  let senderCount = 0;
+  let campaignCount = 0;
+  for (const sender of senders || []) {
+    const result = await refreshSenderStatus(sender);
+    if (result.success) senderCount++;
+  }
+  for (const campaign of campaigns || []) {
+    const result = await refreshCampaignReport(campaign);
+    if (result.success) campaignCount++;
+  }
+  const balance = await getMnotifySmsBalance();
+  if (balance.ok) {
+    const credits = Number(balance.payload?.balance || 0) + Number(balance.payload?.bonus || 0);
+    if (Number.isFinite(credits)) {
+      await saveMnotifyBalance(credits);
+      await checkMnotifyLowBalance(credits);
+    }
+  } else await logMnotifyFailure('SMS balance');
+  return { senderIds: senderCount, campaigns: campaignCount };
+}
+
+async function checkMnotifyLowBalance(balance: number) {
+  const config = await getMnotifyManagementConfig();
+  if (balance > config.lowBalanceThreshold) {
+    if (config.lowBalanceAlerted) {
+      await admin.from('admin_settings').upsert({
+        setting_key: 'mnotify_management',
+        setting_value: { ...config, lowBalanceAlerted: false },
+        setting_type: 'json',
+        is_global: true,
+      }, { onConflict: 'setting_key' });
+    }
+    return;
+  }
+  if (config.lowBalanceAlerted) return;
+  const phone = normalizeGhanaPhone(config.adminPhone);
+  const sms = phone
+    ? await sendMnotifySms([phone], config.alertSenderId, `Low mNotify SMS balance alert: ${balance} credits remain. Threshold: ${config.lowBalanceThreshold}.`)
+    : null;
+  await admin.from('admin_alerts').insert({
+    channel: 'sms',
+    recipient: phone ? `***${phone.slice(-4)}` : 'invalid-configured-phone',
+    status: sms?.accepted ? 'sent' : 'failed',
+    attempts: 1,
+    provider_campaign_id: sms?.campaignIds[0] || null,
+    error_message: sms?.error || (phone ? null : 'Configure a valid admin alert phone number.'),
+    sent_at: sms?.accepted ? new Date().toISOString() : null,
+  });
+  await admin.from('admin_settings').upsert({
+    setting_key: 'mnotify_management',
+    setting_value: { ...config, lowBalanceAlerted: true },
+    setting_type: 'json',
+    is_global: true,
+  }, { onConflict: 'setting_key' });
+}
+
+async function refreshCampaignReport(campaign: any) {
+  if (!campaign.provider_campaign_id) return { success: false, error: 'mNotify has not returned a campaign ID.' };
+  const result = await getMnotifyCampaignReport(campaign.provider_campaign_id);
+  if (!result.ok) {
+    await logMnotifyFailure('campaign delivery report');
+    return { success: false, error: result.error || 'Could not refresh delivery report.' };
+  }
+  const report = Array.isArray(result.payload?.report) ? result.payload.report : [];
+  let delivered = 0;
+  let failed = 0;
+  for (const entry of report) {
+    const phone = normalizeGhanaPhone(entry?.recipient);
+    if (!phone) continue;
+    const raw = String(entry?.status || '').toLowerCase();
+    const status = raw.includes('deliver') ? 'delivered' : raw.includes('fail') || raw.includes('reject') || raw.includes('undeliver') ? 'failed' : 'pending';
+    if (status === 'delivered') delivered++;
+    else if (status === 'failed') failed++;
+    await admin.from('sms_recipients').update({
+      status,
+      failure_reason: status === 'failed' ? String(entry?.reason || entry?.error || 'Delivery failed.').slice(0, 300) : null,
+      provider_message_id: entry?._id == null ? null : String(entry._id).slice(0, 100),
+      updated_at: new Date().toISOString(),
+    }).eq('campaign_id', campaign.id).eq('recipient_phone', phone);
+  }
+  const { count: recipientCount } = await admin.from('sms_recipients')
+    .select('id', { count: 'exact', head: true }).eq('campaign_id', campaign.id);
+  const status = report.length && delivered + failed >= (recipientCount || 0)
+    ? (failed ? delivered ? 'partial' : 'failed' : 'sent')
+    : campaign.status;
+  await admin.from('sms_campaigns').update({
+    status,
+    last_polled_at: new Date().toISOString(),
+  }).eq('id', campaign.id);
+  const counts = await Promise.all(['delivered', 'failed', 'pending'].map(async (value) => {
+    const { count } = await admin.from('sms_recipients').select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaign.id).eq('status', value);
+    return count || 0;
+  }));
+  return { success: true, counts: { delivered: counts[0], failed: counts[1], pending: counts[2] } };
+}
+
+async function handleMnotifyUserAction(body: any, session: Session | null, req: Request) {
+  if (!session || !SMS_MANAGER_ROLES.has(session.role) || !session.user_email) {
+    return json({ error: { message: 'Church Admin or Church Pastor sign-in is required.' } }, 403);
+  }
+  const email = session.user_email.toLowerCase();
+  const op = String(body?.op || '');
+  if (op === 'dashboard') {
+    const [{ data: senderIds, error: senderError }, { data: campaigns, error: campaignError }, cfg] = await Promise.all([
+      admin.from('sender_id_requests').select('id, sender_name, purpose, status, submission_status, submission_error, rejection_reason, review_required, created_at, submitted_to_mnotify_at')
+        .ilike('user_email', email).order('created_at', { ascending: false }).limit(50),
+      admin.from('sms_campaigns').select('id, sender_name, message, recipient_count, pages_per_message, total_pages, estimated_cost, actual_credits, status, created_at, provider_campaign_id')
+        .ilike('user_email', email).order('created_at', { ascending: false }).limit(30),
+      getMnotifyManagementConfig(),
+    ]);
+    if (senderError || campaignError) return json({ error: { message: 'Could not load SMS dashboard.' } }, 500);
+    const campaignRows = await Promise.all((campaigns || []).map(async (campaign: any) => {
+      const { data: recipients } = await admin.from('sms_recipients').select('recipient_phone, status, failure_reason')
+        .eq('campaign_id', campaign.id).limit(100);
+      return { ...campaign, recipients: recipients || [] };
+    }));
+    return json({ success: true, senderIds: senderIds || [], campaigns: campaignRows, unitRate: cfg.unitRate });
+  }
+
+  if (op === 'submitSenderId') {
+    const senderName = String(body.senderName || '').trim().replace(/\s+/g, ' ');
+    const purpose = String(body.purpose || '').trim();
+    if (!/^[A-Za-z0-9 ]{1,11}$/.test(senderName)) return json({ error: { message: 'Sender ID must be 1-11 characters using letters, numbers, and spaces only.' } }, 400);
+    if (purpose.length < 30 || purpose.length > 1000) return json({ error: { message: 'Explain your intended messages in 30-1,000 characters.' } }, 400);
+    const limited = await rateLimit(req, 'sender-id-submit', 5, 86400, corsHeaders, email, true, true);
+    if (limited) return limited;
+    const existingId = String(body.id || '');
+    let sender: any;
+    let previousStatus: string | null = null;
+    if (existingId) {
+      const { data } = await admin.from('sender_id_requests').select('*').eq('id', existingId).ilike('user_email', email).maybeSingle();
+      if (!data || !['failed', 'rejected'].includes(data.status)) return json({ error: { message: 'This request cannot be resubmitted.' } }, 404);
+      previousStatus = data.status;
+      const { data: updated, error } = await admin.from('sender_id_requests').update({
+        sender_name: senderName, purpose, status: 'pending', submission_status: 'pending',
+        submission_error: null, rejection_reason: null, review_required: senderNeedsReview(senderName),
+        reviewed_by: null, reviewed_at: null, notification_sent_at: null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', existingId).select('*').single();
+      if (error) return json({ error: { message: 'Could not update this sender-ID request. A duplicate sender name may already be registered.' } }, 409);
+      sender = updated;
+    } else {
+      const { data, error } = await admin.from('sender_id_requests').insert({
+        user_email: email, user_name: session.user_name, church_id: session.church_id,
+        church_name: session.church_name, sender_name: senderName, purpose,
+        review_required: senderNeedsReview(senderName),
+      }).select('*').single();
+      if (error) return json({ error: { message: 'Could not save the request. This sender ID may already be in use.' } }, 409);
+      sender = data;
+    }
+    await addSenderStatusHistory(sender.id, email, previousStatus, 'pending');
+    const provider = await registerMnotifySenderId(senderName, purpose);
+    if (!provider.ok) await logMnotifyFailure('Sender ID registration');
+    const providerStatus = provider.ok ? senderStatusFromMnotify(provider.payload) || 'submitted' : 'failed';
+    const updatedStatus = provider.ok ? providerStatus : 'failed';
+    const { error: saveError } = await admin.from('sender_id_requests').update({
+      status: updatedStatus,
+      submission_status: provider.ok ? 'submitted' : 'failed',
+      submission_response: provider.payload,
+      submission_error: provider.error,
+      submitted_to_mnotify_at: provider.ok ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', sender.id);
+    if (saveError) console.error('Could not save mNotify sender response:', saveError.message);
+    if (updatedStatus !== 'pending') await addSenderStatusHistory(sender.id, 'mNotify API', 'pending', updatedStatus, provider.error);
+    const alertConfig = await getMnotifyManagementConfig();
+    const alertPhone = normalizeGhanaPhone(alertConfig.adminPhone);
+    const { data: alertRow, error: alertInsertError } = await admin.from('admin_alerts').insert({
+      sender_id_request_id: sender.id,
+      channel: 'sms',
+      recipient: alertPhone ? `***${alertPhone.slice(-4)}` : 'invalid-configured-phone',
+      status: 'pending',
+      attempts: 0,
+    }).select('id').single();
+    let alertStatus = 'failed';
+    let alertError: string | null = 'Could not queue admin alert.';
+    if (alertInsertError || !alertRow) {
+      console.error('Could not queue sender-ID admin alert:', alertInsertError?.message);
+    } else {
+      alertStatus = 'pending';
+      alertError = null;
+      EdgeRuntime.waitUntil(sendSenderRequestAlert(sender, alertRow.id).catch(async (err) => {
+        console.error('Sender-ID admin alert task failed:', err instanceof Error ? err.message : 'unknown error');
+        await admin.from('admin_alerts').update({
+          status: 'failed',
+          attempts: 0,
+          error_message: 'Background SMS alert processing failed.',
+        }).eq('id', alertRow.id);
+      }));
+    }
+    if (updatedStatus === 'verified' || updatedStatus === 'rejected') {
+      await setSenderStatus({ ...sender, status: 'submitted' }, updatedStatus, 'mNotify API', provider.payload?.summary?.reason || null);
+    }
+    return json({
+      success: true,
+      senderId: { ...sender, status: updatedStatus, submission_status: provider.ok ? 'submitted' : 'failed', submission_error: provider.error },
+      providerAccepted: provider.ok,
+      alertStatus,
+      alertError,
+    });
+  }
+
+  if (op === 'refreshSenderId') {
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).ilike('user_email', email).maybeSingle();
+    if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
+    const result = await refreshSenderStatus(sender);
+    return json(result.success ? { success: true, status: result.status, pending: result.pending } : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
+  }
+
+  if (op === 'sendSms') {
+    const limited = await rateLimit(req, 'user-sms-send', 10, 600, corsHeaders, email, true, true);
+    if (limited) return limited;
+    const idempotencyKey = String(body.idempotencyKey || '');
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) return json({ error: { message: 'Invalid send request. Reload the form and try again.' } }, 400);
+    if (!message || [...message].length > 1000) return json({ error: { message: 'Enter a message between 1 and 1,000 characters.' } }, 400);
+    const inputRecipients = Array.isArray(body.recipients)
+      ? body.recipients
+      : String(body.recipients || '').split(/[\s,;]+/);
+    const valid = new Set<string>();
+    const invalid: string[] = [];
+    for (const value of inputRecipients) {
+      const raw = String(value || '').trim();
+      if (!raw) continue;
+      if (!/^\+?[\d\s().-]+$/.test(raw)) {
+        invalid.push(raw.slice(0, 40));
+        continue;
+      }
+      const phone = normalizeGhanaPhone(raw);
+      if (phone) valid.add(phone);
+      else invalid.push(raw.slice(0, 40));
+    }
+    if (invalid.length) return json({ error: { message: `Correct invalid Ghana phone number(s): ${invalid.slice(0, 10).join(', ')}` } }, 400);
+    const recipients = [...valid];
+    if (!recipients.length || recipients.length > 100) return json({ error: { message: 'Enter between 1 and 100 unique valid Ghana phone numbers.' } }, 400);
+    const senderIdRequestId = String(body.senderIdRequestId || '');
+    const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name, status')
+      .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').maybeSingle();
+    if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
+    const cfg = await getMnotifyManagementConfig();
+    if (cfg.unitRate === null || cfg.unitRate <= 0) return json({ error: { message: 'SMS sending is not configured yet. Ask the Developer to set the cost per SMS page.' } }, 503);
+    const estimate = estimateSmsCost(message, recipients.length, cfg.unitRate);
+    const balanceResult = await getMnotifySmsBalance();
+    const balance = Number(balanceResult.payload?.balance) + Number(balanceResult.payload?.bonus || 0);
+    if (!balanceResult.ok || !Number.isFinite(balance)) {
+      await logMnotifyFailure('SMS balance');
+      return json({ error: { message: 'Could not verify mNotify credit balance; the SMS was not sent.' } }, 503);
+    }
+    await saveMnotifyBalance(balance);
+    await checkMnotifyLowBalance(balance);
+    if (balance < estimate.estimatedCost) return json({ error: { message: 'mNotify balance is too low for this estimated send.' }, estimate }, 402);
+
+    const { data: prior } = await admin.from('sms_campaigns').select('id, status, provider_campaign_id')
+      .ilike('user_email', email).eq('idempotency_key', idempotencyKey).maybeSingle();
+    if (prior) return json({ success: true, duplicate: true, campaignId: prior.id, status: prior.status });
+    const { data: campaign, error: campaignError } = await admin.from('sms_campaigns').insert({
+      user_email: email, user_name: session.user_name, church_name: session.church_name,
+      sender_id_request_id: sender.id, sender_name: sender.sender_name, message,
+      recipient_count: recipients.length, pages_per_message: estimate.pagesPerMessage,
+      total_pages: estimate.totalPages, unit_rate: cfg.unitRate, estimated_cost: estimate.estimatedCost,
+      status: 'pending', idempotency_key: idempotencyKey,
+    }).select('*').single();
+    if (campaignError || !campaign) {
+      const { data: duplicate } = await admin.from('sms_campaigns').select('id, status')
+        .ilike('user_email', email).eq('idempotency_key', idempotencyKey).maybeSingle();
+      if (duplicate) return json({ success: true, duplicate: true, campaignId: duplicate.id, status: duplicate.status });
+      return json({ error: { message: 'Could not queue the SMS request.' } }, 500);
+    }
+    const { error: recipientError } = await admin.from('sms_recipients').insert(recipients.map((recipient_phone) => ({
+      campaign_id: campaign.id, recipient_phone,
+    })));
+    if (recipientError) {
+      await admin.from('sms_campaigns').update({ status: 'failed' }).eq('id', campaign.id);
+      return json({ error: { message: 'Could not save recipients; no SMS was sent.' } }, 500);
+    }
+    const sent = await sendMnotifyMessage(recipients, sender.sender_name, message);
+    if (sent.error) await logMnotifyFailure('SMS send');
+    const accepted = new Set(sent.acceptedRecipients.map(normalizeGhanaPhone).filter(Boolean));
+    const failedRecipients = recipients.filter((recipient) => !accepted.has(recipient));
+    if (failedRecipients.length) {
+      await admin.from('sms_recipients').update({
+        status: 'failed',
+        failure_reason: sent.error || 'mNotify did not accept this recipient.',
+        updated_at: new Date().toISOString(),
+      }).eq('campaign_id', campaign.id).in('recipient_phone', failedRecipients);
+    }
+    const campaignId = sent.campaignIds.length === 1 ? sent.campaignIds[0] : null;
+    const sendStatus = sent.accepted === 0 ? 'failed' : sent.failed > 0 ? 'partial' : 'sent';
+    await admin.from('sms_campaigns').update({
+      status: sendStatus,
+      provider_campaign_id: campaignId,
+      actual_credits: sent.creditsUsed,
+    }).eq('id', campaign.id);
+    const { error: logError } = await admin.from('email_send_log').insert({
+      template_name: 'user_sms_campaign',
+      recipient_email: 'campaign',
+      channel: 'sms',
+      status: sendStatus === 'failed' ? 'failed' : 'sent',
+      error_message: sent.error,
+      metadata: {
+        channel: 'sms', provider: 'mNotify', campaign_id: campaignId,
+        sender_id: sender.sender_name, recipient_count: recipients.length,
+        accepted: sent.accepted, failed: sent.failed, estimated_cost: estimate.estimatedCost,
+        actual_credits: sent.creditsUsed,
+      },
+    });
+    if (logError) console.error('Could not write SMS campaign telemetry:', logError.message);
+    await admin.from('audit_logs').insert({
+      actor: session.role, action: `Sent SMS campaign (${sent.accepted} accepted, ${sent.failed} failed)`,
+      category: 'Messaging', church_name: session.church_name, icon: 'sms',
+    });
+    return json({
+      success: sendStatus !== 'failed',
+      campaignId: campaign.id,
+      providerCampaignId: campaignId,
+      status: sendStatus,
+      accepted: sent.accepted,
+      failed: sent.failed,
+      creditsUsed: sent.creditsUsed,
+      estimate,
+      error: sent.error,
+    }, sendStatus === 'failed' ? 502 : 200);
+  }
+
+  if (op === 'refreshCampaign') {
+    const { data: campaign } = await admin.from('sms_campaigns').select('*').eq('id', String(body.id || '')).ilike('user_email', email).maybeSingle();
+    if (!campaign) return json({ error: { message: 'SMS campaign not found.' } }, 404);
+    const result = await refreshCampaignReport(campaign);
+    return json(result.success ? result : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
+  }
+  return json({ error: { message: 'Unknown SMS management action.' } }, 400);
+}
+
 // Totals-only deep analytics for the developer console. Never returns personal fields.
-const DEV_TABLES = ['churches', 'members', 'leaders', 'attendance_records', 'cell_reports', 'announcements', 'audit_logs', 'email_send_log', 'user_profiles', 'church_admin_accounts', 'portal_sessions', 'absence_records', 'qr_tokens', 'service_types', 'suppressed_emails'];
+const DEV_TABLES = ['churches', 'members', 'leaders', 'attendance_records', 'cell_reports', 'announcements', 'audit_logs', 'email_send_log', 'user_profiles', 'church_admin_accounts', 'portal_sessions', 'absence_records', 'qr_tokens', 'service_types', 'suppressed_emails', 'sender_id_requests', 'sender_id_status_history', 'admin_alerts', 'sms_campaigns', 'sms_recipients'];
 async function handleDevAnalytics(session: Session | null) {
   if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
   const now = Date.now();
@@ -1437,6 +1999,148 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     return json({ success: true, config: safeConfig });
   }
 
+  if (op === 'saveMnotifyManagement') {
+    const cfg = body.config && typeof body.config === 'object' && !Array.isArray(body.config) ? body.config : {};
+    const rawPhone = String(cfg.adminPhone || '').trim();
+    if (!/^\+?[\d\s().-]+$/.test(rawPhone)) return json({ error: { message: 'Enter a valid Ghanaian admin alert phone number.' } }, 400);
+    const adminPhone = normalizeGhanaPhone(rawPhone);
+    const alertSenderId = String(cfg.alertSenderId || '').trim();
+    const unitRate = Number(cfg.unitRate);
+    const lowBalanceThreshold = Number(cfg.lowBalanceThreshold);
+    if (!adminPhone) return json({ error: { message: 'Enter a valid Ghanaian admin alert phone number.' } }, 400);
+    if (!/^[A-Za-z0-9 ]{1,11}$/.test(alertSenderId)) return json({ error: { message: 'Alert sender ID must be 1-11 letters, numbers, or spaces.' } }, 400);
+    if (!Number.isFinite(unitRate) || unitRate <= 0 || unitRate > 1000) return json({ error: { message: 'Enter a valid per-page SMS rate.' } }, 400);
+    if (!Number.isFinite(lowBalanceThreshold) || lowBalanceThreshold < 0 || lowBalanceThreshold > 10000000) return json({ error: { message: 'Enter a valid balance alert threshold.' } }, 400);
+    const previous = await getMnotifyManagementConfig();
+    const config = {
+      adminPhone: `+233${adminPhone.slice(1)}`,
+      alertSenderId,
+      unitRate,
+      lowBalanceThreshold,
+      lowBalanceAlerted: previous.lowBalanceAlerted,
+      lastBalance: previous.lastBalance,
+      balanceCheckedAt: previous.balanceCheckedAt,
+    };
+    const { error } = await admin.from('admin_settings').upsert({
+      setting_key: 'mnotify_management', setting_value: config, setting_type: 'json', is_global: true,
+    }, { onConflict: 'setting_key' });
+    if (error) return json({ error: { message: 'Could not save mNotify settings.' } }, 500);
+    await log('Updated mNotify management settings', 'Settings');
+    return json({ success: true, config });
+  }
+
+  if (op === 'senderIdOverview') {
+    const [{ data: senders }, { data: alerts }, { data: campaigns }, cfg] = await Promise.all([
+      admin.from('sender_id_requests').select('id, sender_name, purpose, status, submission_status, submission_response, submission_error, rejection_reason, review_required, created_at, submitted_to_mnotify_at, notification_sent_at')
+        .order('created_at', { ascending: false }).limit(300),
+      admin.from('admin_alerts').select('id, sender_id_request_id, channel, recipient, status, attempts, provider_campaign_id, error_message, sent_at, created_at')
+        .order('created_at', { ascending: false }).limit(100),
+      admin.from('sms_campaigns').select('id, sender_name, recipient_count, pages_per_message, total_pages, unit_rate, estimated_cost, actual_credits, provider_campaign_id, status, last_polled_at, created_at')
+        .order('created_at', { ascending: false }).limit(300),
+      getMnotifyManagementConfig(),
+    ]);
+    const campaignIds = (campaigns || []).map((campaign: any) => campaign.id);
+    const recipientCounts = new Map<string, { delivered: number; failed: number; pending: number }>();
+    if (campaignIds.length) {
+      const { data: recipients, error } = await admin.from('sms_recipients').select('campaign_id, status').in('campaign_id', campaignIds);
+      if (error) throw new Error('Could not load SMS delivery totals.');
+      for (const recipient of recipients || []) {
+        const counts = recipientCounts.get(recipient.campaign_id) || { delivered: 0, failed: 0, pending: 0 };
+        if (recipient.status === 'delivered' || recipient.status === 'failed' || recipient.status === 'pending') {
+          counts[recipient.status]++;
+        }
+        recipientCounts.set(recipient.campaign_id, counts);
+      }
+    }
+    const joinedCampaigns = (campaigns || []).map((campaign: any) => ({
+      ...campaign,
+      delivery: recipientCounts.get(campaign.id) || { delivered: 0, failed: 0, pending: 0 },
+    }));
+    return json({
+      success: true,
+      senderIds: senders || [],
+      alerts: alerts || [],
+      campaigns: joinedCampaigns,
+      config: cfg,
+      balance: cfg.lastBalance,
+      balanceError: cfg.lastBalance === null ? 'Check live balance to load.' : null,
+    });
+  }
+
+  if (op === 'reviewSenderId') {
+    const id = String(body.id || '');
+    const status = body.status === 'verified' || body.status === 'rejected' ? body.status : null;
+    const reason = String(body.reason || '').trim().slice(0, 500);
+    if (!status) return json({ error: { message: 'Choose verified or rejected.' } }, 400);
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', id).maybeSingle();
+    if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
+    const result = await setSenderStatus(sender, status, session.user_email || 'Developer', reason);
+    if (!result.success) return json({ error: { message: result.error } }, 500);
+    await log(`Marked Sender ID ${sender.sender_name} as ${status}`, 'Messaging');
+    return json(result);
+  }
+
+  if (op === 'retrySenderId') {
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).maybeSingle();
+    if (!sender || !['failed', 'pending'].includes(sender.submission_status)) {
+      return json({ error: { message: 'Only failed sender-ID submissions can be retried.' } }, 400);
+    }
+    const result = await registerMnotifySenderId(sender.sender_name, sender.purpose);
+    const status = result.ok ? senderStatusFromMnotify(result.payload) || 'submitted' : 'failed';
+    const { error } = await admin.from('sender_id_requests').update({
+      status, submission_status: result.ok ? 'submitted' : 'failed',
+      submission_response: result.payload, submission_error: result.error,
+      submitted_to_mnotify_at: result.ok ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', sender.id);
+    if (error) return json({ error: { message: 'Could not save retry result.' } }, 500);
+    await addSenderStatusHistory(sender.id, session.user_email || 'Developer', sender.status, status, result.error);
+    if (status === 'verified' || status === 'rejected') {
+      const notified = await setSenderStatus({ ...sender, status: 'submitted', notification_sent_at: null }, status, 'mNotify API', result.payload?.summary?.reason || null);
+      if (!notified.success) console.error('Could not notify user about sender-ID status:', notified.error);
+    }
+    return json({ success: result.ok, status, error: result.error });
+  }
+
+  if (op === 'retrySenderAlert') {
+    const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name, purpose, user_name')
+      .eq('id', String(body.id || '')).maybeSingle();
+    if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
+    const result = await sendSenderRequestAlert(sender);
+    return json({ success: result.status === 'sent', status: result.status, error: result.error });
+  }
+
+  if (op === 'refreshAllMnotify') {
+    const limited = await rateLimit(req, 'mnotify-status-refresh', 6, 600, corsHeaders, session.user_email || session.role, true, true);
+    if (limited) return limited;
+    const refreshed = await pollMnotifyPending();
+    return json({ success: true, refreshed });
+  }
+
+  if (op === 'refreshSenderId') {
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).maybeSingle();
+    if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
+    const result = await refreshSenderStatus(sender);
+    return json(result.success ? result : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
+  }
+
+  if (op === 'refreshCampaign') {
+    const { data: campaign } = await admin.from('sms_campaigns').select('*').eq('id', String(body.id || '')).maybeSingle();
+    if (!campaign) return json({ error: { message: 'SMS campaign not found.' } }, 404);
+    const result = await refreshCampaignReport(campaign);
+    return json(result.success ? result : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
+  }
+
+  if (op === 'getMnotifyBalance') {
+    const result = await getMnotifySmsBalance();
+    if (!result.ok) return json({ error: { message: result.error } }, 502);
+    const balance = Number(result.payload?.balance || 0) + Number(result.payload?.bonus || 0);
+    const cfg = await getMnotifyManagementConfig();
+    if (Number.isFinite(balance)) await saveMnotifyBalance(balance);
+    await checkMnotifyLowBalance(balance);
+    return json({ success: true, balance, threshold: cfg.lowBalanceThreshold });
+  }
+
   if (op === 'saveSmsTemplate') {
     const tpl = body.template;
     if (!tpl || !tpl.name) return json({ error: 'Template name required' }, 400);
@@ -1687,6 +2391,15 @@ Deno.serve(async (req) => {
         return await handleDevAnalytics(session);
       case 'devAction':
         return await handleDevAction(body, session, req);
+      case 'mnotifyUser':
+        return await handleMnotifyUserAction(body, session, req);
+      case 'mnotifyScheduledPoll': {
+        const expected = Deno.env.get('MNOTIFY_POLL_SECRET')?.trim();
+        if (!expected || req.headers.get('x-mnotify-poll-secret') !== expected) {
+          return json({ error: { message: 'Scheduled poll authorization failed.' } }, 401);
+        }
+        return json({ success: true, refreshed: await pollMnotifyPending() });
+      }
       case 'sendAdminSms': {
         if (session?.role === 'Developer' || session?.role === 'Superadmin') {
           const limited = await rateLimit(req, 'admin-sms', 10, 600, corsHeaders, session.user_email || session.role, true, true);

@@ -1,8 +1,10 @@
 const MNOTIFY_SMS_URL = 'https://api.mnotify.com/api/sms/quick';
+const MNOTIFY_API_URL = 'https://api.mnotify.com/api';
 const RECIPIENTS_PER_REQUEST = 100;
 
 export interface AdminSmsResult {
   accepted: number;
+  acceptedRecipients: string[];
   failed: number;
   creditsUsed: number;
   creditsLeft: number | null;
@@ -10,9 +12,63 @@ export interface AdminSmsResult {
   error: string | null;
 }
 
+export interface MnotifyResult {
+  ok: boolean;
+  payload: Record<string, any> | null;
+  error: string | null;
+}
+
+async function requestMnotify(
+  path: string,
+  method: 'GET' | 'POST',
+  body?: Record<string, unknown>,
+): Promise<MnotifyResult> {
+  const apiKey = Deno.env.get('MNOTIFY_API_KEY')?.trim();
+  if (!apiKey) return { ok: false, payload: null, error: 'MNOTIFY_API_KEY is not configured.' };
+  const url = new URL(`${MNOTIFY_API_URL}${path}`);
+  url.searchParams.set('key', apiKey);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(15000),
+    });
+    const payload = await response.json().catch(() => null) as Record<string, any> | null;
+    if (!response.ok || String(payload?.status || '').toLowerCase() !== 'success') {
+      const message = typeof payload?.message === 'string' ? payload.message.slice(0, 240) : '';
+      return { ok: false, payload, error: message || `mNotify request failed (${response.status}).` };
+    }
+    return { ok: true, payload, error: null };
+  } catch {
+    return { ok: false, payload: null, error: 'Could not connect to mNotify.' };
+  }
+}
+
+export async function registerMnotifySenderId(senderName: string, purpose: string) {
+  return requestMnotify('/senderid/register', 'POST', { sender_name: senderName, purpose });
+}
+
+export async function getMnotifySenderIdStatus(senderName: string) {
+  return requestMnotify('/senderid/status', 'POST', { sender_name: senderName });
+}
+
+export async function getMnotifySmsBalance() {
+  return requestMnotify('/balance/sms', 'GET');
+}
+
+export async function getMnotifyCampaignReport(campaignId: string) {
+  return requestMnotify(`/campaign/${encodeURIComponent(campaignId)}`, 'GET');
+}
+
 function asCount(value: unknown): number {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? count : 0;
+}
+
+function normalizeGhanaNumber(value: unknown): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.startsWith('233') && digits.length === 12 ? `0${digits.slice(3)}` : digits;
 }
 
 export async function sendMnotifySms(
@@ -24,6 +80,7 @@ export async function sendMnotifySms(
   if (!apiKey) {
     return {
       accepted: 0,
+      acceptedRecipients: [],
       failed: recipients.length,
       creditsUsed: 0,
       creditsLeft: null,
@@ -34,6 +91,7 @@ export async function sendMnotifySms(
 
   const result: AdminSmsResult = {
     accepted: 0,
+    acceptedRecipients: [],
     failed: 0,
     creditsUsed: 0,
     creditsLeft: null,
@@ -63,7 +121,7 @@ export async function sendMnotifySms(
     const payload = await response.json().catch(() => null) as Record<string, any> | null;
     const summary = payload?.summary || {};
     const acceptedNumbers = Array.isArray(summary.numbers_sent)
-      ? new Set(summary.numbers_sent.map((number: unknown) => String(number)))
+      ? new Set(summary.numbers_sent.map(normalizeGhanaNumber))
       : null;
     const providerAccepted = response.ok &&
       String(payload?.status || '').toLowerCase() === 'success' &&
@@ -77,6 +135,11 @@ export async function sendMnotifySms(
           ? Math.min(batch.length, asCount(summary.total_sent))
           : Math.max(0, batch.length - rejected);
       result.accepted += accepted;
+      if (acceptedNumbers) {
+        result.acceptedRecipients.push(...batch.filter((number) => acceptedNumbers.has(normalizeGhanaNumber(number))));
+      } else {
+        result.acceptedRecipients.push(...batch.slice(0, accepted));
+      }
       result.failed += batch.length - accepted;
       result.creditsUsed += asCount(summary.credit_used);
       if (summary.credit_left !== undefined) result.creditsLeft = asCount(summary.credit_left);
@@ -92,4 +155,12 @@ export async function sendMnotifySms(
   }
 
   return result;
+}
+
+export async function sendMnotifyMessage(
+  recipients: string[],
+  sender: string,
+  message: string,
+): Promise<AdminSmsResult> {
+  return sendMnotifySms(recipients, sender, message);
 }

@@ -44,6 +44,11 @@ export const DatabaseSchemaView: React.FC = () => {
     { name: 'login_otps', desc: 'Hashed 6-digit email verification codes for two-step Group Pastor sign-in', cols: 7 },
     { name: 'rate_limit_hits', desc: 'Sliding-window rate limiter buckets + check_rate_limit() atomic RPC', cols: 4 },
     { name: 'email_send_log', desc: 'Outbound email delivery and SMS telemetry with channel tracking', cols: 8 },
+    { name: 'sender_id_requests', desc: 'User-owned mNotify Sender ID registration, provider response, approval and rejection status', cols: 20 },
+    { name: 'sender_id_status_history', desc: 'Audit history for Sender ID submission, approval, rejection, and provider status changes', cols: 7 },
+    { name: 'admin_alerts', desc: 'Masked delivery status and retries for Sender ID and low-balance administrator alerts', cols: 10 },
+    { name: 'sms_campaigns', desc: 'SMS campaign estimates, mNotify campaign IDs, costs, statuses, and ownership', cols: 17 },
+    { name: 'sms_recipients', desc: 'Private per-recipient delivery status and provider error reason for SMS campaigns', cols: 7 },
     { name: 'suppressed_emails', desc: 'Bounce and complaint suppression list for email hygiene', cols: 5 },
   ];
 
@@ -52,6 +57,7 @@ export const DatabaseSchemaView: React.FC = () => {
     { title: 'SMS Templates Table & Seeds', desc: 'Creates public.sms_templates and seeds the initial message templates' },
     { title: 'Telemetry & SMS Channel Columns', desc: 'Adds channel, recipient_phone, subject, and body_preview to public.email_send_log' },
     { title: 'SMS Gateway Config in admin_settings', desc: 'Seeds sms_config JSON in admin_settings for Hubtel, Twilio, and Arkesel providers' },
+    { title: 'mNotify Sender IDs & SMS campaigns', desc: 'Creates service-role-only registration, approval history, admin alert, campaign, and delivery tables' },
     { title: 'Performance Indexes', desc: 'Adds indexes on church_id across attendance, absences, cell reports, members, and user_profiles' },
     { title: 'Server-only database access', desc: 'Revokes anon/authenticated table grants, enables RLS, and grants application-table access to service_role only' }
   ];

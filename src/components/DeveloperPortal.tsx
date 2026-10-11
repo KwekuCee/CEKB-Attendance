@@ -66,6 +66,7 @@ export default function DeveloperPortal() {
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [a, setA] = useState<any>(null);
+  const [mnotifyData, setMnotifyData] = useState<any>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState('');
@@ -98,9 +99,25 @@ export default function DeveloperPortal() {
         : r?.success ? msg : r?.error?.message || r?.error || 'Action failed.';
     setNotice(text);
     setTimeout(() => setNotice(''), 3500);
-    if (r?.success) load(token);
+    if (r?.success) {
+      load(token);
+      if (tab === 'sms') refreshMnotify();
+    }
     return r;
   };
+
+  const refreshMnotify = async () => {
+    if (!token) return;
+    const result = await rawPortal({ action: 'devAction', op: 'senderIdOverview' }, token);
+    if (result?.success) setMnotifyData(result);
+  };
+
+  useEffect(() => {
+    if (token && tab === 'sms') void refreshMnotify();
+    if (!token || tab !== 'sms') return;
+    const timer = window.setInterval(() => void refreshMnotify(), 30000);
+    return () => window.clearInterval(timer);
+  }, [token, tab]);
 
   const sendAdminSms = async (message: string) => {
     if (!token) return null;
@@ -282,7 +299,7 @@ export default function DeveloperPortal() {
             {tab === 'registrations' && <Registrations a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
             {tab === 'messaging' && <Messaging a={a} act={act} />}
-            {tab === 'sms' && <SmsHub a={a} act={act} sendAdminSms={sendAdminSms} />}
+            {tab === 'sms' && <SmsHub a={a} act={act} sendAdminSms={sendAdminSms} mnotifyData={mnotifyData} refreshMnotify={refreshMnotify} />}
             {tab === 'services' && <ServicesManager a={a} act={act} />}
             {tab === 'storage' && (
               <Storage
@@ -2211,7 +2228,7 @@ function Messaging({ a, act }: any) {
 /*                   6. SMS GATEWAY & TEMPLATES (FULL CRUD)                   */
 /* ========================================================================== */
 
-function SmsHub({ a, act, sendAdminSms }: any) {
+function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
   const [cfg, setCfg] = useState<any>(() => ({
     provider: 'Mnotify',
     senderId: '',
@@ -2223,6 +2240,19 @@ function SmsHub({ a, act, sendAdminSms }: any) {
   const [testBusy, setTestBusy] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);
   const [sendError, setSendError] = useState('');
+  const [managementConfig, setManagementConfig] = useState<any>({
+    adminPhone: '',
+    alertSenderId: '',
+    unitRate: '',
+    lowBalanceThreshold: '',
+  });
+
+  useEffect(() => {
+    if (mnotifyData?.config) setManagementConfig({
+      ...mnotifyData.config,
+      unitRate: mnotifyData.config.unitRate ?? '',
+    });
+  }, [mnotifyData?.config]);
 
   // Template CRUD state
   const [showTplModal, setShowTplModal] = useState(false);
@@ -2437,6 +2467,114 @@ function SmsHub({ a, act, sendAdminSms }: any) {
           )}
         </Card>
       </div>
+
+      <Card
+        title="Sender ID oversight, approvals & mNotify balance"
+        subtitle="Review sender ID purposes and statuses, reconcile campaign delivery, and manage the configured alert destination and credit estimate."
+        right={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => void refreshMnotify()}>Refresh dashboard</Button>
+            <Button variant="secondary" onClick={() => void act({ op: 'refreshAllMnotify' }, 'mNotify statuses refreshed')}>Poll pending statuses</Button>
+            <Button variant="secondary" onClick={() => void act({ op: 'getMnotifyBalance' }, 'mNotify balance refreshed')}>Check live balance</Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3 mb-5">
+          <Tile
+            label="mNotify SMS balance"
+            value={mnotifyData?.balance ?? 'Unavailable'}
+            hint={mnotifyData?.balanceError || (mnotifyData?.config?.balanceCheckedAt ? `Checked ${new Date(mnotifyData.config.balanceCheckedAt).toLocaleString()}` : 'Credits incl. bonus')}
+          />
+          <Tile label="Sender ID requests" value={(mnotifyData?.senderIds || []).length} />
+          <Tile label="SMS campaigns" value={(mnotifyData?.campaigns || []).length} />
+        </div>
+        <form
+          className="grid gap-3 md:grid-cols-4 items-end rounded-xl border border-border p-4 mb-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act({ op: 'saveMnotifyManagement', config: managementConfig }, 'mNotify settings saved');
+          }}
+        >
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold">Admin alert phone</span>
+            <input value={managementConfig.adminPhone} onChange={(event) => setManagementConfig({ ...managementConfig, adminPhone: event.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold">Approved alert Sender ID</span>
+            <input maxLength={11} value={managementConfig.alertSenderId} onChange={(event) => setManagementConfig({ ...managementConfig, alertSenderId: event.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold">SMS credit rate per page</span>
+            <input type="number" min="0.000001" step="0.000001" required value={managementConfig.unitRate} onChange={(event) => setManagementConfig({ ...managementConfig, unitRate: event.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </label>
+          <div className="flex gap-2">
+            <label className="space-y-1 text-xs flex-1">
+              <span className="font-semibold">Low balance alert</span>
+              <input type="number" min="0" step="1" value={managementConfig.lowBalanceThreshold} onChange={(event) => setManagementConfig({ ...managementConfig, lowBalanceThreshold: event.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </label>
+            <Button type="submit">Save</Button>
+          </div>
+        </form>
+
+        <div className="space-y-5">
+          <div>
+            <h3 className="font-semibold mb-2">Sender IDs</h3>
+            <Table
+              head={['Sender ID', 'Purpose', 'Status', 'Submitted', 'Actions']}
+              empty="No Sender ID requests have been submitted."
+              rows={(mnotifyData?.senderIds || []).map((item: any) => [
+                <span><strong>{item.sender_name}</strong>{item.review_required && <Badge variant="warning">Review flagged</Badge>}</span>,
+                <div className="max-w-xs whitespace-normal">{item.purpose}{item.submission_response && <details className="mt-1"><summary className="cursor-pointer text-xs">mNotify response</summary><pre className="mt-1 max-w-sm overflow-auto whitespace-pre-wrap text-[10px]">{JSON.stringify(item.submission_response, null, 2)}</pre></details>}</div>,
+                <Badge ok={item.status === 'verified'}>{item.status}</Badge>,
+                when(item.submitted_to_mnotify_at || item.created_at),
+                <div className="flex flex-wrap gap-1">
+                  {item.submission_status === 'failed' && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'retrySenderId', id: item.id }, 'Sender ID registration retried')}>Retry submit</Button>}
+                  {['submitted', 'pending'].includes(item.status) && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'refreshSenderId', id: item.id }, 'Sender ID status refreshed')}>Check mNotify</Button>}
+                  {item.status !== 'verified' && <Button variant="primary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'reviewSenderId', id: item.id, status: 'verified' }, 'Sender ID marked verified')}>Mark verified</Button>}
+                  {!['rejected', 'verified'].includes(item.status) && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => {
+                    const reason = window.prompt('Reason for rejecting this Sender ID?') || '';
+                    if (reason.trim()) void act({ op: 'reviewSenderId', id: item.id, status: 'rejected', reason }, 'Sender ID rejected');
+                  }}>Reject</Button>}
+                  {(mnotifyData?.alerts || []).some((alert: any) => alert.sender_id_request_id === item.id && alert.status === 'failed') && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'retrySenderAlert', id: item.id }, 'Admin alert retried')}>Retry alert</Button>}
+                </div>,
+              ])}
+            />
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-2">SMS campaigns (recipient-level data remains private to the sending account)</h3>
+            <Table
+              head={['Sender ID', 'Recipients', 'Pages', 'Estimate / actual credits', 'Delivery', 'Status', 'Actions']}
+              empty="No SMS campaigns have been sent."
+              rows={(mnotifyData?.campaigns || []).map((campaign: any) => [
+                campaign.sender_name,
+                fmt(campaign.recipient_count),
+                fmt(campaign.total_pages),
+                `${campaign.estimated_cost} / ${campaign.actual_credits ?? 'pending'}`,
+                `${campaign.delivery?.delivered || 0} delivered / ${campaign.delivery?.failed || 0} failed / ${campaign.delivery?.pending || 0} pending`,
+                <Badge ok={campaign.status === 'sent'}>{campaign.status}</Badge>,
+                campaign.provider_campaign_id && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'refreshCampaign', id: campaign.id }, 'Delivery status refreshed')}>Refresh report</Button>,
+              ])}
+            />
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-2">Sender ID admin alerts</h3>
+            <Table
+              head={['Created', 'Destination', 'Status', 'Attempts', 'Error', 'Action']}
+              empty="No sender-ID admin alerts."
+              rows={(mnotifyData?.alerts || []).map((alert: any) => [
+                when(alert.created_at),
+                alert.recipient,
+                <Badge ok={alert.status === 'sent'}>{alert.status}</Badge>,
+                alert.attempts,
+                alert.error_message || '—',
+                alert.status === 'failed' && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'retrySenderAlert', id: alert.sender_id_request_id }, 'Admin alert retried')}>Retry</Button>,
+              ])}
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Templates CRUD */}
       <Card
