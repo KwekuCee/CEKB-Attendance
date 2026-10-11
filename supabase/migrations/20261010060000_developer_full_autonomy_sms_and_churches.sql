@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS public.sms_templates (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.sms_templates ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.sms_templates FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.sms_templates TO service_role;
+
 CREATE INDEX IF NOT EXISTS idx_sms_templates_category ON public.sms_templates(category);
 CREATE INDEX IF NOT EXISTS idx_sms_templates_active ON public.sms_templates(is_active);
 

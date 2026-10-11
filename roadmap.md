@@ -77,10 +77,11 @@
 - [x] Entrance (kiosk) mode with sound, offline check-in sync (attendance edit/delete already existed)
 - [ ] Service open/close times with late flag
 - [ ] Absentee auto-assign + follow-up tracker, first-timer journey
-- [ ] WhatsApp/SMS reminders (needs WhatsApp Business connection)
+- [x] Developer announcements and administrator-only SMS updates via mNotify (provider acceptance feedback; no handset receipt polling)
+- [ ] WhatsApp/member SMS reminders and delivery receipts
 - [ ] Leader sign-in, report reminders, report trends, leader family tree
 - [ ] Branch comparison, goals, bulk actions, duplicate merge, activity log screen
-- [ ] Two-step sign-in, weekly backup export, usher role, system health page
+- [ ] Two-step sign-in, weekly backup export, system health page
 
-- [x] Usher sign-in page (slide), password peek, usher welcome email, lazy loading, restyled emails + plain-text versions
+- [x] Usher sign-in page and role, password peek, usher welcome email, lazy loading, restyled emails + plain-text versions
 - [ ] Inbox delivery: needs SPF/DKIM/DMARC confirmed for gcycattendance.online at the email provider

@@ -22,3 +22,11 @@ Reference: [mNotify/BMS API v2 documentation](https://developer.bms.africa/), SM
 The send result reports accepted and failed recipients and the credits mNotify says it used. Acceptance is not a final handset delivery receipt. mNotify's documented quick-send endpoint provides a campaign ID for later delivery-status checks; automated polling and final delivery receipts are not implemented.
 
 The API key is never returned to the browser. Existing SMS provider credentials in `sms_config` are not used; the server reads only `MNOTIFY_API_KEY`.
+
+## Local development fallback
+
+Remote portal requests fail with an error by default; they are never silently replayed against local demo state. To explicitly opt into the local fallback during development, set `VITE_ENABLE_LOCAL_PORTAL=true`. Keep it `false` (or unset) in Lovable/production so a failed server save cannot look successful locally.
+
+## Database setup SQL
+
+Both Developer Console SQL downloads (full schema and incremental updates) end by revoking table access from `PUBLIC`, `anon`, and `authenticated`, enabling row-level security, and granting access to `service_role` only. Apply the Supabase migrations for the authoritative deployment path; the final table/function hardening migration is `20261011180000_harden_portal_tables.sql`.

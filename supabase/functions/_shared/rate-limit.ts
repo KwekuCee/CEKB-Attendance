@@ -23,6 +23,7 @@ export async function rateLimit(
   headers: Record<string, string>,
   identity?: string,
   nested = false,
+  failClosed = false,
 ): Promise<Response | null> {
   const who = identity ? identity.toLowerCase().slice(0, 120) : clientIp(req);
   const { data, error } = await admin.rpc('consume_rate_limit', {
@@ -32,6 +33,12 @@ export async function rateLimit(
   });
   if (error) {
     console.error('rate limit check failed', error.message);
+    if (failClosed) {
+      return new Response(
+        JSON.stringify(nested ? { error: { message: 'Could not verify the send limit. Please try again shortly.' } } : { error: 'Could not verify the send limit. Please try again shortly.' }),
+        { status: 503, headers: { ...headers, 'Content-Type': 'application/json' } },
+      );
+    }
     return null;
   }
   const row = Array.isArray(data) ? data[0] : data;

@@ -5,12 +5,14 @@ const LOVABLE_SUPABASE_URL = 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const RAW_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || LOVABLE_SUPABASE_URL;
 const URL = RAW_URL ? `${RAW_URL}/functions/v1/portal-db` : `${LOVABLE_SUPABASE_URL}/functions/v1/portal-db`;
 const KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
+const ALLOW_LOCAL_FALLBACK =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_LOCAL_PORTAL === 'true') ||
+  (typeof process !== 'undefined' && process.env?.VITE_ENABLE_LOCAL_PORTAL === 'true');
 
 export async function rawPortal(payload: Record<string, unknown>, token?: string | null): Promise<any> {
-  const failClosed = payload.action === 'sendAdminSms';
   if (!URL) {
-    if (failClosed) return { success: false, error: { message: 'SMS sending requires the configured server service.' } };
-    return runLocalPortal(payload, token);
+    if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
+    return { success: false, error: { message: 'The server service is not configured.' } };
   }
   try {
     const t = token ?? getPortalToken();
@@ -28,19 +30,17 @@ export async function rawPortal(payload: Record<string, unknown>, token?: string
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      if (failClosed) {
-        return await res.json().catch(() => ({ success: false, error: { message: 'The SMS service rejected the request.' } }));
-      }
-      console.warn('portal-db remote returned non-ok status, falling back to local portal:', res.status);
-      return runLocalPortal(payload, token);
+      if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
+      const response = await res.json().catch(() => null);
+      return response || { success: false, error: { message: `The server rejected the request (${res.status}).` } };
     }
     const data = await res.json().catch(() => null);
-    if (failClosed && !data) return { success: false, error: { message: 'The SMS service returned an invalid response.' } };
-    if (!data) return runLocalPortal(payload, token);
+    if (!data && ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
+    if (!data) return { success: false, error: { message: 'The server returned an invalid response.' } };
     return data;
   } catch (err: any) {
-    if (failClosed) return { success: false, error: { message: 'Could not reach the SMS service. Please try again.' } };
-    console.warn('portal-db fetch failed, falling back to local portal:', err?.message);
-    return runLocalPortal(payload, token);
+    if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
+    console.error('portal-db request failed:', err?.message || err);
+    return { success: false, error: { message: 'Could not reach the server. Please try again.' } };
   }
 }

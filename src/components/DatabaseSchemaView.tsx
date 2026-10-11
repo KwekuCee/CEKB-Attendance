@@ -49,10 +49,11 @@ export const DatabaseSchemaView: React.FC = () => {
 
   const updateHighlights = [
     { title: 'Complete Cascade Deletion Trigger', desc: 'Triggers handle_church_deletion_safety() so removing a church branch safely purges linked records without FK violations' },
-    { title: 'SMS Templates Table & Seeds', desc: 'Creates public.sms_templates and seeds 5 initial message templates (Welcome, Check-in, Absentee, Cell, Birthday)' },
+    { title: 'SMS Templates Table & Seeds', desc: 'Creates public.sms_templates and seeds the initial message templates' },
     { title: 'Telemetry & SMS Channel Columns', desc: 'Adds channel, recipient_phone, subject, and body_preview to public.email_send_log' },
     { title: 'SMS Gateway Config in admin_settings', desc: 'Seeds sms_config JSON in admin_settings for Hubtel, Twilio, and Arkesel providers' },
-    { title: 'Performance Indexes', desc: 'Adds indexes on church_id across attendance, absences, cell reports, members, and user_profiles' }
+    { title: 'Performance Indexes', desc: 'Adds indexes on church_id across attendance, absences, cell reports, members, and user_profiles' },
+    { title: 'Server-only database access', desc: 'Revokes anon/authenticated table grants, enables RLS, and grants application-table access to service_role only' }
   ];
 
   return (
@@ -75,8 +76,8 @@ export const DatabaseSchemaView: React.FC = () => {
           </h1>
           <p className="text-slate-300 text-xs md:text-sm max-w-2xl">
             {schemaMode === 'update'
-              ? 'Incremental migration script containing the latest database updates (cascade delete safety, SMS templates, telemetry columns, and performance indexes). 100% idempotent and safe to run on an existing live database.'
-              : 'Complete baseline schema containing all 19 tables, enums, triggers, RPC procedures, RLS policies, and system seed data for a fresh Supabase database.'}
+              ? 'Incremental database updates including church-deletion safeguards, SMS configuration, telemetry, performance indexes, and server-role-only table access.'
+              : 'Baseline application schema and seed data, followed by service-role-only access hardening for app tables and privileged database functions.'}
           </p>
         </div>
 

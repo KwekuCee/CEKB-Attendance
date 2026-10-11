@@ -73,6 +73,9 @@ BEGIN
     DELETE FROM public.service_types
     WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
 
+    DELETE FROM public.portal_sessions
+    WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;

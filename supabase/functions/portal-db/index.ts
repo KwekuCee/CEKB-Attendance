@@ -1,6 +1,7 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
 import { sendMail } from '../_shared/mailer.ts';
 import { sendMnotifySms } from '../_shared/mnotify.ts';
+import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
 // Server-side data gateway for the CEKB portal.
 //
@@ -814,8 +815,6 @@ async function handleAdminSms(body: any, session: Session | null) {
 
 // Totals-only deep analytics for the developer console. Never returns personal fields.
 const DEV_TABLES = ['churches', 'members', 'leaders', 'attendance_records', 'cell_reports', 'announcements', 'audit_logs', 'email_send_log', 'user_profiles', 'church_admin_accounts', 'portal_sessions', 'absence_records', 'qr_tokens', 'service_types', 'suppressed_emails'];
-const SAFE_LOG_CATEGORIES = new Set(['System', 'Security', 'Settings', 'Church']);
-
 async function handleDevAnalytics(session: Session | null) {
   if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
   const now = Date.now();
@@ -824,17 +823,18 @@ async function handleDevAnalytics(session: Session | null) {
   const since30 = new Date(now - 30 * 864e5).toISOString();
   const [{ data: att }, { data: churches }, { data: mem }, { data: lead }, { data: rep }, { data: mail }, { data: logs }, { data: profs }, rowCounts, { data: anns }, { data: svcs }] = await Promise.all([
     admin.from('attendance_records').select('attendance_date, church_name').gte('attendance_date', since90.slice(0, 10)).limit(100000),
-    admin.from('churches').select('id, name, pastor_name, status, zone, members_count, created_at'),
+    admin.from('churches').select('id, name, status, zone, members_count, created_at'),
     admin.from('members').select('church_name, created_at, status').limit(100000),
     admin.from('leaders').select('church_name').limit(100000),
     admin.from('cell_reports').select('church_name, created_at').limit(100000),
     admin.from('email_send_log').select('id, template_name, recipient_email, status, error_message, created_at, metadata').gte('created_at', since30).order('created_at', { ascending: false }).limit(5000),
     admin.from('audit_logs').select('id, actor, church_name, action, category, icon, created_at').order('created_at', { ascending: false }).limit(1000),
-    admin.from('user_profiles').select('id, email, username, full_name, role, church_name, admin_verified, created_at'),
+    admin.from('user_profiles').select('role, church_name, admin_verified'),
     Promise.all(DEV_TABLES.map(async (t) => [t, await countOf(t)] as const)),
-    admin.from('announcements').select('title, target_audience, sender_name, created_at').order('created_at', { ascending: false }).limit(20),
+    admin.from('announcements').select('title, target_audience, created_at').order('created_at', { ascending: false }).limit(20),
     admin.from('service_types').select('id, name, description, is_global, is_active, created_at').order('name'),
   ]);
+  const accountSummary = summarizeDeveloperAccounts(profs || []);
   const key = (s: any) => String(s || '').trim().toLowerCase();
   const daily: Record<string, number> = {};
   const lastSeen: Record<string, string> = {};
@@ -850,36 +850,18 @@ async function handleDevAnalytics(session: Session | null) {
     return { date: d, count: daily[d] || 0 };
   });
   const tally = (rows: any[] | null) => { const m: Record<string, number> = {}; for (const r of rows || []) m[key(r.church_name)] = (m[key(r.church_name)] || 0) + 1; return m; };
-  const memBy = tally(mem), leadBy = tally(lead), repBy = tally(rep), staffBy = tally(profs);
+  const memBy = tally(mem), leadBy = tally(lead), repBy = tally(rep), staffBy = accountSummary.staffByChurch;
   const churchRows = (churches || []).map((c: any) => {
     const k = key(c.name);
     const rows = (memBy[k] || 0) + (leadBy[k] || 0) + (repBy[k] || 0) + (att30[k] || 0);
-    const staffList = (profs || []).filter((p: any) => key(p.church_name) === k);
-    const admins = staffList.filter((p: any) => p.role === 'Church Admin').map((a: any) => ({
-      id: a.id,
-      name: a.full_name || a.username || 'Admin',
-      email: a.email,
-      phone: a.phone || ''
-    }));
-    const ushers = staffList.filter((p: any) => p.role === 'Usher').map((u: any) => ({
-      id: u.id,
-      name: u.full_name || u.username || 'Usher',
-      email: u.email,
-      phone: u.phone || ''
-    }));
-    const pastorProfile = staffList.find((p: any) => p.role === 'Church Pastor');
     return {
       id: c.id,
       name: c.name,
-      pastor: c.pastor_name || pastorProfile?.full_name || 'Pastor in Charge',
-      pastorEmail: pastorProfile?.email || null,
       zone: c.zone || 'Zone 1 (Korle Bu)',
       status: c.status,
       members: memBy[k] ?? c.members_count ?? 0,
       leaders: leadBy[k] || 0,
       staff: staffBy[k] || 0,
-      admins,
-      ushers,
       reports: repBy[k] || 0,
       checkins30: att30[k] || 0,
       lastActive: lastSeen[k] || null,
@@ -896,35 +878,17 @@ async function handleDevAnalytics(session: Session | null) {
   const mails = mail || [];
   const failedStatuses = new Set(['failed', 'dlq', 'bounced', 'suppressed', 'complained']);
   const mailBy = (s: (m: any) => boolean) => mails.filter(s).length;
-  const failures = mails.filter((m: any) => failedStatuses.has(m.status)).slice(0, 50).map((m: any) => ({ template: m.template_name, status: m.status, reason: m.error_message || 'Unknown', at: m.created_at }));
+  const failures = mails.filter((m: any) => failedStatuses.has(m.status)).slice(0, 50).map((m: any) => ({ template: m.template_name, status: m.status, reason: 'Delivery failed; details are restricted.', at: m.created_at }));
   const reasons: Record<string, number> = {};
-  for (const f of mails.filter((m: any) => failedStatuses.has(m.status))) { const r = String(f.error_message || f.status).slice(0, 60); reasons[r] = (reasons[r] || 0) + 1; }
+  for (const f of mails.filter((m: any) => failedStatuses.has(m.status))) { reasons[f.status] = (reasons[f.status] || 0) + 1; }
   const mailChurch: Record<string, number> = {};
   for (const m of mails) { const c = m.metadata?.church || m.metadata?.church_name; if (c) mailChurch[c] = (mailChurch[c] || 0) + 1; }
-  // All registered accounts
-  const allAccounts = (profs || []).map((p: any) => ({
-    id: p.id,
-    email: p.email,
-    username: p.username,
-    fullName: p.full_name || p.username || 'Unnamed',
-    role: p.role,
-    church: p.church_name || '',
-    zone: p.zone || 'Zone 1 (Korle Bu)',
-    phone: p.phone || '',
-    verified: p.admin_verified !== false,
-    since: p.created_at,
-    churchMembersCount: memBy[key(p.church_name)] || 0,
-  }));
-  const registeredAdmins = allAccounts.filter((a: any) => a.role === 'Church Admin' || a.role === 'Usher');
-  const pastors = allAccounts.filter((a: any) => a.role === 'Church Pastor');
-  const flagged = (profs || []).filter((p: any) => !p.admin_verified && p.role !== 'Superadmin' && now - new Date(p.created_at).getTime() > 864e5).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at }));
-  const pendingRegistrations = allAccounts.filter((a: any) => !a.verified);
   const recentMessages = mails.slice(0, 100).map((m: any) => ({
     id: m.id,
     template: m.template_name,
-    recipient: m.recipient_email || 'staff',
+    recipient: 'staff',
     status: m.status,
-    error: m.error_message,
+    error: m.error_message ? 'Delivery failed; details are restricted.' : null,
     at: m.created_at,
     church: m.metadata?.church || m.metadata?.church_name,
   }));
@@ -934,8 +898,6 @@ async function handleDevAnalytics(session: Session | null) {
     countOf('members', (q) => q.is('church_id', null)),
     countOf('portal_sessions', (q) => q.lt('expires_at', new Date().toISOString())),
   ]);
-  const roleCounts: Record<string, number> = {};
-  for (const p of profs || []) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
   const { data: fm } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'feature_matrix').maybeSingle();
   const { data: plat } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'platform_config').maybeSingle();
   const { data: smsConf } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'sms_config').maybeSingle();
@@ -943,8 +905,8 @@ async function handleDevAnalytics(session: Session | null) {
   return json({ data: {
     series, churches: churchRows,
     growth: Object.entries(growth).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
-    tables: Object.fromEntries(rowCounts), roleCounts, flagged, pendingRegistrations, recentMessages, serviceTypes: svcs || [],
-    allAccounts, registeredAdmins, pastors,
+    tables: Object.fromEntries(rowCounts), roleCounts: accountSummary.roleCounts,
+    pendingAccounts: accountSummary.pendingCount, recentMessages, serviceTypes: svcs || [],
     messaging: {
       total30: mails.length, sent30: mailBy((m) => m.status === 'sent'), failed30: mailBy((m) => failedStatuses.has(m.status)),
       pending: mailBy((m) => m.status === 'pending'), last24: mailBy((m) => m.created_at >= since24),
@@ -953,7 +915,7 @@ async function handleDevAnalytics(session: Session | null) {
     },
     integrity: { orphanAtt, orphanMem, expiredSessions },
     logs: (logs || []).map((l: any) => ({ id: l.id, category: l.category || 'General', icon: l.icon, church: l.church_name, at: l.created_at,
-      action: SAFE_LOG_CATEGORIES.has(l.category) || l.actor === 'Developer' ? l.action : `${l.category || 'Record'} activity`,
+      action: `${l.category || 'Record'} activity`,
       actor: ['Developer', 'System', 'Group Pastor'].includes(l.actor) ? l.actor : 'Church account' })),
     announcements: anns || [],
     featureMatrix: fm?.setting_value || null, platform: plat?.setting_value || null,
@@ -962,10 +924,54 @@ async function handleDevAnalytics(session: Session | null) {
   } });
 }
 
-async function handleDevAction(body: any, session: Session | null) {
+async function handleDevAction(body: any, session: Session | null, req: Request) {
   if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
   const op = String(body?.op || '');
   const log = (action: string, category = 'System') => admin.from('audit_logs').insert({ actor: 'Developer', action, category, icon: 'terminal' });
+
+  if (op === 'getRegistration') {
+    const limited = await rateLimit(req, 'developer-account-lookup', 30, 600, corsHeaders, session.user_email || session.role, true, true);
+    if (limited) return limited;
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: { message: 'Enter a valid account email.' } }, 400);
+    const { data, error } = await admin.from('user_profiles')
+      .select('id, email, username, full_name, role, church_name, zone, phone, admin_verified')
+      .ilike('email', email)
+      .maybeSingle();
+    if (error) return json({ error: { message: 'Could not look up the account.' } }, 500);
+    if (!data) return json({ error: { message: 'No account found for that email.' } }, 404);
+    await log('Looked up one account for administration', 'Security');
+    return json({ success: true, account: {
+      id: data.id,
+      email: data.email,
+      username: data.username,
+      fullName: data.full_name || data.username || 'Unnamed',
+      role: data.role,
+      church: data.church_name || '',
+      zone: data.zone || '',
+      phone: data.phone || '',
+      verified: data.admin_verified !== false,
+    } });
+  }
+
+  const resolveLinkedAdmins = async (value: unknown): Promise<{ emails: string[]; error?: string }> => {
+    if (value === undefined) return { emails: [] };
+    if (!Array.isArray(value)) return { emails: [], error: 'Admin assignments must be an email list.' };
+    const emails = Array.from(new Set(value.map((item) => String(item).trim().toLowerCase())));
+    if (emails.length > 100 || emails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      return { emails: [], error: 'Enter no more than 100 valid administrator email addresses.' };
+    }
+    if (!emails.length) return { emails };
+    const { data, error } = await admin.from('user_profiles').select('email, role').in('email', emails);
+    if (error) {
+      console.error('Could not validate linked admin accounts:', error.message);
+      return { emails: [], error: 'Could not validate administrator accounts.' };
+    }
+    const eligible = new Set((data || []).filter((row: any) => row.role === 'Church Admin').map((row: any) => String(row.email).toLowerCase()));
+    const invalid = emails.filter((email) => !eligible.has(email));
+    if (invalid.length) return { emails: [], error: `These accounts are not registered Church Admins: ${invalid.join(', ')}` };
+    return { emails };
+  };
 
   if (op === 'setChurchStatus') {
     const status = String(body.status);
@@ -983,6 +989,13 @@ async function handleDevAction(body: any, session: Session | null) {
   if (op === 'createChurch') {
     const name = String(body.name || '').trim();
     if (!name) return json({ error: 'Church name is required.' }, 400);
+    const pastorEmail = String(body.pastor_email || '').trim().toLowerCase();
+    const pastorPassword = String(body.pastor_password || '').trim();
+    if (body.createPastor && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pastorEmail) || pastorPassword.length < 8)) {
+      return json({ error: 'A valid pastor email and password of at least 8 characters are required.' }, 400);
+    }
+    const linkedAdmins = await resolveLinkedAdmins(body.linkedAdminEmails);
+    if (linkedAdmins.error) return json({ error: linkedAdmins.error }, 400);
     const pastor = String(body.pastor_name || 'Pastor in Charge').trim();
     const zone = String(body.zone || 'Zone 1 (Korle Bu)').trim();
     const status = String(body.status || 'Active');
@@ -997,8 +1010,7 @@ async function handleDevAction(body: any, session: Session | null) {
 
     // Optionally create Pastor account
     if (body.createPastor && body.pastor_email) {
-      const pEmail = String(body.pastor_email).trim().toLowerCase();
-      const pPass = String(body.pastor_password || 'admin123').trim();
+      const pEmail = pastorEmail;
       await admin.from('user_profiles').upsert({
         username: pEmail,
         email: pEmail,
@@ -1007,7 +1019,7 @@ async function handleDevAction(body: any, session: Session | null) {
         church_name: name,
         zone,
         phone: body.pastor_phone || '+233 24 555 0000',
-        password_hash: pPass,
+        password_hash: pastorPassword,
         admin_verified: true,
       }, { onConflict: 'email' });
       await admin.from('church_admin_accounts').upsert({
@@ -1023,9 +1035,7 @@ async function handleDevAction(body: any, session: Session | null) {
     }
 
     // Link any admin accounts to this new church and migrate data
-    const linkedAdmins = Array.isArray(body.linkedAdminEmails) ? body.linkedAdminEmails : [];
-    for (const admEmail of linkedAdmins) {
-      const eNorm = String(admEmail).trim().toLowerCase();
+    for (const eNorm of linkedAdmins.emails) {
       const { data: pData } = await admin.from('user_profiles').select('church_name').ilike('email', eNorm).maybeSingle();
       const oldCh = pData?.church_name;
       await admin.from('user_profiles').update({ church_name: name, role: 'Church Admin', admin_verified: true }).ilike('email', eNorm);
@@ -1047,7 +1057,7 @@ async function handleDevAction(body: any, session: Session | null) {
   if (op === 'createPastorAccount') {
     const fullName = String(body.fullName || '').trim();
     const email = String(body.email || '').trim().toLowerCase();
-    const password = String(body.password || 'admin123').trim();
+    const password = String(body.password || '').trim();
     const phone = String(body.phone || '').trim();
     const churchName = String(body.churchName || '').trim();
     const zone = String(body.zone || 'Zone 1 (Korle Bu)').trim();
@@ -1055,6 +1065,11 @@ async function handleDevAction(body: any, session: Session | null) {
     if (!fullName || !email || !churchName) {
       return json({ error: 'Full name, email, and church name are required.' }, 400);
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) {
+      return json({ error: 'Enter a valid pastor email and password of at least 8 characters.' }, 400);
+    }
+    const linkedAdmins = await resolveLinkedAdmins(body.linkedAdminEmails);
+    if (linkedAdmins.error) return json({ error: linkedAdmins.error }, 400);
 
     // Ensure church exists
     let { data: ch } = await admin.from('churches').select('id, name').ilike('name', churchName).maybeSingle();
@@ -1097,9 +1112,7 @@ async function handleDevAction(body: any, session: Session | null) {
     }, { onConflict: 'admin_email' });
 
     // Link any admin accounts to this pastor's church and migrate data
-    const linkedAdmins = Array.isArray(body.linkedAdminEmails) ? body.linkedAdminEmails : [];
-    for (const admEmail of linkedAdmins) {
-      const eNorm = String(admEmail).trim().toLowerCase();
+    for (const eNorm of linkedAdmins.emails) {
       const { data: pData } = await admin.from('user_profiles').select('church_name').ilike('email', eNorm).maybeSingle();
       const oldCh = pData?.church_name;
       await admin.from('user_profiles').update({ church_name: churchName, role: 'Church Admin', admin_verified: true }).ilike('email', eNorm);
@@ -1126,6 +1139,9 @@ async function handleDevAction(body: any, session: Session | null) {
     if (!targetChurch || (!adminEmail && !adminId)) {
       return json({ error: 'Target church name and admin email or ID are required.' }, 400);
     }
+    if (!adminEmail) return json({ error: 'An administrator email is required.' }, 400);
+    const linkedAdmins = await resolveLinkedAdmins([adminEmail]);
+    if (linkedAdmins.error) return json({ error: linkedAdmins.error }, 400);
 
     // Locate target church
     let { data: ch } = await admin.from('churches').select('id, name').ilike('name', targetChurch).maybeSingle();
@@ -1376,9 +1392,8 @@ async function handleDevAction(body: any, session: Session | null) {
     const id = body.id;
     const email = String(body.email || '').trim().toLowerCase();
     const newPass = String(body.password || '').trim();
-    if (!newPass) return json({ error: 'Password cannot be empty' }, 400);
-    const hash = await sha256(newPass);
-    let q = admin.from('user_profiles').update({ password_hash: hash, admin_verified: true });
+    if (newPass.length < 8) return json({ error: 'Password must be at least 8 characters.' }, 400);
+    let q = admin.from('user_profiles').update({ password_hash: newPass, admin_verified: true });
     if (id) q = q.eq('id', id);
     else q = q.ilike('email', email);
     const { error: err } = await q;
@@ -1520,6 +1535,10 @@ async function handleDevAction(body: any, session: Session | null) {
   if (op === 'broadcast') {
     const title = String(body.title || '').trim().slice(0, 200), message = String(body.message || '').trim().slice(0, 5000);
     if (!title || !message) return json({ error: 'Title and message required.' }, 400);
+    if (body.sms) {
+      const limited = await rateLimit(req, 'admin-sms', 10, 600, corsHeaders, session.user_email || session.role, true, true);
+      if (limited) return limited;
+    }
     await admin.from('announcements').insert({ title, message, target_audience: 'All Churches', sender_name: 'developer@gcycattendance.online', church_id: null });
     let emailed = 0;
     if (body.email) {
@@ -1667,13 +1686,13 @@ Deno.serve(async (req) => {
       case 'devAnalytics':
         return await handleDevAnalytics(session);
       case 'devAction':
-        return await handleDevAction(body, session);
+        return await handleDevAction(body, session, req);
       case 'sendAdminSms': {
         if (session?.role === 'Developer' || session?.role === 'Superadmin') {
-          const limited = await rateLimit(req, 'admin-sms', 10, 600, corsHeaders, session.user_email || session.role, true);
+          const limited = await rateLimit(req, 'admin-sms', 10, 600, corsHeaders, session.user_email || session.role, true, true);
           if (limited) return limited;
         } else if (session?.role === 'Church Admin' || session?.role === 'Church Pastor') {
-          const limited = await rateLimit(req, 'branch-admin-sms', 5, 600, corsHeaders, session.user_email || session.role, true);
+          const limited = await rateLimit(req, 'branch-admin-sms', 5, 600, corsHeaders, session.user_email || session.role, true, true);
           if (limited) return limited;
         }
         return await handleAdminSms(body, session);
