@@ -141,7 +141,7 @@ export interface ChurchBranch {
   name: string;
   pastor: string;
   membersCount: number;
-  status: 'Healthy' | 'Review' | 'Growing';
+  status: 'Healthy' | 'Review' | 'Growing' | 'Suspended' | 'Active';
   zone: string;
   pcfCount: number;
   cellCount: number;

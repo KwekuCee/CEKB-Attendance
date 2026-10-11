@@ -59,13 +59,23 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
 
   const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
+  const effectiveChurch = (() => {
+    if (!targetChurch || targetChurch.toLowerCase().includes('calabar')) {
+      return (leaders[0]?.church || churches[0]?.name || '');
+    }
+    const hasMatching = leaders.some(l => l.church && l.church.toLowerCase() === targetChurch.toLowerCase());
+    if (!hasMatching && leaders.length > 0) {
+      return (leaders[0]?.church || churches[0]?.name || '');
+    }
+    return targetChurch;
+  })();
 
-  const scopedLeaders = isChurchAdmin
-    ? leaders.filter(l => l.church === targetChurch)
+  const scopedLeaders = isChurchAdmin && effectiveChurch
+    ? leaders.filter(l => (l.church || '').toLowerCase() === effectiveChurch.toLowerCase())
     : leaders;
 
-  const scopedPromotionQueue = isChurchAdmin
-    ? promotionQueue.filter(p => p.church === targetChurch)
+  const scopedPromotionQueue = isChurchAdmin && effectiveChurch
+    ? promotionQueue.filter(p => (p.church || '').toLowerCase() === effectiveChurch.toLowerCase())
     : promotionQueue;
 
   const membersOfLeader = (ldr: Leader) =>

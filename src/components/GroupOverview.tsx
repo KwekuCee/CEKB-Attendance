@@ -187,7 +187,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
             Total members
           </p>
           <div className="font-display text-3xl font-extrabold text-slate-900">
-            0
+            {members.length > 0 ? members.length.toLocaleString() : churches.reduce((sum, c) => sum + (c.membersCount || 0), 0).toLocaleString()}
           </div>
           <div className="mt-2 text-xs text-emerald-600 font-semibold flex items-center gap-1">
             <span className="material-symbols-outlined text-[16px]">trending_up</span>
@@ -210,7 +210,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
             Service attendance
           </p>
           <div className="font-display text-3xl font-extrabold text-slate-900">
-            0
+            {attendanceRecords.length.toLocaleString()}
           </div>
           <p className="mt-2 text-xs text-slate-500">Combined weekly attendance</p>
         </div>
@@ -310,6 +310,12 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               <span>Growing</span>
+                            </span>
+                          )}
+                          {church.status === 'Suspended' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                              <span>Suspended</span>
                             </span>
                           )}
                         </td>

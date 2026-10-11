@@ -48,7 +48,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onImported
 }) => {
   const isSuperadmin = user.role === 'Superadmin';
-  const currentChurchName = user.church || churches[0]?.name || 'Unassigned';
+  const resolvedChurch = (() => {
+    if (!user.church || user.church.toLowerCase().includes('calabar')) {
+      return churches[0]?.name || 'MAKARIOS CHURCH';
+    }
+    const exists = churches.some(c => c && c.name && c.name.toLowerCase() === user.church.toLowerCase());
+    if (!exists && !isSuperadmin && churches.length > 0) {
+      return churches[0].name;
+    }
+    return user.church;
+  })();
+  const currentChurchName = resolvedChurch || churches[0]?.name || 'MAKARIOS CHURCH';
   const matchingBranch = churches.find(c => c && c.name && c.name.toLowerCase() === currentChurchName.toLowerCase());
   const matchingAdmin = churchAdmins.find(a => a && a.churchName && a.churchName.toLowerCase() === currentChurchName.toLowerCase());
   const currentBranchPastor = matchingBranch?.pastor || matchingAdmin?.adminName || (user.role !== 'Superadmin' ? user.name : 'Branch Pastor');

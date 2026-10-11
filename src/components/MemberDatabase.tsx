@@ -55,17 +55,27 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
 
   const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
+  const effectiveChurch = (() => {
+    if (!targetChurch || targetChurch.toLowerCase().includes('calabar')) {
+      return members[0]?.church || churches[0]?.name || '';
+    }
+    const hasMatching = members.some(m => m.church && m.church.toLowerCase() === targetChurch.toLowerCase());
+    if (!hasMatching && members.length > 0) {
+      return members[0]?.church || '';
+    }
+    return targetChurch;
+  })();
+
+  // Restrict pool to branch members if Church Admin
+  const scopedMembers = isChurchAdmin && effectiveChurch
+    ? members.filter(m => (m.church || '').toLowerCase() === effectiveChurch.toLowerCase())
+    : members;
 
   // Bible study class / cell / PCF names a member belongs to, via their leader
   const groupNamesForMember = (m: Member) => {
     const leaderId = m.invitedByLeaderId || findLeaderByName(m.invitedBy, leaders)?.id;
     return getGroupNamesForLeader(leaderId, leaders);
   };
-
-  // Restrict pool to branch members if Church Admin
-  const scopedMembers = isChurchAdmin
-    ? members.filter(m => m.church === targetChurch)
-    : members;
 
   // Filtering
   const cleanSearch = (searchTerm || '').trim().toLowerCase();

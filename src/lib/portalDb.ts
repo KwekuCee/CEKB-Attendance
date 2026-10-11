@@ -52,8 +52,8 @@ function getDefaultLocalStore(): LocalDbStore {
         },
         {
           id: 'd10c33c8-0c4a-4935-b0be-b7efb5655101',
-          name: 'PEPPMAKROS',
-          pastor_name: 'Pepp Makros',
+          name: 'PEPPMAK',
+          pastor_name: 'Pepp Makr',
           members_count: 0,
           status: 'Growing',
           zone: 'Zone 1 (Korle Bu)',
@@ -183,24 +183,53 @@ function getDefaultLocalStore(): LocalDbStore {
 }
 
 let memoryStore: LocalDbStore | null = null;
-const CACHE_SYNC_KEY = 'cekb_portal_live_synced_v4';
+const CACHE_SYNC_KEY = 'cekb_portal_live_synced_v7';
 
 export function loadLocalStore(): LocalDbStore {
   if (memoryStore) return memoryStore;
   try {
-    if (typeof window !== 'undefined' && localStorage.getItem(CACHE_SYNC_KEY) !== 'true') {
-      localStorage.removeItem(LOCAL_DB_KEY);
-      localStorage.removeItem('cekbu_churches');
-      localStorage.removeItem('cekbu_church_admins');
-      localStorage.setItem(CACHE_SYNC_KEY, 'true');
+    if (typeof window !== 'undefined') {
+      const isSynced = localStorage.getItem(CACHE_SYNC_KEY) === 'true';
+      const rawStoredDb = localStorage.getItem(LOCAL_DB_KEY) || '';
+      const rawStoredChurches = localStorage.getItem('cekbu_churches') || '';
+      const rawSession = localStorage.getItem('gcyc_auth_session') || '';
+
+      // If legacy sync key or any trace of 'calabar' in storage, purge completely
+      if (!isSynced || rawStoredDb.toLowerCase().includes('calabar') || rawStoredChurches.toLowerCase().includes('calabar') || rawSession.toLowerCase().includes('calabar')) {
+        localStorage.removeItem(LOCAL_DB_KEY);
+        localStorage.removeItem('cekbu_churches');
+        localStorage.removeItem('cekbu_church_admins');
+        if (rawSession.toLowerCase().includes('calabar')) {
+          localStorage.removeItem('gcyc_auth_session');
+          localStorage.removeItem('gcyc_portal_token');
+        }
+        localStorage.setItem(CACHE_SYNC_KEY, 'true');
+      }
     }
     const raw = localStorage.getItem(LOCAL_DB_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.tables) {
         const def = getDefaultLocalStore();
+        // Merge churches: start with all official live churches, then append any user-added ones
+        const churchMap = new Map<string, any>();
+        for (const c of def.tables.churches || []) {
+          churchMap.set((c.name || '').toLowerCase(), c);
+        }
+        for (const c of parsed.tables.churches || []) {
+          if (c && c.name && !c.name.toLowerCase().includes('calabar')) {
+            const key = c.name.toLowerCase();
+            if (!churchMap.has(key)) {
+              churchMap.set(key, c);
+            }
+          }
+        }
         memoryStore = {
-          tables: { ...def.tables, ...parsed.tables },
+          tables: {
+            ...def.tables,
+            ...parsed.tables,
+            churches: Array.from(churchMap.values()),
+          },
           photos: parsed.photos || {},
         };
         return memoryStore;

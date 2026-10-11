@@ -25,8 +25,18 @@ export function getStoredSession(): AuthSessionUser | null {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
+    if (raw.toLowerCase().includes('calabar')) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.removeItem('gcyc_portal_token');
+      return null;
+    }
     const parsed = JSON.parse(raw);
     if (parsed && parsed.role && (parsed.name || parsed.email)) {
+      if (parsed.church && typeof parsed.church === 'string' && parsed.church.toLowerCase().includes('calabar')) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        localStorage.removeItem('gcyc_portal_token');
+        return null;
+      }
       return {
         id: parsed.id || `usr-${Date.now()}`,
         name: parsed.name || (parsed.role === 'Superadmin' ? 'Group Pastor' : 'Church Admin'),
@@ -829,7 +839,7 @@ export async function fetchChurchAdminsFromSupabase(): Promise<ChurchAdminAccoun
     if (!userErr && userData) {
       userData.forEach((row: any) => {
         const email = (row.email || '').toLowerCase().trim();
-        if (email && (row.role === 'Church Admin' || row.role === 'Superadmin')) {
+        if (email && (row.role === 'Church Admin' || row.role === 'Superadmin' || row.role === 'Church Pastor')) {
           const existing = adminMap.get(email);
           adminMap.set(email, {
             id: row.id || existing?.id || `ADM-${Date.now()}`,

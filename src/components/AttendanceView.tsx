@@ -55,14 +55,24 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
   const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
+  const effectiveChurch = (() => {
+    if (!targetChurch || targetChurch.toLowerCase().includes('calabar')) {
+      return churches[0]?.name || (members[0]?.church || '');
+    }
+    const hasMatching = churches.some(c => c && c.name && c.name.toLowerCase() === targetChurch.toLowerCase());
+    if (!hasMatching && churches.length > 0) {
+      return churches[0]?.name || '';
+    }
+    return targetChurch;
+  })();
 
   const serviceOptions = (serviceTypes || []).filter(s => s.active).map(s => s.name);
   const activeServices = serviceOptions.length > 0 ? serviceOptions : ['Sunday Service'];
   const chosenService = manualService || activeServices[0];
 
   // People this admin may record: their own branch only
-  const recordableMembers = isChurchAdmin
-    ? (members || []).filter(m => m && m.church === targetChurch)
+  const recordableMembers = isChurchAdmin && effectiveChurch
+    ? (members || []).filter(m => m && (m.church || '').toLowerCase() === effectiveChurch.toLowerCase())
     : (members || []);
 
   const manualMatches = manualSearch.trim()
@@ -96,7 +106,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       date: todayStr,
       verifiedBy: user?.name ? `${user.name} (recorded by hand)` : 'Church Admin',
       status: 'Confirmed',
-      church: m.church || targetChurch || 'Unassigned',
+      church: m.church || effectiveChurch || 'Unassigned',
       checkInMethod: 'Manual Admin',
       leaderName: leader?.fullName || m.invitedBy,
       pcfName: [groups.className, groups.cellName, groups.pcfName].filter(Boolean).join(' • ') || 'General PCF'
@@ -106,8 +116,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   };
 
   // Filter scoped to Church Admin branch if applicable
-  const scopedRecords = isChurchAdmin
-    ? attendanceRecords.filter(r => r.church === targetChurch)
+  const scopedRecords = isChurchAdmin && effectiveChurch
+    ? attendanceRecords.filter(r => (r.church || '').toLowerCase() === effectiveChurch.toLowerCase())
     : attendanceRecords;
 
   // Available unique dates
