@@ -4,6 +4,7 @@ import { AttendanceRecord, ChurchBranch, ViewType, Member, Leader } from '../typ
 import { useToast } from '../context/ToastContext';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
+import { csvQ } from '../utils/csvSafe';
 
 interface AttendanceViewProps {
   attendanceRecords: AttendanceRecord[];
@@ -171,19 +172,19 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
     const rows = filteredRecords.map(r => [
       r.memberId,
-      `"${r.memberName}"`,
+      `${csvQ(r.memberName)}`,
       r.memberRole,
-      `"${r.church}"`,
-      `"${r.serviceType}"`,
+      `${csvQ(r.church)}`,
+      `${csvQ(r.serviceType)}`,
       r.date || selectedDate,
-      `"${r.timestamp}"`,
-      `"${r.leaderName || 'Direct / Self'}"`,
-      `"${r.pcfName || 'General PCF'}"`,
+      `${csvQ(r.timestamp)}`,
+      `${csvQ(r.leaderName || 'Direct / Self')}`,
+      `${csvQ(r.pcfName || 'General PCF')}`,
       r.checkInMethod,
       r.status
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.map(c => (typeof c === 'string' && c.startsWith('"') ? c : csvQ(c))).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);

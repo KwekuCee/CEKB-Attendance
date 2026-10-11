@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { ChurchBranch, ChurchAdminAccount, Member, Leader, AttendanceRecord } from '../types';
+import { csvQ, safeRows } from './csvSafe';
 
 export interface ExportDataPayload {
   churches: ChurchBranch[];
@@ -148,7 +149,7 @@ export function exportMultiSheetExcel(
     });
   });
 
-  const ws1 = XLSX.utils.json_to_sheet(churchSummaryRows);
+  const ws1 = XLSX.utils.json_to_sheet(safeRows(churchSummaryRows as any[]));
   // Auto column widths
   ws1['!cols'] = [
     { wch: 28 },
@@ -254,7 +255,7 @@ export function exportMultiSheetExcel(
     });
   });
 
-  const ws2 = XLSX.utils.json_to_sheet(attendanceSummaryRows);
+  const ws2 = XLSX.utils.json_to_sheet(safeRows(attendanceSummaryRows as any[]));
   ws2['!cols'] = [
     { wch: 18 },
     { wch: 24 },
@@ -312,7 +313,7 @@ export function exportMultiSheetExcel(
     });
   });
 
-  const ws3 = XLSX.utils.json_to_sheet(newMembersRows);
+  const ws3 = XLSX.utils.json_to_sheet(safeRows(newMembersRows as any[]));
   ws3['!cols'] = [
     { wch: 18 },
     { wch: 16 },
@@ -361,7 +362,7 @@ export function exportMultiSectionCSV(
     const generalMembers = churchMembers.filter(m => m.status === 'General Member' || (m.serviceCount || 0) > 1).length;
 
     lines.push(
-      `"${church.name}","${church.pastor || matchingAdmin?.adminName || ''}","${matchingAdmin?.adminEmail || ''}","${matchingAdmin?.adminPhone || ''}",${churchMembers.length},${firstTimers},${generalMembers}`
+      `${csvQ(church.name)},${csvQ(church.pastor || matchingAdmin?.adminName || '')},${csvQ(matchingAdmin?.adminEmail || '')},${csvQ(matchingAdmin?.adminPhone || '')},${churchMembers.length},${firstTimers},${generalMembers}`
     );
   });
 
@@ -370,7 +371,7 @@ export function exportMultiSectionCSV(
   lines.push('Attendance Date,Church Branch,Service Program,Attendee Name,Member ID,Member Role,Verified By');
   data.attendanceRecords.forEach(att => {
     lines.push(
-      `"${att.date || ''}","${att.church || ''}","${att.serviceType || ''}","${att.memberName || ''}","${att.memberId || ''}","${att.memberRole || ''}","${att.verifiedBy || ''}"`
+      `${csvQ(att.date || '')},${csvQ(att.church || '')},${csvQ(att.serviceType || '')},${csvQ(att.memberName || '')},${csvQ(att.memberId || '')},${csvQ(att.memberRole || '')},${csvQ(att.verifiedBy || '')}`
     );
   });
 
@@ -382,7 +383,7 @@ export function exportMultiSectionCSV(
   );
   firstTimerList.forEach(m => {
     lines.push(
-      `"${m.joinDate || ''}","${m.id}","${m.fullName}","${m.phone || ''}","${m.email || ''}","${m.church || ''}","${m.occupation || ''}","${m.education || ''}","Class ${m.foundationClass || 0}","${m.invitedBy || ''}","${m.status || ''}"`
+      `${csvQ(m.joinDate || '')},${csvQ(m.id)},${csvQ(m.fullName)},${csvQ(m.phone || '')},${csvQ(m.email || '')},${csvQ(m.church || '')},${csvQ(m.occupation || '')},${csvQ(m.education || '')},"Class ${m.foundationClass || 0}",${csvQ(m.invitedBy || '')},${csvQ(m.status || '')}`
     );
   });
 
