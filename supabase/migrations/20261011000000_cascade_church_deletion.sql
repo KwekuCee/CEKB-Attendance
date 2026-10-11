@@ -81,3 +81,50 @@ DROP TRIGGER IF EXISTS trg_church_deletion_safety ON public.churches;
 CREATE TRIGGER trg_church_deletion_safety
 BEFORE DELETE ON public.churches
 FOR EACH ROW EXECUTE FUNCTION public.handle_church_deletion_safety();
+
+-- ============================================================================
+-- Explicit Cascade Foreign Keys for Cell Reports & Church Report Codes
+-- ============================================================================
+DO $$
+BEGIN
+    -- Upgrade cell_reports.church_id FK to CASCADE
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'cell_reports_church_id_fkey' 
+          AND table_name = 'cell_reports'
+    ) THEN
+        ALTER TABLE public.cell_reports DROP CONSTRAINT cell_reports_church_id_fkey;
+    END IF;
+    
+    ALTER TABLE public.cell_reports
+        ADD CONSTRAINT cell_reports_church_id_fkey
+        FOREIGN KEY (church_id) REFERENCES public.churches(id) ON DELETE CASCADE;
+
+    -- Upgrade church_report_codes.church_id FK to CASCADE
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'church_report_codes_church_id_fkey' 
+          AND table_name = 'church_report_codes'
+    ) THEN
+        ALTER TABLE public.church_report_codes DROP CONSTRAINT church_report_codes_church_id_fkey;
+    END IF;
+
+    ALTER TABLE public.church_report_codes
+        ADD CONSTRAINT church_report_codes_church_id_fkey
+        FOREIGN KEY (church_id) REFERENCES public.churches(id) ON DELETE CASCADE;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Foreign key upgrade skipped or tables not present: %', SQLERRM;
+END $$;
+
+-- ============================================================================
+-- Performance Indexes for Cascading Queries & Church Lookups
+-- ============================================================================
+CREATE INDEX IF NOT EXISTS idx_attendance_records_church_id ON public.attendance_records(church_id);
+CREATE INDEX IF NOT EXISTS idx_absence_records_church_id ON public.absence_records(church_id);
+CREATE INDEX IF NOT EXISTS idx_cell_reports_church_id ON public.cell_reports(church_id);
+CREATE INDEX IF NOT EXISTS idx_church_report_codes_church_id ON public.church_report_codes(church_id);
+CREATE INDEX IF NOT EXISTS idx_members_church_id ON public.members(church_id);
+CREATE INDEX IF NOT EXISTS idx_leaders_church_id ON public.leaders(church_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_church_id ON public.user_profiles(church_id);
+CREATE INDEX IF NOT EXISTS idx_church_admin_accounts_church_id ON public.church_admin_accounts(church_id);

@@ -3,6 +3,36 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function () {
+      function isExtensionError(msg, src) {
+        var str = ((msg || '') + ' ' + (src || '')).toLowerCase();
+        return str.indexOf('metamask') !== -1 ||
+          str.indexOf('ethereum') !== -1 ||
+          str.indexOf('chrome-extension://') !== -1 ||
+          str.indexOf('moz-extension://') !== -1 ||
+          str.indexOf('safari-web-extension://') !== -1 ||
+          str.indexOf('failed to connect to metamask') !== -1;
+      }
+      window.addEventListener('unhandledrejection', function (e) {
+        var reason = e ? (e.reason || e) : '';
+        var msg = (typeof reason === 'string' ? reason : (reason && reason.message) || '') + '';
+        var stack = (reason && reason.stack) || '';
+        if (isExtensionError(msg, stack)) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        }
+      });
+      window.addEventListener('error', function (e) {
+        var msg = (e && e.message) || '';
+        var filename = (e && e.filename) || '';
+        if (isExtensionError(msg, filename)) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        }
+      });
+    })();
+  </script>
   <meta name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>CEKB Group — Christ Embassy Korle Bu Attendance System</title>

@@ -575,5 +575,45 @@ ON CONFLICT (setting_key) DO NOTHING;
 -- 5. User Profiles Index for Pending Registrations
 CREATE INDEX IF NOT EXISTS idx_user_profiles_admin_verified ON public.user_profiles(admin_verified);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_role_verified ON public.user_profiles(role, admin_verified);
+
+-- 6. Foreign Key Cascades & Indexes for Church Deletion Safety
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'cell_reports_church_id_fkey' 
+          AND table_name = 'cell_reports'
+    ) THEN
+        ALTER TABLE public.cell_reports DROP CONSTRAINT cell_reports_church_id_fkey;
+    END IF;
+    
+    ALTER TABLE public.cell_reports
+        ADD CONSTRAINT cell_reports_church_id_fkey
+        FOREIGN KEY (church_id) REFERENCES public.churches(id) ON DELETE CASCADE;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'church_report_codes_church_id_fkey' 
+          AND table_name = 'church_report_codes'
+    ) THEN
+        ALTER TABLE public.church_report_codes DROP CONSTRAINT church_report_codes_church_id_fkey;
+    END IF;
+
+    ALTER TABLE public.church_report_codes
+        ADD CONSTRAINT church_report_codes_church_id_fkey
+        FOREIGN KEY (church_id) REFERENCES public.churches(id) ON DELETE CASCADE;
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_attendance_records_church_id ON public.attendance_records(church_id);
+CREATE INDEX IF NOT EXISTS idx_absence_records_church_id ON public.absence_records(church_id);
+CREATE INDEX IF NOT EXISTS idx_cell_reports_church_id ON public.cell_reports(church_id);
+CREATE INDEX IF NOT EXISTS idx_church_report_codes_church_id ON public.church_report_codes(church_id);
+CREATE INDEX IF NOT EXISTS idx_members_church_id ON public.members(church_id);
+CREATE INDEX IF NOT EXISTS idx_leaders_church_id ON public.leaders(church_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_church_id ON public.user_profiles(church_id);
+CREATE INDEX IF NOT EXISTS idx_church_admin_accounts_church_id ON public.church_admin_accounts(church_id);
 `;
 

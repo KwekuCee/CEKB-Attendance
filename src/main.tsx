@@ -14,6 +14,21 @@ if (!root) throw new Error('Application root is missing');
 
 const isDeveloper = window.location.pathname.replace(/\/+$/, '') === '/developer';
 
+// Suppress unhandled rejections and errors originating from browser extensions (e.g. MetaMask, Phantom)
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const msg = (typeof reason === 'string' ? reason : reason?.message || '') + '';
+  const stack = (reason?.stack || '') + '';
+  if (
+    msg.toLowerCase().includes('metamask') ||
+    msg.toLowerCase().includes('ethereum') ||
+    stack.includes('chrome-extension://') ||
+    stack.includes('moz-extension://')
+  ) {
+    event.preventDefault();
+  }
+});
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
