@@ -464,6 +464,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {(user.role as string) === 'Church Pastor'
                 ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
                 : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
+              <Button variant="secondary" onClick={() => onNavigate('settings')} title="Appoint Ushers & Scanners">
+                <span className="material-symbols-outlined">badge</span> Appoint Ushers
+              </Button>
               <Button variant="secondary" onClick={() => setShowEmailLeaderModal(true)} title="Email leaders"><span className="material-symbols-outlined">mail</span></Button>
               <Button variant="secondary" onClick={handleExportCSV} title="Export attendance"><span className="material-symbols-outlined">download</span></Button>
             </div>

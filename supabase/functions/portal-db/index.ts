@@ -567,7 +567,40 @@ async function handleDevAnalytics(session: Session | null) {
   const churchRows = (churches || []).map((c: any) => {
     const k = key(c.name);
     const rows = (memBy[k] || 0) + (leadBy[k] || 0) + (repBy[k] || 0) + (att30[k] || 0);
-    return { id: c.id, name: c.name, pastor: c.pastor_name || 'Pastor in Charge', zone: c.zone || 'Zone 1 (Korle Bu)', status: c.status, members: memBy[k] ?? c.members_count ?? 0, leaders: leadBy[k] || 0, staff: staffBy[k] || 0, reports: repBy[k] || 0, checkins30: att30[k] || 0, lastActive: lastSeen[k] || null, createdAt: c.created_at, rows, estBytes: rows * 1200, active: !!lastSeen[k] && lastSeen[k] >= since30.slice(0, 10) };
+    const staffList = (profs || []).filter((p: any) => key(p.church_name) === k);
+    const admins = staffList.filter((p: any) => p.role === 'Church Admin').map((a: any) => ({
+      id: a.id,
+      name: a.full_name || a.username || 'Admin',
+      email: a.email,
+      phone: a.phone || ''
+    }));
+    const ushers = staffList.filter((p: any) => p.role === 'Usher').map((u: any) => ({
+      id: u.id,
+      name: u.full_name || u.username || 'Usher',
+      email: u.email,
+      phone: u.phone || ''
+    }));
+    const pastorProfile = staffList.find((p: any) => p.role === 'Church Pastor');
+    return {
+      id: c.id,
+      name: c.name,
+      pastor: c.pastor_name || pastorProfile?.full_name || 'Pastor in Charge',
+      pastorEmail: pastorProfile?.email || null,
+      zone: c.zone || 'Zone 1 (Korle Bu)',
+      status: c.status,
+      members: memBy[k] ?? c.members_count ?? 0,
+      leaders: leadBy[k] || 0,
+      staff: staffBy[k] || 0,
+      admins,
+      ushers,
+      reports: repBy[k] || 0,
+      checkins30: att30[k] || 0,
+      lastActive: lastSeen[k] || null,
+      createdAt: c.created_at,
+      rows,
+      estBytes: rows * 1200,
+      active: !!lastSeen[k] && lastSeen[k] >= since30.slice(0, 10)
+    };
   });
   const monthKey = (d: string) => String(d).slice(0, 7);
   const growth: Record<string, { churches: number; members: number }> = {};
@@ -581,18 +614,24 @@ async function handleDevAnalytics(session: Session | null) {
   for (const f of mails.filter((m: any) => failedStatuses.has(m.status))) { const r = String(f.error_message || f.status).slice(0, 60); reasons[r] = (reasons[r] || 0) + 1; }
   const mailChurch: Record<string, number> = {};
   for (const m of mails) { const c = m.metadata?.church || m.metadata?.church_name; if (c) mailChurch[c] = (mailChurch[c] || 0) + 1; }
-  // Registrations needing attention
-  const flagged = (profs || []).filter((p: any) => !p.admin_verified && p.role !== 'Superadmin' && now - new Date(p.created_at).getTime() > 864e5).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at }));
-  const pendingRegistrations = (profs || []).filter((p: any) => !p.admin_verified).map((p: any) => ({
+  // All registered accounts
+  const allAccounts = (profs || []).map((p: any) => ({
     id: p.id,
     email: p.email,
     username: p.username,
-    fullName: p.full_name,
+    fullName: p.full_name || p.username || 'Unnamed',
     role: p.role,
-    church: p.church_name,
+    church: p.church_name || '',
+    zone: p.zone || 'Zone 1 (Korle Bu)',
+    phone: p.phone || '',
+    verified: p.admin_verified !== false,
     since: p.created_at,
-    verified: false,
+    churchMembersCount: memBy[key(p.church_name)] || 0,
   }));
+  const registeredAdmins = allAccounts.filter((a: any) => a.role === 'Church Admin' || a.role === 'Usher');
+  const pastors = allAccounts.filter((a: any) => a.role === 'Church Pastor');
+  const flagged = (profs || []).filter((p: any) => !p.admin_verified && p.role !== 'Superadmin' && now - new Date(p.created_at).getTime() > 864e5).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at }));
+  const pendingRegistrations = allAccounts.filter((a: any) => !a.verified);
   const recentMessages = mails.slice(0, 100).map((m: any) => ({
     id: m.id,
     template: m.template_name,
@@ -618,6 +657,7 @@ async function handleDevAnalytics(session: Session | null) {
     series, churches: churchRows,
     growth: Object.entries(growth).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
     tables: Object.fromEntries(rowCounts), roleCounts, flagged, pendingRegistrations, recentMessages, serviceTypes: svcs || [],
+    allAccounts, registeredAdmins, pastors,
     messaging: {
       total30: mails.length, sent30: mailBy((m) => m.status === 'sent'), failed30: mailBy((m) => failedStatuses.has(m.status)),
       pending: mailBy((m) => m.status === 'pending'), last24: mailBy((m) => m.created_at >= since24),
@@ -662,8 +702,205 @@ async function handleDevAction(body: any, session: Session | null) {
       members_count: 0
     }).select().single();
     if (err) return json({ error: err.message }, 400);
+
+    // Optionally create Pastor account
+    if (body.createPastor && body.pastor_email) {
+      const pEmail = String(body.pastor_email).trim().toLowerCase();
+      const pPass = String(body.pastor_password || 'admin123').trim();
+      await admin.from('user_profiles').upsert({
+        username: pEmail,
+        email: pEmail,
+        full_name: pastor,
+        role: 'Church Pastor',
+        church_name: name,
+        zone,
+        phone: body.pastor_phone || '+233 24 555 0000',
+        password_hash: pPass,
+        admin_verified: true,
+      }, { onConflict: 'email' });
+      await admin.from('church_admin_accounts').upsert({
+        church_name: name,
+        admin_name: pastor,
+        admin_email: pEmail,
+        admin_phone: body.pastor_phone || '+233 24 555 0000',
+        zone,
+        role: 'Church Pastor',
+        status: 'Active',
+        email_verified: true,
+      }, { onConflict: 'admin_email' });
+    }
+
+    // Link any admin accounts to this new church and migrate data
+    const linkedAdmins = Array.isArray(body.linkedAdminEmails) ? body.linkedAdminEmails : [];
+    for (const admEmail of linkedAdmins) {
+      const eNorm = String(admEmail).trim().toLowerCase();
+      const { data: pData } = await admin.from('user_profiles').select('church_name').ilike('email', eNorm).maybeSingle();
+      const oldCh = pData?.church_name;
+      await admin.from('user_profiles').update({ church_name: name, role: 'Church Admin', admin_verified: true }).ilike('email', eNorm);
+      await admin.from('church_admin_accounts').update({ church_name: name, role: 'Church Admin', status: 'Active', email_verified: true }).ilike('admin_email', eNorm);
+
+      if (body.migrateData !== false && oldCh && oldCh.toLowerCase() !== name.toLowerCase()) {
+        await admin.from('members').update({ church_name: name, church_id: newC?.id || null }).ilike('church_name', oldCh);
+        await admin.from('leaders').update({ church_name: name, church_id: newC?.id || null }).ilike('church_name', oldCh);
+        await admin.from('attendance_records').update({ church_name: name, church_id: newC?.id || null }).ilike('church_name', oldCh);
+        await admin.from('absence_records').update({ church_name: name, church_id: newC?.id || null }).ilike('church_name', oldCh);
+        await admin.from('cell_reports').update({ church_name: name, church_id: newC?.id || null }).ilike('church_name', oldCh);
+      }
+    }
+
     await log(`Created church branch "${name}"`, 'Church');
     return json({ success: true, church: newC });
+  }
+
+  if (op === 'createPastorAccount') {
+    const fullName = String(body.fullName || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || 'admin123').trim();
+    const phone = String(body.phone || '').trim();
+    const churchName = String(body.churchName || '').trim();
+    const zone = String(body.zone || 'Zone 1 (Korle Bu)').trim();
+
+    if (!fullName || !email || !churchName) {
+      return json({ error: 'Full name, email, and church name are required.' }, 400);
+    }
+
+    // Ensure church exists
+    let { data: ch } = await admin.from('churches').select('id, name').ilike('name', churchName).maybeSingle();
+    if (!ch) {
+      const { data: createdCh } = await admin.from('churches').insert({
+        name: churchName,
+        pastor_name: fullName,
+        zone,
+        status: 'Active',
+        members_count: 0
+      }).select().single();
+      ch = createdCh;
+    } else {
+      await admin.from('churches').update({ pastor_name: fullName }).eq('id', ch.id);
+    }
+
+    // Upsert pastor in user_profiles
+    await admin.from('user_profiles').upsert({
+      username: email,
+      email,
+      full_name: fullName,
+      role: 'Church Pastor',
+      church_name: churchName,
+      zone,
+      phone: phone || '+233 24 555 0000',
+      password_hash: password,
+      admin_verified: true,
+    }, { onConflict: 'email' });
+
+    // Upsert pastor in church_admin_accounts
+    await admin.from('church_admin_accounts').upsert({
+      church_name: churchName,
+      admin_name: fullName,
+      admin_email: email,
+      admin_phone: phone || '+233 24 555 0000',
+      zone,
+      role: 'Church Pastor',
+      status: 'Active',
+      email_verified: true,
+    }, { onConflict: 'admin_email' });
+
+    // Link any admin accounts to this pastor's church and migrate data
+    const linkedAdmins = Array.isArray(body.linkedAdminEmails) ? body.linkedAdminEmails : [];
+    for (const admEmail of linkedAdmins) {
+      const eNorm = String(admEmail).trim().toLowerCase();
+      const { data: pData } = await admin.from('user_profiles').select('church_name').ilike('email', eNorm).maybeSingle();
+      const oldCh = pData?.church_name;
+      await admin.from('user_profiles').update({ church_name: churchName, role: 'Church Admin', admin_verified: true }).ilike('email', eNorm);
+      await admin.from('church_admin_accounts').update({ church_name: churchName, role: 'Church Admin', status: 'Active', email_verified: true }).ilike('admin_email', eNorm);
+
+      if (body.migrateData !== false && oldCh && oldCh.toLowerCase() !== churchName.toLowerCase()) {
+        await admin.from('members').update({ church_name: churchName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+        await admin.from('leaders').update({ church_name: churchName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+        await admin.from('attendance_records').update({ church_name: churchName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+        await admin.from('absence_records').update({ church_name: churchName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+        await admin.from('cell_reports').update({ church_name: churchName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      }
+    }
+
+    await log(`Created pastor account for "${fullName}" (${email}) at "${churchName}"`, 'Church');
+    return json({ success: true, church: ch });
+  }
+
+  if (op === 'linkAdminToPastor') {
+    const adminEmail = String(body.adminEmail || body.email || '').trim().toLowerCase();
+    const adminId = body.adminId || body.id;
+    const targetChurch = String(body.targetChurchName || body.churchName || '').trim();
+
+    if (!targetChurch || (!adminEmail && !adminId)) {
+      return json({ error: 'Target church name and admin email or ID are required.' }, 400);
+    }
+
+    // Locate target church
+    let { data: ch } = await admin.from('churches').select('id, name').ilike('name', targetChurch).maybeSingle();
+    const resolvedTargetName = ch?.name || targetChurch;
+
+    // Locate admin user profile and church admin row
+    let pQuery = admin.from('user_profiles').select('id, full_name, username, email, phone, zone, church_name, church_id');
+    if (adminId) pQuery = pQuery.eq('id', adminId);
+    else pQuery = pQuery.ilike('email', adminEmail);
+    const { data: pData } = await pQuery.maybeSingle();
+
+    let aQuery = admin.from('church_admin_accounts').select('id, admin_name, admin_email, admin_phone, zone, church_name, church_id');
+    if (adminId) aQuery = aQuery.eq('id', adminId);
+    else aQuery = aQuery.ilike('admin_email', adminEmail);
+    const { data: aData } = await aQuery.maybeSingle();
+
+    const oldCh = pData?.church_name || aData?.church_name || '';
+    const targetEmail = pData?.email || aData?.admin_email || adminEmail;
+
+    // Update user profile
+    if (targetEmail) {
+      await admin.from('user_profiles').update({
+        church_name: resolvedTargetName,
+        church_id: ch?.id || null,
+        role: 'Church Admin',
+        admin_verified: true,
+      }).ilike('email', targetEmail);
+
+      // Upsert into church_admin_accounts
+      await admin.from('church_admin_accounts').upsert({
+        church_name: resolvedTargetName,
+        church_id: ch?.id || null,
+        admin_name: pData?.full_name || pData?.username || aData?.admin_name || 'Church Admin',
+        admin_email: targetEmail,
+        admin_phone: pData?.phone || aData?.admin_phone || '+233 24 555 0000',
+        zone: pData?.zone || aData?.zone || 'Zone 1 (Korle Bu)',
+        role: 'Church Admin',
+        status: 'Active',
+        email_verified: true,
+      }, { onConflict: 'admin_email' });
+    }
+
+    // Migrate all records so pastor sees the entire church database
+    if (body.migrateData !== false && oldCh && oldCh.toLowerCase() !== resolvedTargetName.toLowerCase()) {
+      await admin.from('members').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      await admin.from('leaders').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      await admin.from('attendance_records').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      await admin.from('absence_records').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      await admin.from('cell_reports').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+      await admin.from('church_report_codes').update({ church_name: resolvedTargetName, church_id: ch?.id || null }).ilike('church_name', oldCh);
+    }
+
+    // Recalculate member counts for the target church and previous church
+    const { count: newMemCount } = await admin.from('members').select('*', { count: 'exact', head: true }).ilike('church_name', resolvedTargetName);
+    if (ch?.id) {
+      await admin.from('churches').update({ members_count: newMemCount || 0 }).eq('id', ch.id);
+    } else {
+      await admin.from('churches').update({ members_count: newMemCount || 0 }).ilike('name', resolvedTargetName);
+    }
+
+    if (oldCh && oldCh.toLowerCase() !== resolvedTargetName.toLowerCase()) {
+      const { count: oldMemCount } = await admin.from('members').select('*', { count: 'exact', head: true }).ilike('church_name', oldCh);
+      await admin.from('churches').update({ members_count: oldMemCount || 0 }).ilike('name', oldCh);
+    }
+
+    await log(`Linked admin "${targetEmail}" to "${resolvedTargetName}" and migrated database`, 'Church');
+    return json({ success: true, migratedFrom: oldCh, migratedTo: resolvedTargetName, church: ch });
   }
 
   if (op === 'updateChurch') {
@@ -679,6 +916,17 @@ async function handleDevAction(body: any, session: Session | null) {
     else q = q.eq('name', name);
     const { error: err } = await q;
     if (err) return json({ error: err.message }, 400);
+
+    if (body.newName && body.newName !== name) {
+      await admin.from('members').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('leaders').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('attendance_records').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('cell_reports').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('church_report_codes').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('church_admin_accounts').update({ church_name: body.newName }).ilike('church_name', name);
+      await admin.from('user_profiles').update({ church_name: body.newName }).ilike('church_name', name);
+    }
+
     await log(`Updated church branch "${name || body.newName}"`, 'Church');
     return json({ success: true });
   }
@@ -686,17 +934,83 @@ async function handleDevAction(body: any, session: Session | null) {
   if (op === 'deleteChurch') {
     const name = String(body.name || '').trim();
     const id = body.id;
-    let q = admin.from('churches').delete();
-    if (id) q = q.eq('id', id);
-    else q = q.eq('name', name);
-    const { error: err } = await q;
-    if (err) return json({ error: err.message }, 400);
-    if (name) {
-      await admin.from('members').update({ church_name: null, church_id: null }).eq('church_name', name);
-      await admin.from('leaders').update({ church_name: null, church_id: null }).eq('church_name', name);
+    let foundCh: any = null;
+    if (id) {
+      const { data } = await admin.from('churches').select('id, name').eq('id', id).maybeSingle();
+      foundCh = data;
     }
-    await log(`Deleted church branch "${name}"`, 'Church');
-    return json({ success: true });
+    if (!foundCh && name) {
+      const { data } = await admin.from('churches').select('id, name').ilike('name', name).maybeSingle();
+      foundCh = data;
+    }
+    const targetName = foundCh?.name || name;
+    const targetId = foundCh?.id || (id && id !== 'undefined' ? id : null);
+
+    if (!targetName && !targetId) {
+      return json({ error: 'Church not found.' }, 404);
+    }
+
+    // 1. Break circular FKs before deletion
+    if (targetId) {
+      await admin.from('leaders').update({ parent_leader_id: null }).eq('church_id', targetId);
+      await admin.from('members').update({ invited_by_leader_id: null }).eq('church_id', targetId);
+    }
+    if (targetName) {
+      await admin.from('leaders').update({ parent_leader_id: null }).ilike('church_name', targetName);
+      await admin.from('members').update({ invited_by_leader_id: null }).ilike('church_name', targetName);
+    }
+
+    // 2. Unlink audit logs referencing this church to prevent foreign key errors
+    if (targetId) {
+      await admin.from('audit_logs').update({ church_id: null }).eq('church_id', targetId);
+    }
+
+    // 3. Delete child records completely by church_id and church_name
+    if (targetId) {
+      await admin.from('attendance_records').delete().eq('church_id', targetId);
+      await admin.from('absence_records').delete().eq('church_id', targetId);
+      await admin.from('cell_reports').delete().eq('church_id', targetId);
+      await admin.from('church_report_codes').delete().eq('church_id', targetId);
+      await admin.from('promotion_queue').delete().eq('church_id', targetId);
+      await admin.from('announcements').delete().eq('church_id', targetId);
+      await admin.from('members').delete().eq('church_id', targetId);
+      await admin.from('leaders').delete().eq('church_id', targetId);
+      await admin.from('church_admin_accounts').delete().eq('church_id', targetId);
+      await admin.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').eq('church_id', targetId);
+      await admin.from('service_types').delete().eq('is_global', false).eq('church_id', targetId);
+    }
+
+    if (targetName) {
+      await admin.from('attendance_records').delete().ilike('church_name', targetName);
+      await admin.from('absence_records').delete().ilike('church_name', targetName);
+      await admin.from('cell_reports').delete().ilike('church_name', targetName);
+      await admin.from('church_report_codes').delete().ilike('church_name', targetName);
+      await admin.from('promotion_queue').delete().ilike('church_name', targetName);
+      await admin.from('members').delete().ilike('church_name', targetName);
+      await admin.from('leaders').delete().ilike('church_name', targetName);
+      await admin.from('church_admin_accounts').delete().ilike('church_name', targetName);
+      await admin.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').ilike('church_name', targetName);
+      await admin.from('portal_sessions').delete().ilike('church_name', targetName);
+    }
+
+    // 4. Delete the church itself
+    let deleteErr: any = null;
+    if (targetId) {
+      const { error: e1 } = await admin.from('churches').delete().eq('id', targetId);
+      if (e1) deleteErr = e1;
+    }
+    if (targetName) {
+      const { error: e2 } = await admin.from('churches').delete().ilike('name', targetName);
+      if (e2 && !deleteErr) deleteErr = e2;
+    }
+
+    if (deleteErr) {
+      console.error('Database error deleting church:', deleteErr);
+      return json({ error: deleteErr.message }, 400);
+    }
+
+    await log(`Completely deleted church branch "${targetName}" and all associated data`, 'Church');
+    return json({ success: true, deletedChurch: targetName });
   }
 
   if (op === 'approveRegistration') {

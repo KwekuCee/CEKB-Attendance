@@ -5,6 +5,7 @@ import { ChurchLogo } from './ChurchLogo';
 import { rawPortal } from '../lib/rawPortal';
 import { FEATURES, ROLE_LABELS, FEATURE_ROLES, isFeatureOn, type FeatureMatrix } from '../lib/features';
 import { SUPABASE_SQL_SCHEMA, SUPABASE_UPDATE_SQL } from '../data/supabase_schema';
+import { deleteChurchFromSupabase } from '../lib/supabaseService';
 
 const DEV_TOKEN_KEY = 'cekb_dev_token';
 
@@ -795,15 +796,24 @@ function Churches({ a, act }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [editChurch, setEditChurch] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [assignAdminTarget, setAssignAdminTarget] = useState<any>(null);
+  const [selectedAdminEmail, setSelectedAdminEmail] = useState('');
+  const [migrateData, setMigrateData] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  // Form states
+  // Form states for Create Church
   const [name, setName] = useState('');
   const [pastor, setPastor] = useState('');
   const [zone, setZone] = useState('Zone 1 (Korle Bu)');
   const [status, setStatus] = useState('Active');
+  const [createPastor, setCreatePastor] = useState(false);
+  const [pastorEmail, setPastorEmail] = useState('');
+  const [pastorPassword, setPastorPassword] = useState('admin123');
+  const [pastorPhone, setPastorPhone] = useState('');
+  const [selectedAdminEmails, setSelectedAdminEmails] = useState<string[]>([]);
+  const [migrateOnCreate, setMigrateOnCreate] = useState(true);
 
-  const list = a.churches.filter((c: any) => {
+  const list = (a.churches || []).filter((c: any) => {
     const matchQ =
       c.name.toLowerCase().includes(q.toLowerCase()) ||
       (c.pastor && c.pastor.toLowerCase().includes(q.toLowerCase())) ||
@@ -812,18 +822,36 @@ function Churches({ a, act }: any) {
     return matchQ && matchStatus;
   });
 
+  const availableAdmins = (a.registeredAdmins || a.allAccounts?.filter((acc: any) => acc.role === 'Church Admin' || acc.role === 'Usher') || []);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
     await act(
-      { op: 'createChurch', name: name.trim(), pastor_name: pastor.trim(), zone, status },
-      `Created church "${name.trim()}"`,
+      {
+        op: 'createChurch',
+        name: name.trim(),
+        pastor_name: pastor.trim(),
+        zone,
+        status,
+        createPastor,
+        pastor_email: pastorEmail.trim(),
+        pastor_password: pastorPassword.trim(),
+        pastor_phone: pastorPhone.trim(),
+        linkedAdminEmails: selectedAdminEmails,
+        migrateData: migrateOnCreate,
+      },
+      `Created church "${name.trim()}"${createPastor ? ' with Pastor account' : ''}${selectedAdminEmails.length ? ` and linked ${selectedAdminEmails.length} admin(s)` : ''}`,
     );
     setBusy(false);
     setShowCreate(false);
     setName('');
     setPastor('');
+    setCreatePastor(false);
+    setPastorEmail('');
+    setPastorPhone('');
+    setSelectedAdminEmails([]);
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -849,12 +877,42 @@ function Churches({ a, act }: any) {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setBusy(true);
+    const targetName = deleteTarget.name;
+    const targetId = deleteTarget.id;
+
     await act(
-      { op: 'deleteChurch', id: deleteTarget.id, name: deleteTarget.name },
-      `Deleted church "${deleteTarget.name}"`,
+      { op: 'deleteChurch', id: targetId, name: targetName },
+      `Completely deleted church "${targetName}" and all associated data from the database`,
     );
+    try {
+      await deleteChurchFromSupabase(targetId || targetName);
+    } catch (e) {
+      console.warn('Direct deleteChurchFromSupabase error:', e);
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
+      localStorage.setItem('cekbu_churches', JSON.stringify(stored.filter((c: any) => c.name !== targetName && c.id !== targetId)));
+    } catch {}
     setBusy(false);
     setDeleteTarget(null);
+  };
+
+  const handleAssignAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignAdminTarget || !selectedAdminEmail) return;
+    setBusy(true);
+    await act(
+      {
+        op: 'linkAdminToPastor',
+        adminEmail: selectedAdminEmail,
+        targetChurchName: assignAdminTarget.name,
+        migrateData,
+      },
+      `Assigned admin ${selectedAdminEmail} to "${assignAdminTarget.name}"${migrateData ? ' and migrated church database' : ''}`,
+    );
+    setBusy(false);
+    setAssignAdminTarget(null);
+    setSelectedAdminEmail('');
   };
 
   return (
@@ -875,7 +933,7 @@ function Churches({ a, act }: any) {
 
       <Card
         title="Church directory & branch management"
-        subtitle="Full administrative autonomy: add new branches, configure pastors and zones, delete decommissioned churches, and recount membership."
+        subtitle="Full administrative autonomy: add new branches, configure pastors and zones, assign existing admins, delete decommissioned churches with full cascade, and recount membership."
         right={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -885,6 +943,19 @@ function Churches({ a, act }: any) {
             >
               <span className="material-symbols-outlined text-base mr-1">sync</span>
               Sync Counts
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setName('');
+                setPastor('');
+                setCreatePastor(true);
+                setShowCreate(true);
+              }}
+              title="Create a new pastor account and assign church"
+            >
+              <span className="material-symbols-outlined text-base mr-1">person_add</span>
+              Create Pastor Account
             </Button>
             <Button variant="primary" onClick={() => setShowCreate(true)}>
               <span className="material-symbols-outlined text-base mr-1">add</span>
@@ -913,14 +984,46 @@ function Churches({ a, act }: any) {
         </div>
 
         <Table
-          head={['Church & Zone', 'Pastor in Charge', 'Status', 'Members', 'Leaders', 'Staff', 'Check-ins (30d)', 'Actions']}
+          head={['Church & Zone', 'Pastor in Charge', 'Assigned Admins', 'Status', 'Members', 'Leaders', 'Check-ins (30d)', 'Actions']}
           empty="No churches match your filter."
           rows={list.map((c: any) => [
             <div>
               <strong className="block">{c.name}</strong>
               <span className="text-xs text-muted-foreground">{c.zone || 'Zone 1 (Korle Bu)'}</span>
             </div>,
-            c.pastor || 'Pastor in Charge',
+            <div>
+              <strong className="block text-sm">{c.pastor || 'Pastor in Charge'}</strong>
+              {c.pastorEmail && <span className="text-xs text-muted-foreground">{c.pastorEmail}</span>}
+            </div>,
+            <div className="space-y-1">
+              {(c.admins && c.admins.length > 0) ? (
+                <div className="flex flex-wrap gap-1">
+                  {c.admins.map((adm: any) => (
+                    <span key={adm.email} className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary font-medium" title={adm.email}>
+                      <span className="material-symbols-outlined text-[13px]">person</span>
+                      {adm.name}
+                    </span>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    className="h-6 px-1.5 py-0 text-xs text-primary"
+                    onClick={() => { setAssignAdminTarget(c); setSelectedAdminEmail(''); }}
+                    title="Assign another admin to this church"
+                  >
+                    + Link
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="h-7 px-2 py-0.5 text-xs text-primary hover:bg-primary/10 border border-primary/20"
+                  onClick={() => { setAssignAdminTarget(c); setSelectedAdminEmail(''); }}
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">person_add</span>
+                  Assign Admin
+                </Button>
+              )}
+            </div>,
             <select
               className="rounded-lg border border-input bg-background px-2 py-1 text-xs font-semibold"
               value={c.status}
@@ -937,9 +1040,17 @@ function Churches({ a, act }: any) {
             </select>,
             fmt(c.members),
             fmt(c.leaders),
-            fmt(c.staff),
             fmt(c.checkins30),
             <div className="flex items-center gap-1.5">
+              <Button
+                variant="secondary"
+                className="px-2.5 py-1 text-xs"
+                onClick={() => { setAssignAdminTarget(c); setSelectedAdminEmail(''); }}
+                title="Assign existing admin to this church"
+              >
+                <span className="material-symbols-outlined text-sm mr-1">link</span>
+                Assign Admin
+              </Button>
               <Button
                 variant="secondary"
                 className="px-2.5 py-1 text-xs"
@@ -953,7 +1064,7 @@ function Churches({ a, act }: any) {
                 variant="ghost"
                 className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
                 onClick={() => setDeleteTarget(c)}
-                title="Delete church"
+                title="Permanently delete church with all records"
               >
                 <span className="material-symbols-outlined text-sm">delete</span>
               </Button>
@@ -967,7 +1078,7 @@ function Churches({ a, act }: any) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <form
             onSubmit={handleCreate}
-            className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4"
+            className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-headline">Add Church Branch</h3>
@@ -986,7 +1097,7 @@ function Churches({ a, act }: any) {
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-sm font-semibold">Pastor in Charge</span>
+              <span className="text-sm font-semibold">Pastor in Charge Name</span>
               <input
                 value={pastor}
                 onChange={(e) => setPastor(e.target.value)}
@@ -994,27 +1105,115 @@ function Churches({ a, act }: any) {
                 className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
               />
             </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold">Zone</span>
-              <input
-                value={zone}
-                onChange={(e) => setZone(e.target.value)}
-                placeholder="e.g. Zone 1 (Korle Bu)"
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold">Status</span>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
-              >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Suspended">Suspended</option>
-              </select>
-            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Zone</span>
+                <input
+                  value={zone}
+                  onChange={(e) => setZone(e.target.value)}
+                  placeholder="e.g. Zone 1 (Korle Bu)"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold">Status</span>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Suspended">Suspended</option>
+                </select>
+              </label>
+            </div>
+
+            {/* Optional Pastor Login Creation */}
+            <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPastor}
+                  onChange={(e) => setCreatePastor(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Create Pastor Login Account for this Church</span>
+              </label>
+              {createPastor && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold">Pastor Email *</span>
+                      <input
+                        required={createPastor}
+                        type="email"
+                        value={pastorEmail}
+                        onChange={(e) => setPastorEmail(e.target.value)}
+                        placeholder="pastor@cekorlebu.org"
+                        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold">Password</span>
+                      <PasswordInput
+                        value={pastorPassword}
+                        onChange={(e: any) => setPastorPassword(e.target.value)}
+                        placeholder="admin123"
+                        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold">Pastor Phone</span>
+                    <input
+                      value={pastorPhone}
+                      onChange={(e) => setPastorPhone(e.target.value)}
+                      placeholder="+233 24 555 0000"
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Optional Link Existing Admins */}
+            {availableAdmins.length > 0 && (
+              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+                <span className="text-sm font-semibold block">Assign Existing Admin Account(s) to this Church</span>
+                <p className="text-xs text-muted-foreground">
+                  Select existing administrators to assign to this church. Their church database will be linked to this church so the pastor can see everything.
+                </p>
+                <div className="max-h-36 overflow-y-auto space-y-2 border border-border rounded-xl p-2 bg-background">
+                  {availableAdmins.map((adm: any) => (
+                    <label key={adm.email} className="flex items-center gap-2 text-xs cursor-pointer p-1 rounded hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        checked={selectedAdminEmails.includes(adm.email)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedAdminEmails([...selectedAdminEmails, adm.email]);
+                          else setSelectedAdminEmails(selectedAdminEmails.filter((x) => x !== adm.email));
+                        }}
+                      />
+                      <span className="font-semibold">{adm.fullName || adm.username}</span>
+                      <span className="text-muted-foreground">({adm.email})</span>
+                      <span className="text-xs text-muted-foreground ml-auto">{adm.church || 'Unassigned'}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedAdminEmails.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={migrateOnCreate}
+                      onChange={(e) => setMigrateOnCreate(e.target.checked)}
+                    />
+                    <span>Migrate members, leaders, and check-ins of selected admins to this church</span>
+                  </label>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setShowCreate(false)}>
                 Cancel
@@ -1089,7 +1288,61 @@ function Churches({ a, act }: any) {
         </div>
       )}
 
-      {/* Modal: Delete Church Confirmation */}
+      {/* Modal: Assign Admin Account to Church / Pastor */}
+      {assignAdminTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={handleAssignAdmin}
+            className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-headline">Assign Admin to Church</h3>
+              <Button variant="ghost" onClick={() => setAssignAdminTarget(null)}>
+                ✕
+              </Button>
+            </div>
+            <div className="rounded-xl bg-muted/40 p-3 text-xs space-y-1">
+              <p><strong>Target Church:</strong> {assignAdminTarget.name}</p>
+              <p><strong>Pastor in Charge:</strong> {assignAdminTarget.pastor || 'Pastor in Charge'}</p>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold">Select Administrator Account *</span>
+              <select
+                required
+                value={selectedAdminEmail}
+                onChange={(e) => setSelectedAdminEmail(e.target.value)}
+                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+              >
+                <option value="">-- Choose Admin Account --</option>
+                {availableAdmins.map((adm: any) => (
+                  <option key={adm.email} value={adm.email}>
+                    {adm.fullName || adm.username} ({adm.email}) — Currently: {adm.church || 'Unassigned'} ({adm.churchMembersCount ?? 0} members)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-start gap-2 text-xs font-semibold cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={migrateData}
+                onChange={(e) => setMigrateData(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>Migrate all church database records (members, leaders, check-ins, cell reports) from this admin to <strong>{assignAdminTarget.name}</strong> so the pastor can see everything immediately.</span>
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setAssignAdminTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !selectedAdminEmail}>
+                {busy ? 'Assigning…' : 'Link Admin & Migrate Database'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Delete Church Confirmation (Full Database Cascade) */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-3xl border border-destructive/40 bg-card p-6 shadow-2xl space-y-4">
@@ -1098,10 +1351,16 @@ function Churches({ a, act }: any) {
               <h3 className="text-xl font-headline">Delete Church Branch</h3>
             </div>
             <p className="text-sm">
-              Are you sure you want to delete <strong>{deleteTarget.name}</strong>?
+              Are you sure you want to permanently delete <strong>{deleteTarget.name}</strong>?
             </p>
-            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
-              <strong>Safety Cascade Active:</strong> Associated members and leaders will be safely unlinked from this branch so no orphan records or foreign key crashes occur.
+            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3.5 text-xs text-destructive space-y-1.5">
+              <strong className="block font-bold">PERMANENT DATABASE DELETION:</strong>
+              <p>
+                This action will completely delete this church and ALL associated members ({fmt(deleteTarget.members)}), leaders ({fmt(deleteTarget.leaders)}), attendance check-in records, and weekly cell reports completely from the database.
+              </p>
+              <p className="font-semibold">
+                Once deleted, this church and its records cannot be recovered.
+              </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
@@ -1113,7 +1372,7 @@ function Churches({ a, act }: any) {
                 disabled={busy}
                 onClick={handleDelete}
               >
-                {busy ? 'Deleting…' : 'Yes, Delete Church'}
+                {busy ? 'Deleting completely…' : 'Yes, Delete Completely'}
               </Button>
             </div>
           </div>
@@ -1124,16 +1383,31 @@ function Churches({ a, act }: any) {
 }
 
 /* ========================================================================== */
-/*               3. REGISTRATIONS & UNVERIFIED APPROVAL QUEUE                 */
+/*               3. ACCOUNTS, PASTORS & ADMIN ASSIGNMENTS                     */
 /* ========================================================================== */
 
 function Registrations({ a, act }: any) {
   const [q, setQ] = useState('');
-  const [roleFilter, setRoleFilter] = useState('All');
+  const [filterTab, setFilterTab] = useState<'All' | 'Church Pastor' | 'Church Admin' | 'Usher' | 'Leader' | 'Pending'>('All');
   const [selected, setSelected] = useState<any>(null); // For configure & approve modal
   const [pwdTarget, setPwdTarget] = useState<any>(null); // For set password modal
   const [newPwd, setNewPwd] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Modals for Pastor & Admin Linking
+  const [showCreatePastor, setShowCreatePastor] = useState(false);
+  const [pastorName, setPastorName] = useState('');
+  const [pastorEmail, setPastorEmail] = useState('');
+  const [pastorPassword, setPastorPassword] = useState('admin123');
+  const [pastorPhone, setPastorPhone] = useState('');
+  const [pastorChurch, setPastorChurch] = useState('');
+  const [pastorZone, setPastorZone] = useState('Zone 1 (Korle Bu)');
+  const [pastorLinkedAdmins, setPastorLinkedAdmins] = useState<string[]>([]);
+  const [migrateOnPastorCreate, setMigrateOnPastorCreate] = useState(true);
+
+  const [linkAdminTarget, setLinkAdminTarget] = useState<any>(null); // admin being linked to pastor
+  const [linkTargetChurch, setLinkTargetChurch] = useState('');
+  const [linkMigrateData, setLinkMigrateData] = useState(true);
 
   // Form states for configure modal
   const [cfgName, setCfgName] = useState('');
@@ -1142,14 +1416,22 @@ function Registrations({ a, act }: any) {
   const [cfgEmail, setCfgEmail] = useState('');
   const [cfgPhone, setCfgPhone] = useState('');
 
-  const registrations = (a.pendingRegistrations || []).filter((r: any) => {
+  const allAccountsList = (a.allAccounts || []);
+  const availableAdmins = (a.registeredAdmins || allAccountsList.filter((acc: any) => acc.role === 'Church Admin' || acc.role === 'Usher'));
+  const availablePastors = (a.pastors || allAccountsList.filter((acc: any) => acc.role === 'Church Pastor'));
+
+  const filteredAccounts = allAccountsList.filter((r: any) => {
     const matchQ =
       (r.fullName && r.fullName.toLowerCase().includes(q.toLowerCase())) ||
       (r.email && r.email.toLowerCase().includes(q.toLowerCase())) ||
       (r.username && r.username.toLowerCase().includes(q.toLowerCase())) ||
       (r.church && r.church.toLowerCase().includes(q.toLowerCase()));
-    const matchRole = roleFilter === 'All' || r.role === roleFilter;
-    return matchQ && matchRole;
+    
+    let matchTab = true;
+    if (filterTab === 'Pending') matchTab = !r.verified;
+    else if (filterTab !== 'All') matchTab = r.role === filterTab;
+
+    return matchQ && matchTab;
   });
 
   const openConfigure = (r: any) => {
@@ -1199,50 +1481,88 @@ function Registrations({ a, act }: any) {
     setNewPwd('');
   };
 
+  const handleCreatePastor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pastorName.trim() || !pastorEmail.trim() || !pastorChurch.trim()) return;
+    setBusy(true);
+    await act(
+      {
+        op: 'createPastorAccount',
+        fullName: pastorName.trim(),
+        email: pastorEmail.trim(),
+        password: pastorPassword.trim(),
+        phone: pastorPhone.trim(),
+        churchName: pastorChurch.trim(),
+        zone: pastorZone.trim(),
+        linkedAdminEmails: pastorLinkedAdmins,
+        migrateData: migrateOnPastorCreate,
+      },
+      `Created Pastor account for "${pastorName.trim()}" at "${pastorChurch.trim()}"${pastorLinkedAdmins.length ? ` and linked ${pastorLinkedAdmins.length} admin(s)` : ''}`,
+    );
+    setBusy(false);
+    setShowCreatePastor(false);
+    setPastorName('');
+    setPastorEmail('');
+    setPastorChurch('');
+    setPastorLinkedAdmins([]);
+  };
+
+  const handleLinkAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkAdminTarget || !linkTargetChurch) return;
+    setBusy(true);
+    await act(
+      {
+        op: 'linkAdminToPastor',
+        adminEmail: linkAdminTarget.email,
+        adminId: linkAdminTarget.id,
+        targetChurchName: linkTargetChurch,
+        migrateData: linkMigrateData,
+      },
+      `Linked admin "${linkAdminTarget.fullName || linkAdminTarget.email}" to "${linkTargetChurch}" and migrated database`,
+    );
+    setBusy(false);
+    setLinkAdminTarget(null);
+    setLinkTargetChurch('');
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Tile
           featured
-          label="Unverified Accounts"
-          value={(a.pendingRegistrations || []).length}
-          hint="Awaiting verification or approval"
+          label="All Accounts"
+          value={allAccountsList.length}
+          hint={`${availablePastors.length} Pastors · ${availableAdmins.length} Admins/Staff`}
         />
         <Tile
-          label="Staff & Pastors"
-          value={
-            (a.pendingRegistrations || []).filter((r: any) =>
-              ['Church Pastor', 'Church Admin', 'Superadmin'].includes(r.role),
-            ).length
-          }
+          label="Church Pastors"
+          value={availablePastors.length}
+          hint="Pastoral head accounts"
         />
         <Tile
-          label="Leaders & Ushers"
-          value={
-            (a.pendingRegistrations || []).filter((r: any) => ['Leader', 'Usher'].includes(r.role)).length
-          }
+          label="Church Admins & Ushers"
+          value={availableAdmins.length}
+          hint="Branch operators & scanners"
         />
         <Tile
-          label="Oldest Pending"
-          value={
-            (a.pendingRegistrations || []).length
-              ? `${Math.round(
-                  (Date.now() -
-                    new Date(
-                      (a.pendingRegistrations || []).sort(
-                        (x: any, y: any) => new Date(x.since).getTime() - new Date(y.since).getTime(),
-                      )[0]?.since || Date.now(),
-                    ).getTime()) /
-                    864e5,
-                )}d`
-              : '0d'
-          }
+          label="Pending Verification"
+          value={allAccountsList.filter((a: any) => !a.verified).length}
+          hint="Awaiting manual activation"
         />
       </div>
 
       <Card
-        title="Unverified registrations & manual approval desk"
-        subtitle="Full autonomy to resolve unclicked verification links, configure correct church assignments, appoint roles, reset initial passwords, or reject invalid sign-ups."
+        title="Accounts, pastors & administrator assignments"
+        subtitle="Create pastor accounts, assign registered administrators to pastors, migrate church records, set passwords, and manage platform roles."
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" onClick={() => setShowCreatePastor(true)}>
+              <span className="material-symbols-outlined text-base mr-1">person_add</span>
+              Create Pastor Account
+            </Button>
+          </div>
+        }
       >
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <input
@@ -1251,96 +1571,343 @@ function Registrations({ a, act }: any) {
             onChange={(e) => setQ(e.target.value)}
             className="flex-1 min-w-[200px] rounded-xl border border-input bg-background px-4 py-2 text-sm"
           />
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="rounded-xl border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="All">All Roles</option>
-            <option value="Church Pastor">Church Pastor</option>
-            <option value="Church Admin">Church Admin</option>
-            <option value="Leader">Leader</option>
-            <option value="Usher">Usher</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-1 bg-muted p-1 rounded-xl">
+            {(['All', 'Church Pastor', 'Church Admin', 'Usher', 'Leader', 'Pending'] as const).map((tab) => (
+              <Button
+                key={tab}
+                variant={filterTab === tab ? 'secondary' : 'ghost'}
+                className="h-8 px-2.5 py-1 text-xs"
+                onClick={() => setFilterTab(tab)}
+              >
+                {tab === 'All' ? 'All' : tab === 'Pending' ? 'Pending' : tab.replace('Church ', '')}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <Table
-          head={['Account', 'Role', 'Assigned Church', 'Contact', 'Registered', 'Actions']}
-          empty="No pending unverified registrations right now. All accounts are verified!"
-          rows={registrations.map((r: any) => [
+          head={['Account & Contact', 'Role', 'Assigned Church & Data', 'Verification', 'Registered', 'Actions']}
+          empty="No accounts match your filter."
+          rows={filteredAccounts.map((r: any) => [
             <div>
               <strong className="block">{r.fullName || r.username || 'Unnamed'}</strong>
               <span className="text-xs text-muted-foreground">{r.email}</span>
+              {r.phone && <p className="text-xs text-muted-foreground">{r.phone}</p>}
             </div>,
-            <Badge variant="warning">{r.role}</Badge>,
-            r.church || <span className="text-muted-foreground italic">None assigned</span>,
-            <div className="text-xs">
-              <p>{r.email}</p>
-              {r.phone && <p className="text-muted-foreground">{r.phone}</p>}
+            <Badge variant={r.role === 'Church Pastor' ? 'primary' : r.role === 'Church Admin' ? 'neutral' : r.role === 'Superadmin' ? 'primary' : 'warning'}>
+              {r.role}
+            </Badge>,
+            <div>
+              <strong className="block text-sm">{r.church || <span className="text-muted-foreground italic">None assigned</span>}</strong>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {r.churchMembersCount ?? 0} church members
+              </span>
             </div>,
+            <Badge ok={r.verified} variant={r.verified ? 'primary' : 'warning'}>
+              {r.verified ? 'Verified' : 'Pending Verification'}
+            </Badge>,
             when(r.since),
             <div className="flex flex-wrap items-center gap-1.5">
+              {r.role === 'Church Admin' && (
+                <Button
+                  variant="primary"
+                  className="px-2.5 py-1 text-xs"
+                  onClick={() => { setLinkAdminTarget(r); setLinkTargetChurch(''); }}
+                  title="Assign this admin to a pastor's church and migrate database"
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">link</span>
+                  Assign to Pastor
+                </Button>
+              )}
+              {r.role === 'Church Pastor' && (
+                <Button
+                  variant="secondary"
+                  className="px-2.5 py-1 text-xs"
+                  onClick={() => {
+                    const ch = (a.churches || []).find((c: any) => c.name?.toLowerCase() === r.church?.toLowerCase());
+                    setLinkAdminTarget({ email: '', church: r.church, pastorTarget: ch, pastorName: r.fullName || r.username });
+                    setLinkTargetChurch(r.church || ch?.name || '');
+                  }}
+                  title="Link an existing admin account to this pastor's church"
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">person_add</span>
+                  Link Admin
+                </Button>
+              )}
               <Button
-                variant="primary"
+                variant="secondary"
                 className="px-2.5 py-1 text-xs"
                 onClick={() => openConfigure(r)}
-                title="Configure details and approve account"
+                title="Configure details and role"
               >
                 <span className="material-symbols-outlined text-sm mr-1">tune</span>
-                Configure & Approve
+                Configure
               </Button>
-              <Button
-                variant="secondary"
-                className="px-2.5 py-1 text-xs"
-                onClick={() =>
-                  act(
-                    { op: 'approveRegistration', id: r.id, email: r.email },
-                    `Approved ${r.fullName || r.email}`,
-                  )
-                }
-                title="Directly approve without editing"
-              >
-                <span className="material-symbols-outlined text-sm mr-1">check</span>
-                Approve
-              </Button>
-              <Button
-                variant="secondary"
-                className="px-2 py-1 text-xs"
-                onClick={() =>
-                  act(
-                    { op: 'resendVerification', email: r.email, church: r.church },
-                    `Resent verification link to ${r.email}`,
-                  )
-                }
-                title="Resend verification link"
-              >
-                <span className="material-symbols-outlined text-sm">forward_to_inbox</span>
-              </Button>
+              {!r.verified && (
+                <Button
+                  variant="secondary"
+                  className="px-2.5 py-1 text-xs"
+                  onClick={() =>
+                    act(
+                      { op: 'approveRegistration', id: r.id, email: r.email },
+                      `Approved ${r.fullName || r.email}`,
+                    )
+                  }
+                  title="Approve and activate"
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">check</span>
+                  Approve
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 className="px-2 py-1 text-xs"
                 onClick={() => setPwdTarget(r)}
-                title="Assign temporary password"
+                title="Assign initial password"
               >
                 <span className="material-symbols-outlined text-sm">key</span>
               </Button>
-              <Button
-                variant="ghost"
-                className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-                onClick={() =>
-                  act(
-                    { op: 'deleteRegistration', id: r.id, email: r.email },
-                    `Deleted unverified registration for ${r.email}`,
-                  )
-                }
-                title="Reject and delete registration"
-              >
-                <span className="material-symbols-outlined text-sm">delete</span>
-              </Button>
+              {r.role !== 'Superadmin' && (
+                <Button
+                  variant="ghost"
+                  className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                  onClick={() =>
+                    act(
+                      { op: 'deleteRegistration', id: r.id, email: r.email },
+                      `Deleted account for ${r.email}`,
+                    )
+                  }
+                  title="Delete account"
+                >
+                  <span className="material-symbols-outlined text-sm">delete</span>
+                </Button>
+              )}
             </div>,
           ])}
         />
       </Card>
+
+      {/* Modal: Create Pastor Account */}
+      {showCreatePastor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={handleCreatePastor}
+            className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-headline">Create Pastor Account</h3>
+              <Button variant="ghost" onClick={() => setShowCreatePastor(false)}>
+                ✕
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Create a church pastor account, assign their church, and link already registered admin accounts so the pastor can view the entire church database.
+            </p>
+            <div className="space-y-3">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold">Pastor Full Name *</span>
+                <input
+                  required
+                  value={pastorName}
+                  onChange={(e) => setPastorName(e.target.value)}
+                  placeholder="e.g. Pastor Emmanuel Antwi"
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold">Pastor Email *</span>
+                  <input
+                    required
+                    type="email"
+                    value={pastorEmail}
+                    onChange={(e) => setPastorEmail(e.target.value)}
+                    placeholder="pastor@cekorlebu.org"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold">Password</span>
+                  <PasswordInput
+                    value={pastorPassword}
+                    onChange={(e: any) => setPastorPassword(e.target.value)}
+                    placeholder="admin123"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold">Phone</span>
+                  <input
+                    value={pastorPhone}
+                    onChange={(e) => setPastorPhone(e.target.value)}
+                    placeholder="+233 24 555 0000"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold">Zone</span>
+                  <input
+                    value={pastorZone}
+                    onChange={(e) => setPastorZone(e.target.value)}
+                    placeholder="Zone 1 (Korle Bu)"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold">Assigned Church Branch *</span>
+                <div className="flex gap-2">
+                  <select
+                    value={pastorChurch}
+                    onChange={(e) => setPastorChurch(e.target.value)}
+                    className="flex-1 rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                  >
+                    <option value="">-- Select Existing Branch --</option>
+                    {(a.churches || []).map((c: any) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name} ({c.members || 0} members)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  placeholder="Or type a new church name to create it automatically"
+                  value={pastorChurch}
+                  onChange={(e) => setPastorChurch(e.target.value)}
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm mt-1"
+                />
+              </label>
+
+              {/* Assign registered admins */}
+              {availableAdmins.length > 0 && (
+                <div className="rounded-2xl border border-border bg-muted/30 p-3.5 space-y-2">
+                  <span className="text-xs font-semibold block">Assign Already Registered Admin Account(s) to this Pastor</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    Link existing administrators to this pastor. Their members and records will automatically migrate to this church.
+                  </p>
+                  <div className="max-h-32 overflow-y-auto space-y-1.5 border border-border rounded-xl p-2 bg-background">
+                    {availableAdmins.map((adm: any) => (
+                      <label key={adm.email} className="flex items-center gap-2 text-xs cursor-pointer p-1 rounded hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          checked={pastorLinkedAdmins.includes(adm.email)}
+                          onChange={(e) => {
+                            if (e.target.checked) setPastorLinkedAdmins([...pastorLinkedAdmins, adm.email]);
+                            else setPastorLinkedAdmins(pastorLinkedAdmins.filter((x) => x !== adm.email));
+                          }}
+                        />
+                        <span className="font-semibold">{adm.fullName || adm.username}</span>
+                        <span className="text-muted-foreground">({adm.email})</span>
+                        <span className="text-xs text-muted-foreground ml-auto">{adm.church || 'Unassigned'}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {pastorLinkedAdmins.length > 0 && (
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={migrateOnPastorCreate}
+                        onChange={(e) => setMigrateOnPastorCreate(e.target.checked)}
+                      />
+                      <span>Migrate all church database records of linked admins to this church</span>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setShowCreatePastor(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !pastorName.trim() || !pastorEmail.trim() || !pastorChurch.trim()}>
+                {busy ? 'Creating Pastor…' : 'Create Pastor & Link Admins'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Link Admin to Pastor / Church */}
+      {linkAdminTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={handleLinkAdmin}
+            className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-headline">Assign Admin to Pastor</h3>
+              <Button variant="ghost" onClick={() => setLinkAdminTarget(null)}>
+                ✕
+              </Button>
+            </div>
+            {linkAdminTarget.email ? (
+              <div className="rounded-xl bg-muted/40 p-3 text-xs space-y-1">
+                <p><strong>Admin:</strong> {linkAdminTarget.fullName || linkAdminTarget.username} ({linkAdminTarget.email})</p>
+                <p><strong>Current Church:</strong> {linkAdminTarget.church || 'Unassigned'}</p>
+                <p><strong>Church Members:</strong> {linkAdminTarget.churchMembersCount ?? 0} members</p>
+              </div>
+            ) : (
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold">Select Administrator Account *</span>
+                <select
+                  required
+                  value={linkAdminTarget.email || ''}
+                  onChange={(e) => setLinkAdminTarget({ ...linkAdminTarget, email: e.target.value })}
+                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                >
+                  <option value="">-- Choose Admin Account --</option>
+                  {availableAdmins.map((adm: any) => (
+                    <option key={adm.email} value={adm.email}>
+                      {adm.fullName || adm.username} ({adm.email}) — Currently: {adm.church || 'Unassigned'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold">Target Pastor's Church Branch *</span>
+              <select
+                required
+                value={linkTargetChurch}
+                onChange={(e) => setLinkTargetChurch(e.target.value)}
+                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+              >
+                <option value="">-- Choose Target Church --</option>
+                {(a.churches || []).map((c: any) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name} (Pastor: {c.pastor || 'Pastor in Charge'})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-start gap-2 text-xs font-semibold cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={linkMigrateData}
+                onChange={(e) => setLinkMigrateData(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Migrate all church database records (members, leaders, check-ins, cell reports) from this admin to the selected church so the pastor can see everything immediately.
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setLinkAdminTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !linkAdminTarget.email || !linkTargetChurch}>
+                {busy ? 'Linking…' : 'Link Admin & Migrate Database'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Modal: Configure & Approve */}
       {selected && (

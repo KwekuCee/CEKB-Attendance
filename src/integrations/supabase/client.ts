@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
+const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
 const RAW_SUPABASE_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 const SUPABASE_URL = RAW_SUPABASE_URL || 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = RAW_SUPABASE_KEY || 'placeholder-anon-key';
@@ -49,7 +49,7 @@ const baseClient = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY
   }
 });
 
-if (!RAW_SUPABASE_URL) {
+if (!RAW_SUPABASE_URL || !RAW_SUPABASE_KEY) {
   const origInvoke = baseClient.functions.invoke.bind(baseClient.functions);
   (baseClient.functions as any).invoke = async (name: string, options?: { body?: any; headers?: Record<string, string> }) => {
     if (name === 'support-chat') {

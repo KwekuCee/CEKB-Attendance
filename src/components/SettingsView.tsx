@@ -58,7 +58,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateUser
 }) => {
   const isSuperadmin = user.role === 'Superadmin';
-  const [activeTab, setActiveTab] = useState<'supabase' | 'profile' | 'accountability' | 'services' | 'scanner' | 'security' | 'backup'>('profile');
+  const [activeTab, setActiveTab] = useState<'supabase' | 'profile' | 'ushers' | 'accountability' | 'services' | 'scanner' | 'security' | 'backup'>('profile');
 
   // Audit Logs & Accountability State (capped to 10 and deduplicated)
   const [currentLogs, setCurrentLogs] = useState<AuditLogItem[]>(() => {
@@ -596,6 +596,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>Security & Auth Gate</span>
         </button>
 
+        {!isSuperadmin && (
+          <button
+            onClick={() => setActiveTab('ushers')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'ushers'
+                ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/40'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">badge</span>
+            <span>Appoint Ushers & Scanners</span>
+          </button>
+        )}
+
         <button
           onClick={() => setActiveTab('backup')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'backup'
@@ -618,6 +631,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         )}
         {activeTab === 'profile' && !isSuperadmin && user.church && <UshersPanel church={user.church} canAppointAdmins={(user.role as string) === 'Church Pastor'} />}
+
+        {activeTab === 'ushers' && (
+          <UshersPanel church={user.church || churches[0]?.name || ''} canAppointAdmins={(user.role as string) === 'Church Pastor'} />
+        )}
 
         {/* TAB 0: Live Database Configuration */}
         {activeTab === 'supabase' && (

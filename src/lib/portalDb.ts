@@ -4,7 +4,7 @@
 // the small slice of the Supabase query builder the app uses and sends each
 // query to the server, which checks the signed-in session before touching data.
 
-const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://bouwuqpzplazpwuwyphq.supabase.co';
+const RAW_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
 const FUNCTIONS_BASE = RAW_SUPABASE_URL ? `${RAW_SUPABASE_URL}/functions/v1/portal-db` : '';
 const ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
@@ -376,20 +376,46 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       const count = (store.tables.attendance_records || []).filter((r: any) => r.attendance_date === d).length;
       return { date: d, count };
     });
-    const churches = (store.tables.churches || []).map((c: any) => ({
-      name: c.name,
-      status: c.status || 'Active',
-      members: c.members_count || 0,
-      leaders: 0,
-      staff: 1,
-      reports: 0,
-      checkins30: 0,
-      lastActive: null,
-      createdAt: c.created_at,
-      rows: 1,
-      estBytes: 1200,
-      active: true,
-    }));
+    const churches = (store.tables.churches || []).map((c: any) => {
+      const memCount = (store.tables.members || []).filter((m: any) => m.church_name === c.name || m.church_id === c.id).length;
+      const leadCount = (store.tables.leaders || []).filter((l: any) => l.church_name === c.name || l.church_id === c.id).length;
+      const staffList = (store.tables.user_profiles || []).filter((p: any) => p.church_name === c.name);
+      const admins = staffList.filter((p: any) => p.role === 'Church Admin').map((a: any) => ({
+        id: a.id,
+        name: a.full_name || a.username || 'Admin',
+        email: a.email,
+        phone: a.phone || ''
+      }));
+      const ushers = staffList.filter((p: any) => p.role === 'Usher').map((u: any) => ({
+        id: u.id,
+        name: u.full_name || u.username || 'Usher',
+        email: u.email,
+        phone: u.phone || ''
+      }));
+      const pastorProfile = staffList.find((p: any) => p.role === 'Church Pastor');
+      const checkins = (store.tables.attendance_records || []).filter((a: any) => a.church_name === c.name || a.church_id === c.id).length;
+      const reports = (store.tables.cell_reports || []).filter((r: any) => r.church_name === c.name || r.church_id === c.id).length;
+      return {
+        id: c.id,
+        name: c.name,
+        pastor: c.pastor_name || pastorProfile?.full_name || 'Pastor in Charge',
+        pastorEmail: pastorProfile?.email || null,
+        zone: c.zone || 'Zone 1 (Korle Bu)',
+        status: c.status || 'Active',
+        members: memCount,
+        leaders: leadCount,
+        staff: staffList.length,
+        admins,
+        ushers,
+        reports,
+        checkins30: checkins,
+        lastActive: null,
+        createdAt: c.created_at,
+        rows: memCount + leadCount + checkins + reports,
+        estBytes: (memCount + leadCount + checkins + reports) * 1200,
+        active: c.status === 'Active',
+      };
+    });
     const tablesCount: Record<string, number> = {};
     for (const [k, rows] of Object.entries(store.tables)) {
       tablesCount[k] = Array.isArray(rows) ? rows.length : 0;
@@ -398,6 +424,52 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     for (const p of store.tables.user_profiles || []) {
       roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
     }
+
+    // Comprehensive list of all registered accounts across user_profiles and church_admin_accounts
+    const seenEmails = new Set<string>();
+    const allAccounts: any[] = [];
+    for (const p of store.tables.user_profiles || []) {
+      const emailLower = String(p.email || '').toLowerCase();
+      if (emailLower) seenEmails.add(emailLower);
+      const memCount = (store.tables.members || []).filter((m: any) => m.church_name === p.church_name).length;
+      allAccounts.push({
+        id: p.id,
+        email: p.email,
+        username: p.username,
+        fullName: p.full_name || p.username || 'Unnamed',
+        role: p.role,
+        church: p.church_name || '',
+        zone: p.zone || 'Zone 1 (Korle Bu)',
+        phone: p.phone || '',
+        verified: p.admin_verified !== false,
+        since: p.created_at,
+        churchMembersCount: memCount,
+      });
+    }
+    for (const a of store.tables.church_admin_accounts || []) {
+      const emailLower = String(a.admin_email || '').toLowerCase();
+      if (!seenEmails.has(emailLower)) {
+        seenEmails.add(emailLower);
+        const memCount = (store.tables.members || []).filter((m: any) => m.church_name === a.church_name).length;
+        allAccounts.push({
+          id: a.id,
+          email: a.admin_email,
+          username: a.admin_email,
+          fullName: a.admin_name || 'Admin',
+          role: a.role || 'Church Admin',
+          church: a.church_name || '',
+          zone: a.zone || 'Zone 1 (Korle Bu)',
+          phone: a.admin_phone || '',
+          verified: a.email_verified !== false,
+          since: a.created_at,
+          churchMembersCount: memCount,
+        });
+      }
+    }
+
+    const registeredAdmins = allAccounts.filter((acc: any) => acc.role === 'Church Admin' || acc.role === 'Usher');
+    const pastors = allAccounts.filter((acc: any) => acc.role === 'Church Pastor');
+
     return {
       data: {
         series,
@@ -405,17 +477,11 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
         growth: [{ month: new Date().toISOString().slice(0, 7), churches: churches.length, members: (store.tables.members || []).length }],
         tables: tablesCount,
         roleCounts,
+        allAccounts,
+        registeredAdmins,
+        pastors,
         flagged: (store.tables.user_profiles || []).filter((p: any) => !p.admin_verified).map((p: any) => ({ role: p.role, church: p.church_name, since: p.created_at })),
-        pendingRegistrations: (store.tables.user_profiles || []).filter((p: any) => !p.admin_verified).map((p: any) => ({
-          id: p.id,
-          email: p.email,
-          username: p.username,
-          fullName: p.full_name,
-          role: p.role,
-          church: p.church_name,
-          since: p.created_at,
-          verified: false,
-        })),
+        pendingRegistrations: allAccounts.filter((acc: any) => !acc.verified),
         recentMessages: (store.tables.email_send_log || []).slice(0, 100).map((m: any) => ({
           id: m.id,
           template: m.template_name,
@@ -465,52 +531,435 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       saveLocalStore(store);
       return { success: true };
     }
+
     if (op === 'createChurch') {
       const name = String(payload.name || '').trim();
       const list = store.tables.churches || [];
       if (list.some((c: any) => c.name.toLowerCase() === name.toLowerCase())) {
         return { success: false, error: 'Church already exists.' };
       }
+      const pastorName = String(payload.pastor_name || 'Pastor in Charge').trim();
+      const zone = String(payload.zone || 'Zone 1 (Korle Bu)').trim();
+      const status = String(payload.status || 'Active');
       const newCh = {
         id: `ch-${Date.now()}`,
         name,
-        pastor_name: payload.pastor_name || 'Pastor in Charge',
-        zone: payload.zone || 'Zone 1 (Korle Bu)',
-        status: payload.status || 'Active',
+        pastor_name: pastorName,
+        zone,
+        status,
         members_count: 0,
         created_at: new Date().toISOString(),
       };
       list.push(newCh);
       store.tables.churches = list;
+
+      // Optionally create Pastor login profile
+      if (payload.createPastor && payload.pastor_email) {
+        const pastorEmail = String(payload.pastor_email).trim().toLowerCase();
+        const profiles = store.tables.user_profiles || [];
+        const existingProf = profiles.find((p: any) => p.email?.toLowerCase() === pastorEmail);
+        if (existingProf) {
+          existingProf.role = 'Church Pastor';
+          existingProf.full_name = pastorName;
+          existingProf.church_name = name;
+          existingProf.zone = zone;
+          if (payload.pastor_password) existingProf.password_hash = payload.pastor_password;
+          existingProf.admin_verified = true;
+        } else {
+          profiles.push({
+            id: `usr-${Date.now()}`,
+            username: pastorEmail,
+            email: pastorEmail,
+            full_name: pastorName,
+            role: 'Church Pastor',
+            church_name: name,
+            zone,
+            phone: payload.pastor_phone || '+233 24 555 0000',
+            password_hash: payload.pastor_password || 'admin123',
+            admin_verified: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+        store.tables.user_profiles = profiles;
+
+        const adminsList = store.tables.church_admin_accounts || [];
+        const existingAdm = adminsList.find((a: any) => a.admin_email?.toLowerCase() === pastorEmail);
+        if (existingAdm) {
+          existingAdm.church_name = name;
+          existingAdm.admin_name = pastorName;
+          existingAdm.role = 'Church Pastor';
+          existingAdm.status = 'Active';
+          existingAdm.email_verified = true;
+        } else {
+          adminsList.push({
+            id: `ADM-${Date.now()}`,
+            church_name: name,
+            admin_name: pastorName,
+            admin_email: pastorEmail,
+            admin_phone: payload.pastor_phone || '+233 24 555 0000',
+            zone,
+            role: 'Church Pastor',
+            status: 'Active',
+            email_verified: true,
+            created_at: new Date().toISOString(),
+          });
+        }
+        store.tables.church_admin_accounts = adminsList;
+      }
+
+      // Link any selected existing admin accounts and migrate their church database
+      const linkedAdmins = Array.isArray(payload.linkedAdminEmails) ? payload.linkedAdminEmails : [];
+      for (const admEmail of linkedAdmins) {
+        const emailNorm = String(admEmail).trim().toLowerCase();
+        const prof = (store.tables.user_profiles || []).find((p: any) => p.email?.toLowerCase() === emailNorm || p.id === admEmail);
+        const adm = (store.tables.church_admin_accounts || []).find((a: any) => a.admin_email?.toLowerCase() === emailNorm || a.id === admEmail);
+        const oldChurch = prof?.church_name || adm?.church_name || '';
+
+        if (prof) {
+          prof.church_name = name;
+          prof.role = 'Church Admin';
+          prof.admin_verified = true;
+        }
+        if (adm) {
+          adm.church_name = name;
+          adm.role = 'Church Admin';
+          adm.status = 'Active';
+          adm.email_verified = true;
+        }
+
+        // Migrate records if requested
+        if (payload.migrateData !== false && oldChurch && oldChurch.toLowerCase() !== name.toLowerCase()) {
+          const migrateItem = (item: any) => {
+            if (item && item.church_name?.toLowerCase() === oldChurch.toLowerCase()) {
+              item.church_name = name;
+            }
+          };
+          (store.tables.members || []).forEach(migrateItem);
+          (store.tables.leaders || []).forEach(migrateItem);
+          (store.tables.attendance_records || []).forEach(migrateItem);
+          (store.tables.absence_records || []).forEach(migrateItem);
+          (store.tables.cell_reports || []).forEach(migrateItem);
+        }
+      }
+
+      // Recalculate church counts
+      const totalMem = (store.tables.members || []).filter((m: any) => m.church_name === name).length;
+      newCh.members_count = totalMem;
+
       saveLocalStore(store);
       return { success: true, church: newCh };
     }
+
+    if (op === 'createPastorAccount') {
+      const fullName = String(payload.fullName || '').trim();
+      const email = String(payload.email || '').trim().toLowerCase();
+      const password = String(payload.password || 'admin123').trim();
+      const phone = String(payload.phone || '').trim();
+      const churchName = String(payload.churchName || '').trim();
+      const zone = String(payload.zone || 'Zone 1 (Korle Bu)').trim();
+
+      if (!fullName || !email || !churchName) {
+        return { success: false, error: 'Full name, email, and church name are required.' };
+      }
+
+      // 1. Ensure church exists and assign pastor name
+      let ch = (store.tables.churches || []).find((c: any) => c.name.toLowerCase() === churchName.toLowerCase());
+      if (!ch) {
+        ch = {
+          id: `ch-${Date.now()}`,
+          name: churchName,
+          pastor_name: fullName,
+          zone,
+          status: 'Active',
+          members_count: 0,
+          created_at: new Date().toISOString(),
+        };
+        (store.tables.churches = store.tables.churches || []).push(ch);
+      } else {
+        ch.pastor_name = fullName;
+      }
+
+      // 2. Create or update user profile
+      const profiles = store.tables.user_profiles || [];
+      let prof = profiles.find((p: any) => p.email?.toLowerCase() === email);
+      if (prof) {
+        prof.full_name = fullName;
+        prof.role = 'Church Pastor';
+        prof.church_name = churchName;
+        prof.zone = zone;
+        prof.phone = phone || prof.phone;
+        prof.password_hash = password;
+        prof.admin_verified = true;
+      } else {
+        prof = {
+          id: `usr-${Date.now()}`,
+          username: email,
+          email,
+          full_name: fullName,
+          role: 'Church Pastor',
+          church_name: churchName,
+          zone,
+          phone: phone || '+233 24 555 0000',
+          password_hash: password,
+          admin_verified: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        profiles.push(prof);
+      }
+      store.tables.user_profiles = profiles;
+
+      // 3. Update church_admin_accounts entry
+      const adminsList = store.tables.church_admin_accounts || [];
+      let adm = adminsList.find((a: any) => a.admin_email?.toLowerCase() === email);
+      if (adm) {
+        adm.admin_name = fullName;
+        adm.church_name = churchName;
+        adm.role = 'Church Pastor';
+        adm.status = 'Active';
+        adm.email_verified = true;
+      } else {
+        adminsList.push({
+          id: `ADM-${Date.now()}`,
+          church_name: churchName,
+          admin_name: fullName,
+          admin_email: email,
+          admin_phone: phone || '+233 24 555 0000',
+          zone,
+          role: 'Church Pastor',
+          status: 'Active',
+          email_verified: true,
+          created_at: new Date().toISOString(),
+        });
+      }
+      store.tables.church_admin_accounts = adminsList;
+
+      // 4. Link any admin accounts to this pastor's church and migrate data
+      const linkedAdmins = Array.isArray(payload.linkedAdminEmails) ? payload.linkedAdminEmails : [];
+      for (const admEmail of linkedAdmins) {
+        const emailNorm = String(admEmail).trim().toLowerCase();
+        const aProf = (store.tables.user_profiles || []).find((p: any) => p.email?.toLowerCase() === emailNorm || p.id === admEmail);
+        const aAdm = (store.tables.church_admin_accounts || []).find((a: any) => a.admin_email?.toLowerCase() === emailNorm || a.id === admEmail);
+        const oldChurch = aProf?.church_name || aAdm?.church_name || '';
+
+        if (aProf) {
+          aProf.church_name = churchName;
+          aProf.role = 'Church Admin';
+          aProf.admin_verified = true;
+        }
+        if (aAdm) {
+          aAdm.church_name = churchName;
+          aAdm.role = 'Church Admin';
+          aAdm.status = 'Active';
+          aAdm.email_verified = true;
+        }
+
+        if (payload.migrateData !== false && oldChurch && oldChurch.toLowerCase() !== churchName.toLowerCase()) {
+          const migrateItem = (item: any) => {
+            if (item && item.church_name?.toLowerCase() === oldChurch.toLowerCase()) {
+              item.church_name = churchName;
+            }
+          };
+          (store.tables.members || []).forEach(migrateItem);
+          (store.tables.leaders || []).forEach(migrateItem);
+          (store.tables.attendance_records || []).forEach(migrateItem);
+          (store.tables.absence_records || []).forEach(migrateItem);
+          (store.tables.cell_reports || []).forEach(migrateItem);
+        }
+      }
+
+      // Recalculate member counts
+      const count = (store.tables.members || []).filter((m: any) => m.church_name === churchName).length;
+      ch.members_count = count;
+
+      saveLocalStore(store);
+      return { success: true, pastor: prof, linkedCount: linkedAdmins.length };
+    }
+
+    if (op === 'linkAdminToPastor') {
+      const adminEmail = String(payload.adminEmail || payload.email || '').trim().toLowerCase();
+      const adminId = payload.adminId || payload.id;
+      const targetChurch = String(payload.targetChurchName || payload.churchName || '').trim();
+
+      if (!targetChurch) {
+        return { success: false, error: 'Target church name is required.' };
+      }
+
+      const prof = (store.tables.user_profiles || []).find((p: any) => (adminId && p.id === adminId) || (adminEmail && p.email?.toLowerCase() === adminEmail));
+      const adm = (store.tables.church_admin_accounts || []).find((a: any) => (adminId && a.id === adminId) || (adminEmail && a.admin_email?.toLowerCase() === adminEmail));
+
+      if (!prof && !adm) {
+        return { success: false, error: 'Admin account not found.' };
+      }
+
+      const oldChurch = prof?.church_name || adm?.church_name || '';
+
+      if (prof) {
+        prof.church_name = targetChurch;
+        prof.role = 'Church Admin';
+        prof.admin_verified = true;
+      }
+      if (adm) {
+        adm.church_name = targetChurch;
+        adm.role = 'Church Admin';
+        adm.status = 'Active';
+        adm.email_verified = true;
+      } else if (prof) {
+        (store.tables.church_admin_accounts = store.tables.church_admin_accounts || []).push({
+          id: `ADM-${Date.now()}`,
+          church_name: targetChurch,
+          admin_name: prof.full_name || prof.username,
+          admin_email: prof.email,
+          admin_phone: prof.phone || '+233 24 555 0000',
+          zone: prof.zone || 'Zone 1 (Korle Bu)',
+          role: 'Church Admin',
+          status: 'Active',
+          email_verified: true,
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      // Migrate records so pastor sees the entire church database
+      let migratedCount = 0;
+      if (payload.migrateData !== false && oldChurch && oldChurch.toLowerCase() !== targetChurch.toLowerCase()) {
+        const migrateItem = (item: any) => {
+          if (item && ((item.church_name && item.church_name.toLowerCase() === oldChurch.toLowerCase()) || (item.church && item.church.toLowerCase() === oldChurch.toLowerCase()))) {
+            item.church_name = targetChurch;
+            if ('church' in item) item.church = targetChurch;
+            migratedCount++;
+          }
+        };
+        (store.tables.members || []).forEach(migrateItem);
+        (store.tables.leaders || []).forEach(migrateItem);
+        (store.tables.attendance_records || []).forEach(migrateItem);
+        (store.tables.absence_records || []).forEach(migrateItem);
+        (store.tables.cell_reports || []).forEach(migrateItem);
+        (store.tables.church_report_codes || []).forEach(migrateItem);
+      }
+
+      // Update church counts
+      for (const ch of store.tables.churches || []) {
+        ch.members_count = (store.tables.members || []).filter((m: any) => m.church_name === ch.name || m.church_id === ch.id || m.church === ch.name).length;
+      }
+
+      saveLocalStore(store);
+      return { success: true, migratedFrom: oldChurch, migratedTo: targetChurch, migratedRecords: migratedCount };
+    }
+
     if (op === 'updateChurch') {
       const name = String(payload.name || '').trim();
-      const ch = (store.tables.churches || []).find((c: any) => c.name === name || c.id === payload.id);
+      const id = payload.id;
+      const ch = (store.tables.churches || []).find((c: any) => (id && c.id === id) || (name && c.name.toLowerCase() === name.toLowerCase()));
       if (ch) {
+        const oldName = ch.name;
         if (payload.newName) ch.name = String(payload.newName).trim();
         if (payload.pastor_name !== undefined) ch.pastor_name = String(payload.pastor_name).trim();
         if (payload.zone !== undefined) ch.zone = String(payload.zone).trim();
         if (payload.status !== undefined) ch.status = String(payload.status);
+
+        // If name changed, rename across all tables
+        if (payload.newName && payload.newName !== oldName) {
+          const rename = (item: any) => {
+            if (item?.church_name === oldName) item.church_name = payload.newName;
+            if (item?.church === oldName) item.church = payload.newName;
+          };
+          (store.tables.members || []).forEach(rename);
+          (store.tables.leaders || []).forEach(rename);
+          (store.tables.attendance_records || []).forEach(rename);
+          (store.tables.absence_records || []).forEach(rename);
+          (store.tables.cell_reports || []).forEach(rename);
+          (store.tables.church_report_codes || []).forEach(rename);
+          (store.tables.church_admin_accounts || []).forEach(rename);
+          (store.tables.user_profiles || []).forEach(rename);
+        }
       }
       saveLocalStore(store);
       return { success: true };
     }
+
     if (op === 'deleteChurch') {
       const name = String(payload.name || '').trim();
       const id = payload.id;
-      store.tables.churches = (store.tables.churches || []).filter((c: any) => c.name !== name && c.id !== id);
-      // Unbind members and leaders
+      const chList = store.tables.churches || [];
+      const ch = chList.find(
+        (c: any) => (id && String(c.id) === String(id)) || (name && String(c.name).toLowerCase() === name.toLowerCase()),
+      );
+      const targetName = ch?.name || name;
+      const targetId = ch?.id || id;
+
+      if (!targetName && !targetId) {
+        return { success: false, error: 'Church not found.' };
+      }
+
+      // 1. Remove church from churches table
+      store.tables.churches = chList.filter(
+        (c: any) =>
+          !(
+            (targetId && String(c.id) === String(targetId)) ||
+            (targetName && String(c.name).toLowerCase() === targetName.toLowerCase())
+          ),
+      );
+
+      const matchesTarget = (r: any) => {
+        if (!r) return false;
+        const cName = String(r.church_name || r.church || '').trim().toLowerCase();
+        if (targetName && cName === targetName.toLowerCase()) return true;
+        if (targetId && String(r.church_id || '').trim().toLowerCase() === String(targetId).trim().toLowerCase()) return true;
+        return false;
+      };
+
+      // 2. Completely delete all associated records from the database
       if (store.tables.members) {
-        store.tables.members.forEach((m: any) => { if (m.church_name === name) m.church_name = null; });
+        store.tables.members = store.tables.members.filter((m: any) => !matchesTarget(m));
       }
       if (store.tables.leaders) {
-        store.tables.leaders.forEach((l: any) => { if (l.church_name === name) l.church_name = null; });
+        store.tables.leaders = store.tables.leaders.filter((l: any) => !matchesTarget(l));
       }
+      if (store.tables.attendance_records) {
+        store.tables.attendance_records = store.tables.attendance_records.filter((a: any) => !matchesTarget(a));
+      }
+      if (store.tables.absence_records) {
+        store.tables.absence_records = store.tables.absence_records.filter((a: any) => !matchesTarget(a));
+      }
+      if (store.tables.cell_reports) {
+        store.tables.cell_reports = store.tables.cell_reports.filter((r: any) => !matchesTarget(r));
+      }
+      if (store.tables.church_report_codes) {
+        store.tables.church_report_codes = store.tables.church_report_codes.filter((c: any) => !matchesTarget(c));
+      }
+      if (store.tables.church_admin_accounts) {
+        store.tables.church_admin_accounts = store.tables.church_admin_accounts.filter((a: any) => !matchesTarget(a));
+      }
+      if (store.tables.promotion_queue) {
+        store.tables.promotion_queue = store.tables.promotion_queue.filter((p: any) => !matchesTarget(p));
+      }
+      if (store.tables.announcements) {
+        store.tables.announcements = store.tables.announcements.filter((an: any) => !matchesTarget(an));
+      }
+      if (store.tables.service_types) {
+        store.tables.service_types = store.tables.service_types.filter((s: any) => s.is_global || !matchesTarget(s));
+      }
+      if (store.tables.user_profiles) {
+        store.tables.user_profiles = store.tables.user_profiles.filter((u: any) => {
+          if (u.role === 'Superadmin' || u.role === 'Developer') return true;
+          return !matchesTarget(u);
+        });
+      }
+
+      // Purge local caches
+      try {
+        const storedCh = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
+        localStorage.setItem(
+          'cekbu_churches',
+          JSON.stringify(storedCh.filter((c: any) => c && c.id !== targetId && String(c.name || '').toLowerCase() !== targetName.toLowerCase()))
+        );
+      } catch {}
+
       saveLocalStore(store);
-      return { success: true };
+      return { success: true, deletedChurch: targetName };
     }
+
     if (op === 'recalculateChurchCounts') {
       for (const ch of store.tables.churches || []) {
         const count = (store.tables.members || []).filter((m: any) => m.church_name === ch.name || m.church_id === ch.id).length;
@@ -806,7 +1255,7 @@ export interface PortalResponse<T = any> {
 }
 
 export async function callPortal<T = any>(payload: Record<string, unknown>): Promise<PortalResponse<T>> {
-  if (!FUNCTIONS_BASE) {
+  if (!FUNCTIONS_BASE || !ANON_KEY) {
     return runLocalPortal(payload);
   }
   try {
@@ -821,12 +1270,17 @@ export async function callPortal<T = any>(payload: Record<string, unknown>): Pro
       },
       body: JSON.stringify(payload),
     });
+    if (!res.ok) {
+      console.warn('portal-db remote returned non-ok status, falling back to local portal:', res.status);
+      return runLocalPortal(payload);
+    }
     const body = await res.json().catch(() => null);
-    if (!body) return { data: null, error: { message: 'No response from the server.' } };
-    if (body.error) return { data: null, error: body.error };
+    if (!body) return runLocalPortal(payload);
+    if (body.error) return runLocalPortal(payload);
     return { data: (body.data ?? null) as T, error: null };
   } catch (err: any) {
-    return { data: null, error: { message: err?.message || 'Network error.' } };
+    console.warn('portal-db fetch failed, falling back to local portal:', err?.message);
+    return runLocalPortal(payload);
   }
 }
 

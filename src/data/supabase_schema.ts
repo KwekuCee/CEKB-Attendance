@@ -455,14 +455,25 @@ VALUES (
 )
 ON CONFLICT (setting_key) DO NOTHING;
 
--- 16. CHURCH DELETION SAFETY TRIGGER
+-- 16. CHURCH COMPLETE CASCADE DELETION TRIGGER
 CREATE OR REPLACE FUNCTION public.handle_church_deletion_safety()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE public.members SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.leaders SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.user_profiles SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.church_admin_accounts SET church_name = 'Unassigned', church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
+    DELETE FROM public.attendance_records WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.absence_records WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.cell_reports WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.church_report_codes WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.promotion_queue WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.announcements WHERE church_id = OLD.id;
+    UPDATE public.audit_logs SET church_id = NULL WHERE church_id = OLD.id;
+    UPDATE public.members SET invited_by_leader_id = NULL WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    UPDATE public.leaders SET parent_leader_id = NULL WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.qr_tokens WHERE member_id IN (SELECT id FROM public.members WHERE church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.members WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.leaders WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
+    DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -475,18 +486,29 @@ FOR EACH ROW EXECUTE FUNCTION public.handle_church_deletion_safety();
 
 export const SUPABASE_UPDATE_SQL = `-- ============================================================================
 -- CEKB RECENT UPDATES SQL SCRIPT (RUN THIS IN YOUR SUPABASE SQL EDITOR)
--- Includes: SMS Gateway, SMS Templates, Church Safe-Delete Trigger, Indexes
+-- Includes: Complete Church Cascade Delete, SMS Gateway, SMS Templates, Indexes
 -- Safe and idempotent to run on an existing database!
 -- ============================================================================
 
--- 1. Church Safe-Delete Trigger (Unbinds members, leaders, and profiles safely)
+-- 1. Complete Church Cascade Deletion Trigger
 CREATE OR REPLACE FUNCTION public.handle_church_deletion_safety()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE public.members SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.leaders SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.user_profiles SET church_name = NULL, church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
-    UPDATE public.church_admin_accounts SET church_name = 'Unassigned', church_id = NULL WHERE church_id = OLD.id OR church_name = OLD.name;
+    DELETE FROM public.attendance_records WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.absence_records WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.cell_reports WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.church_report_codes WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.promotion_queue WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.announcements WHERE church_id = OLD.id;
+    UPDATE public.audit_logs SET church_id = NULL WHERE church_id = OLD.id;
+    UPDATE public.members SET invited_by_leader_id = NULL WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    UPDATE public.leaders SET parent_leader_id = NULL WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.qr_tokens WHERE member_id IN (SELECT id FROM public.members WHERE church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.members WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.leaders WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
+    DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
+    DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
