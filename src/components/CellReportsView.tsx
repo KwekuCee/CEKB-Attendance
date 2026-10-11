@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import type { AuthSessionUser, UserProfile, CellReport, ViewType } from '../types';
 import { fetchCellReports, GRID_ROWS, EVANGELISM_FIELDS } from '../lib/cellReports';
+import { neutralizeCell, escHtml } from '../utils/csvSafe';
 
 interface CellReportsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -13,7 +14,7 @@ const inputClass =
   'bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
 
 function csvCell(value: unknown) {
-  const text = String(value ?? '');
+  const text = neutralizeCell(value);
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -35,12 +36,12 @@ function printReport(report: CellReport) {
   if (!win) return;
   const rows = GRID_ROWS.map(
     r =>
-      `<tr><td>${r.label}</td><td>${report.reportGrid?.[r.key]?.cell ?? ''}</td><td>${
+      `<tr><td>${escHtml(r.label)}</td><td>${escHtml(report.reportGrid?.[r.key]?.cell ?? '')}</td><td>${escHtml(
         report.reportGrid?.[r.key]?.outreach ?? ''
-      }</td></tr>`,
+      )}</td></tr>`,
   ).join('');
   const evangelism = EVANGELISM_FIELDS.map(
-    f => `<tr><td>${f.label}</td><td>${report.evangelism?.[f.key] ?? ''}</td></tr>`,
+    f => `<tr><td>${escHtml(f.label)}</td><td>${escHtml(report.evangelism?.[f.key] ?? '')}</td></tr>`,
   ).join('');
   const list = (title: string, items: Array<Record<string, any>>, cols: Array<[string, string]>) => {
     const filled = items.filter(row => cols.some(([k]) => String(row?.[k] ?? '').trim() && row[k] !== false));
@@ -51,13 +52,14 @@ function printReport(report: CellReport) {
       .map(
         row =>
           `<tr>${cols
-            .map(([k]) => `<td>${typeof row[k] === 'boolean' ? (row[k] ? 'Yes' : '') : String(row[k] ?? '')}</td>`)
+            .map(([k]) => `<td>${typeof row[k] === 'boolean' ? (row[k] ? 'Yes' : '') : escHtml(row[k] ?? '')}</td>`)
             .join('')}</tr>`,
       )
       .join('')}</tbody></table>`;
   };
 
-  win.document.write(`<!doctype html><html><head><title>Cell Report — ${report.leaderName}</title>
+  const e = escHtml;
+  win.document.write(`<!doctype html><html><head><title>Cell Report — ${e(report.leaderName)}</title>
   <style>body{font-family:system-ui,sans-serif;padding:24px;color:#0f172a}
   h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:18px 0 6px;color:#1d4ed8}
   h3{font-size:13px;margin:14px 0 6px}
@@ -65,7 +67,7 @@ function printReport(report: CellReport) {
   th,td{border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;text-align:left}
   th{background:#eff6ff}</style></head><body>
   <h1>CEKB Group — Weekly Cell Report</h1>
-  <p style="font-size:12px">${report.church} • ${report.leaderName} • ${report.cellName || '—'} • ${report.reportDate}</p>
+  <p style="font-size:12px">${e(report.church)} • ${e(report.leaderName)} • ${e(report.cellName || '—')} • ${e(report.reportDate)}</p>
   <h2>Report sheet</h2>
   <table><thead><tr><th></th><th>Cell meeting</th><th>Outreach centre</th></tr></thead><tbody>${rows}</tbody></table>
   <h2>Evangelism &amp; soulwinning</h2><table><tbody>${evangelism}</tbody></table>

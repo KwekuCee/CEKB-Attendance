@@ -163,6 +163,9 @@ Deno.serve(async (req: Request) => {
     // ---- Admin: create or rotate a branch access code ----------------------
     if (action === 'rotate_code') {
       if (!session) return json({ error: 'Please sign in.' }, 401);
+      if (!['Superadmin', 'Church Admin', 'Church Pastor'].includes(session.role)) {
+        return json({ error: 'Only church admins and pastors can change the report code.' }, 403);
+      }
       const churchName =
         session.role === 'Superadmin' ? str(body?.churchName) : str(session.church_name);
       if (!churchName) return json({ error: 'A church is required.' }, 400);

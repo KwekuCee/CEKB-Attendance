@@ -4,6 +4,7 @@ import { Member, RoleType, ViewType, ChurchBranch, Leader } from '../types';
 import { MemberPhoto } from './MemberPhoto';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
+import { csvQ } from '../utils/csvSafe';
 
 interface MemberDatabaseProps {
   members: Member[];
@@ -131,21 +132,21 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
     const headers = ['ID', 'Full Name', 'Role', 'Phone', 'Email', 'Occupation', 'Education', 'Location', 'Church', 'Foundation Class', 'Leader / Cell', 'Date of Birth', 'Join Date'];
     const rows = filtered.map(m => [
       m.id,
-      `"${m.fullName}"`,
+      `${csvQ(m.fullName)}`,
       m.role,
-      `"${m.phone}"`,
+      `${csvQ(m.phone)}`,
       m.email || '',
-      `"${m.occupation}"`,
-      `"${m.education}"`,
-      `"${m.location}"`,
-      `"${m.church}"`,
+      `${csvQ(m.occupation)}`,
+      `${csvQ(m.education)}`,
+      `${csvQ(m.location)}`,
+      `${csvQ(m.church)}`,
       m.foundationClass || 0,
-      `"${m.invitedBy || ''}"`,
+      `${csvQ(m.invitedBy || '')}`,
       m.dob || '',
       m.joinDate
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.map(c => (typeof c === 'string' && c.startsWith('"') ? c : csvQ(c))).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);

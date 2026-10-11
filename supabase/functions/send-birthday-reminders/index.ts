@@ -1,3 +1,4 @@
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 import { corsHeaders as baseCorsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { sendMail as sendGmail } from '../_shared/mailer.ts';
@@ -96,7 +97,7 @@ Deno.serve(async (req) => {
       const rows = bucket.people
         .map(
           (p: any) =>
-            `<li><strong>${p.full_name}</strong>${p.church_name ? ` — ${p.church_name}` : ''}${p.phone ? ` — ${p.phone}` : ''}</li>`,
+            `<li><strong>${esc(p.full_name)}</strong>${p.church_name ? ` — ${esc(p.church_name)}` : ''}${p.phone ? ` — ${esc(p.phone)}` : ''}</li>`,
         )
         .join('');
 
@@ -104,7 +105,7 @@ Deno.serve(async (req) => {
         to: email,
         fromName: 'CEKB Group',
         subject: `Birthday tomorrow: ${bucket.people.length} to celebrate`,
-        html: `<p>Hello ${bucket.name},</p>
+        html: `<p>Hello ${esc(bucket.name)},</p>
 <p>The following ${bucket.people.length === 1 ? 'person is' : 'people are'} celebrating a birthday tomorrow:</p>
 <ul>${rows}</ul>
 <p>A call or message today would mean a lot.</p>`,

@@ -25,13 +25,16 @@ function json(body: unknown, status = 200) {
 }
 
 const DEFAULT_APP_URL = 'https://gcycattendance.online';
+const ALLOWED_APP_URLS = ['https://gcycattendance.online', 'https://www.gcycattendance.online', 'https://happy-import-zone.lovable.app', 'https://id-preview--c690eefd-d2ed-4980-ab5f-c93210c0aea8.lovable.app'];
+const safeAppUrl = (v?: string) => { const u = (v || '').replace(/\/$/, ''); return ALLOWED_APP_URLS.includes(u) ? u : DEFAULT_APP_URL; };
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
 /**
  * The edge gateway serves function HTML as text/plain, so never render a page here.
  * Redirect the browser to the app's own confirmation screen instead.
  */
 function redirectToApp(status: 'verified' | 'expired' | 'invalid', appUrl?: string) {
-  const base = (appUrl || DEFAULT_APP_URL).replace(/\/$/, '');
+  const base = safeAppUrl(appUrl);
   return new Response(null, {
     status: 302,
     headers: { ...corsHeaders, Location: `${base}/?email_verified=${status}` },
@@ -155,7 +158,7 @@ Deno.serve(async (req) => {
       expires_at: new Date(Date.now() + TOKEN_TTL_HOURS * 3600 * 1000).toISOString(),
     });
 
-    const appOrigin = String(body?.origin || '').replace(/\/$/, '');
+    const appOrigin = safeAppUrl(String(body?.origin || ''));
     const link =
       `${url.origin}/functions/v1/verify-email?token=${token}` +
       (appOrigin ? `&app=${encodeURIComponent(appOrigin)}` : '');
@@ -164,7 +167,7 @@ Deno.serve(async (req) => {
       to: email,
       fromName: 'CEKB Group',
       subject: 'Verify your email to activate your CEKB admin account',
-      html: `<p>Hello ${name || 'there'},</p>
+      html: `<p>Hello ${esc(String(name || 'there').slice(0, 80))},</p>
 <p>Please confirm this email address to activate your CEKB Group branch admin account. You will be able to sign in to your dashboard right after.</p>
 <p><a href="${link}" style="background:#1d4ed8;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold;">Verify my email</a></p>
 <p>This link works once and expires in ${TOKEN_TTL_HOURS} hours. If you did not create this account, you can ignore this email.</p>`,
