@@ -29,6 +29,7 @@ import {
   confirmPromotionInSupabase,
   declinePromotionInSupabase,
   deleteLeaderFromSupabase,
+  mergeLeadersInSupabase,
   fetchAttendanceFromSupabase,
   saveAttendanceToSupabase,
   deleteAttendanceFromSupabase,
@@ -574,6 +575,67 @@ export default function App() {
     toast.showWarning('Leader Deleted', `${target?.fullName || leaderId} was removed from the hierarchy.`);
   };
 
+  const handleMergeLeaders = async (
+    primaryLeader: Leader,
+    duplicateLeader: Leader,
+    transferredMembers: Member[],
+    transferredAttendance: AttendanceRecord[],
+    transferredChildLeaders: Leader[]
+  ) => {
+    // 1. Update leaders state: replace primary with merged, remove duplicate, update any child leaders
+    setLeaders(prev =>
+      prev
+        .filter(l => l.id !== duplicateLeader.id)
+        .map(l => {
+          if (l.id === primaryLeader.id) return primaryLeader;
+          const childUpdate = transferredChildLeaders.find(cl => cl.id === l.id);
+          if (childUpdate) return childUpdate;
+          return l;
+        })
+    );
+
+    // 2. Update members state: re-route all transferred members to primary
+    if (transferredMembers.length > 0) {
+      const transferMap = new Map(transferredMembers.map(m => [m.id, m]));
+      setMembers(prev =>
+        prev.map(m => (transferMap.has(m.id) ? transferMap.get(m.id)! : m))
+      );
+    }
+
+    // 3. Update attendance records state
+    if (transferredAttendance.length > 0) {
+      const attMap = new Map(transferredAttendance.map(a => [a.id, a]));
+      setAttendanceRecords(prev =>
+        prev.map(a => (attMap.has(a.id) ? attMap.get(a.id)! : a))
+      );
+    }
+
+    // 4. Remove duplicate from promotion queue if present
+    setPromotionQueue(prev => prev.filter(p => p.leaderId !== duplicateLeader.id));
+
+    // 5. Persist to Supabase / Backend
+    await mergeLeadersInSupabase(
+      primaryLeader,
+      duplicateLeader.id,
+      transferredMembers,
+      transferredAttendance,
+      transferredChildLeaders
+    );
+
+    // 6. Audit Log
+    pushLog(
+      `Merged duplicate leader '${duplicateLeader.fullName}' into master record '${primaryLeader.fullName}' (${transferredMembers.length} members routed)`,
+      'merge_type',
+      'Leader',
+      primaryLeader.church
+    );
+
+    toast.showSuccess(
+      'Leaders Merged Successfully!',
+      `All ${transferredMembers.length} member(s) and hierarchy links were consolidated under ${primaryLeader.fullName}.`
+    );
+  };
+
   const handleUpdateChurch = (updated: ChurchBranch) => {
     setChurches(prev => prev.map(c => (c.id === updated.id ? updated : c)));
     saveChurchToSupabase(updated);
@@ -897,6 +959,8 @@ export default function App() {
                   onNavigate={setCurrentView}
                   onUpdateLeader={handleUpdateLeader}
                   onDeleteLeader={handleDeleteLeader}
+                  attendance={attendanceRecords}
+                  onMergeLeaders={handleMergeLeaders}
                 />
               )}
 

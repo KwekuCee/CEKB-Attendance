@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { AuthSessionUser } from '../types';
-import { Leader, LeaderType, PromotionQueueItem, ViewType, ChurchBranch, Member } from '../types';
+import { Leader, LeaderType, PromotionQueueItem, ViewType, ChurchBranch, Member, AttendanceRecord } from '../types';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader } from '../utils/analyticsUtils';
 import { IncompleteLeadersPanel } from './IncompleteLeadersPanel';
-import { isIncompleteLeader } from '../utils/importUtils';
+import { isIncompleteLeader, nameKey } from '../utils/importUtils';
+import { MergeLeadersModal } from './MergeLeadersModal';
+import { Button } from './Button';
 
 interface LeaderDirectoryProps {
   leaders: Leader[];
@@ -19,8 +21,16 @@ interface LeaderDirectoryProps {
   onNavigate: (view: ViewType) => void;
   churches?: ChurchBranch[];
   members?: Member[];
+  attendance?: AttendanceRecord[];
   onUpdateLeader?: (leader: Leader) => void;
   onDeleteLeader?: (leaderId: string) => void;
+  onMergeLeaders?: (
+    primaryLeader: Leader,
+    duplicateLeader: Leader,
+    transferredMembers: Member[],
+    transferredAttendance: AttendanceRecord[],
+    transferredChildLeaders: Leader[]
+  ) => Promise<void> | void;
 }
 
 export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
@@ -32,8 +42,10 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   onNavigate,
   churches,
   members = [],
+  attendance = [],
   onUpdateLeader,
-  onDeleteLeader
+  onDeleteLeader,
+  onMergeLeaders,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('All');
@@ -41,6 +53,9 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   const [editingLeader, setEditingLeader] = useState<Leader | null>(null);
   const [deletingLeader, setDeletingLeader] = useState<Leader | null>(null);
   const [viewingLeader, setViewingLeader] = useState<Leader | null>(null);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [mergeLeaderA, setMergeLeaderA] = useState<Leader | null>(null);
+  const [mergeLeaderB, setMergeLeaderB] = useState<Leader | null>(null);
 
   const isChurchAdmin = user?.role === 'Church Admin' || (user?.role as string) === 'Church Pastor';
   const targetChurch = user?.church || '';
@@ -62,6 +77,36 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
     );
 
   const cleanLeaderSearch = (searchTerm || '').trim().toLowerCase();
+  const potentialDuplicates = useMemo(() => {
+    const pairs: Array<{ a: Leader; b: Leader; reason: string }> = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < scopedLeaders.length; i++) {
+      const l1 = scopedLeaders[i];
+      if (!l1 || !l1.fullName) continue;
+      const key1 = nameKey(l1.fullName);
+      for (let j = i + 1; j < scopedLeaders.length; j++) {
+        const l2 = scopedLeaders[j];
+        if (!l2 || !l2.fullName) continue;
+        const key2 = nameKey(l2.fullName);
+        const pairKey = [l1.id, l2.id].sort().join('::');
+        if (seen.has(pairKey)) continue;
+
+        const clean1 = l1.fullName.trim().toLowerCase();
+        const clean2 = l2.fullName.trim().toLowerCase();
+
+        if ((key1 && key2 && key1 === key2) || clean1 === clean2) {
+          seen.add(pairKey);
+          pairs.push({
+            a: l1,
+            b: l2,
+            reason: clean1 === clean2 ? 'Exact duplicate name' : 'Casing or title variation (e.g. ALL CAPS vs Title Case)',
+          });
+        }
+      }
+    }
+    return pairs;
+  }, [scopedLeaders]);
+
   const filteredLeaders = scopedLeaders.filter(ldr => {
     if (!ldr) return false;
     const nameStr = (ldr.fullName || '').toLowerCase();
@@ -96,14 +141,66 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => onNavigate('leader_registration')}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer shrink-0"
-        >
-          <span className="material-symbols-outlined text-[18px]">person_add</span>
-          <span>Register New Leader</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setMergeLeaderA(potentialDuplicates[0]?.a || null);
+              setMergeLeaderB(potentialDuplicates[0]?.b || null);
+              setIsMergeModalOpen(true);
+            }}
+            className="border border-slate-200 text-slate-800 text-xs font-bold py-2.5 px-3.5 rounded-xl flex items-center gap-1.5 shadow-xs"
+          >
+            <span className="material-symbols-outlined text-[18px]">merge_type</span>
+            <span>Merge Leaders</span>
+            {potentialDuplicates.length > 0 && (
+              <span className="ml-1 bg-amber-500 text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+                {potentialDuplicates.length}
+              </span>
+            )}
+          </Button>
+
+          <Button
+            variant="primary"
+            onClick={() => onNavigate('leader_registration')}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl flex items-center gap-2 shadow-sm shrink-0"
+          >
+            <span className="material-symbols-outlined text-[18px]">person_add</span>
+            <span>Register New Leader</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Duplicate Leaders Alert Banner */}
+      {potentialDuplicates.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 md:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px]">warning</span>
+            </div>
+            <div>
+              <h4 className="font-headline font-bold text-sm text-amber-950">
+                {potentialDuplicates.length} Potential Duplicate Leader{potentialDuplicates.length > 1 ? 's' : ''} Detected
+              </h4>
+              <p className="text-xs text-amber-900/90 mt-0.5 font-body">
+                We found matching leader records (e.g. &quot;{potentialDuplicates[0].a.fullName}&quot; and &quot;{potentialDuplicates[0].b.fullName}&quot;). Merge them together so all members are under one leader and don&apos;t get confused when checking in.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setMergeLeaderA(potentialDuplicates[0].a);
+              setMergeLeaderB(potentialDuplicates[0].b);
+              setIsMergeModalOpen(true);
+            }}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl shrink-0 flex items-center gap-1.5 self-start md:self-auto"
+          >
+            <span className="material-symbols-outlined text-[16px]">merge_type</span>
+            <span>Review &amp; Merge Now</span>
+          </Button>
+        </div>
+      )}
 
       {/* Promotion requests awaiting the group pastor */}
       {scopedPromotionQueue.length > 0 && (
@@ -317,8 +414,24 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
 
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <button
+                        onClick={() => {
+                          setMergeLeaderA(ldr);
+                          const dup = potentialDuplicates.find(p => p.a.id === ldr.id || p.b.id === ldr.id);
+                          if (dup) {
+                            setMergeLeaderB(dup.a.id === ldr.id ? dup.b : dup.a);
+                          } else {
+                            setMergeLeaderB(null);
+                          }
+                          setIsMergeModalOpen(true);
+                        }}
+                        className="inline-flex items-center px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold cursor-pointer"
+                        title="Merge with duplicate leader"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">merge_type</span>
+                      </button>
+                      <button
                         onClick={() => setEditingLeader(ldr)}
-                        className="inline-flex items-center px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                        className="ml-1.5 inline-flex items-center px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
                         title="Edit leader"
                       >
                         <span className="material-symbols-outlined text-[16px]">edit</span>
@@ -423,6 +536,28 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
           }}
         />
       )}
+
+      {isMergeModalOpen && (
+        <MergeLeadersModal
+          isOpen={isMergeModalOpen}
+          onClose={() => {
+            setIsMergeModalOpen(false);
+            setMergeLeaderA(null);
+            setMergeLeaderB(null);
+          }}
+          leaders={scopedLeaders}
+          members={members}
+          attendance={attendance}
+          initialLeaderA={mergeLeaderA}
+          initialLeaderB={mergeLeaderB}
+          onMerge={async (primary, duplicate, transfMembers, transfAtt, transfChild) => {
+            if (onMergeLeaders) {
+              await onMergeLeaders(primary, duplicate, transfMembers, transfAtt, transfChild);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
+

@@ -420,6 +420,19 @@ const NON_LEADER_VALUES = new Set([
   'unknown',
 ]);
 
+export function toTitleCase(name: string): string {
+  if (!name) return '';
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  const isAllCaps = trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
+  const isAllLower = trimmed === trimmed.toLowerCase();
+  if (!isAllCaps && !isAllLower) return trimmed;
+  return trimmed
+    .toLowerCase()
+    .split(' ')
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : ''))
+    .join(' ');
+}
+
 export function nameKey(name: string): string {
   return (name || '')
     .toLowerCase()
@@ -445,8 +458,11 @@ export function collectLeadersFromRows(
 ): DerivedLeader[] {
   const existingByName = new Map<string, Leader>();
   (options.existingLeaders || []).forEach((l) => {
-    const key = nameKey(l.fullName);
-    if (key) existingByName.set(key, l);
+    if (!l || !l.fullName) return;
+    const k1 = nameKey(l.fullName);
+    if (k1) existingByName.set(k1, l);
+    const k2 = l.fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (k2) existingByName.set(k2, l);
   });
 
   // Every person in the file, so a leader who also appears as a member row
@@ -471,18 +487,22 @@ export function collectLeadersFromRows(
       return;
     }
 
+    const cleanRaw = rawName.toLowerCase().replace(/\s+/g, ' ');
+    const existing = existingByName.get(key) || existingByName.get(cleanRaw);
     const ownRow = rowByName.get(key);
-    const existing = existingByName.get(key);
+
+    const leaderDisplayName = existing?.fullName || toTitleCase(rawName);
+
     found.set(key, {
-      name: rawName.replace(/\s+/g, ' '),
+      name: leaderDisplayName,
       key,
       memberCount: 1,
       existingLeaderId: existing?.id,
-      phone: (ownRow?.raw.phone || '').trim(),
-      email: (ownRow?.raw.email || '').trim(),
-      dob: ownRow?.raw.dob ? parseDate(ownRow.raw.dob) || '' : '',
-      location: (ownRow?.raw.location || '').trim(),
-      church: (ownRow?.raw.church || '').trim() || options.church,
+      phone: existing?.contact || (ownRow?.raw.phone || '').trim(),
+      email: existing?.email || (ownRow?.raw.email || '').trim(),
+      dob: existing?.dob || (ownRow?.raw.dob ? parseDate(ownRow.raw.dob) || '' : ''),
+      location: existing?.location || (ownRow?.raw.location || '').trim(),
+      church: existing?.church || (ownRow?.raw.church || '').trim() || options.church,
     });
   });
 

@@ -379,6 +379,53 @@ export async function deleteLeaderFromSupabase(leaderId: string): Promise<boolea
   }
 }
 
+/**
+ * Merges a duplicate leader into a primary leader:
+ * 1. Updates the primary leader with consolidated data
+ * 2. Re-routes all transferred members to the primary leader
+ * 3. Re-routes attendance records and subordinate child leaders
+ * 4. Removes the duplicate leader from the database
+ */
+export async function mergeLeadersInSupabase(
+  mergedLeader: Leader,
+  duplicateLeaderId: string,
+  transferredMembers: Member[],
+  transferredAttendance: AttendanceRecord[],
+  transferredChildLeaders: Leader[]
+): Promise<boolean> {
+  const client = getSupabase();
+  if (!client) return false;
+
+  try {
+    // 1. Save updated primary leader with consolidated details
+    await saveLeaderToSupabase(mergedLeader);
+
+    // 2. Re-route members to the primary leader
+    for (const m of transferredMembers) {
+      await saveMemberToSupabase(m).catch((e) => console.warn('Error updating transferred member in Supabase:', e));
+    }
+
+    // 3. Re-route child leaders reporting to duplicate
+    for (const cl of transferredChildLeaders) {
+      await saveLeaderToSupabase(cl).catch((e) => console.warn('Error updating child leader in Supabase:', e));
+    }
+
+    // 4. Re-route attendance records
+    for (const a of transferredAttendance) {
+      await saveAttendanceToSupabase(a).catch((e) => console.warn('Error updating attendance record in Supabase:', e));
+    }
+
+    // 5. Delete the duplicate leader record
+    await deleteLeaderFromSupabase(duplicateLeaderId);
+
+    return true;
+  } catch (err) {
+    console.error('Error in mergeLeadersInSupabase:', err);
+    return false;
+  }
+}
+
+
 // ============================================================================
 // 3. ATTENDANCE RECORDS CRUD
 // ============================================================================

@@ -372,9 +372,18 @@ export function getGroupNamesForLeader(leaderId: string | undefined, leaders: Le
   return result;
 }
 
-/** Finds a leader by name (used when only a leader name was recorded). */
+import { nameKey } from './importUtils';
+
+/** Finds a leader by name (used when only a leader name was recorded). Tolerant to casing and titles. */
 export function findLeaderByName(name: string | undefined, leaders: Leader[]): Leader | undefined {
   if (!name) return undefined;
-  const key = name.trim().toLowerCase();
-  return (leaders || []).find(l => (l.fullName || '').trim().toLowerCase() === key);
+  const clean = name.trim().toLowerCase();
+  const exact = (leaders || []).find(l => (l.fullName || '').trim().toLowerCase() === clean);
+  if (exact) return exact;
+  const targetKey = nameKey(name);
+  if (targetKey && targetKey.length >= 3) {
+    return (leaders || []).find(l => nameKey(l.fullName) === targetKey);
+  }
+  return undefined;
 }
+

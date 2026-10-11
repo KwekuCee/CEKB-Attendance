@@ -11,6 +11,7 @@ import {
   fieldLabel,
   initialsOf,
   nameKey,
+  toTitleCase,
   prepareRows,
   readSpreadsheet,
 } from '../utils/importUtils';
@@ -167,28 +168,43 @@ export const ImportDataPanel: React.FC<ImportDataPanelProps> = ({
 
       for (const row of goodRows) {
         if (kind === 'members' && row.member) {
-          const leaderId = leaderIdsByName.get(nameKey(row.raw.invitedBy || ''));
+          const rawInvitedBy = (row.raw.invitedBy || '').trim();
+          const leaderId = rawInvitedBy ? leaderIdsByName.get(nameKey(rawInvitedBy)) : undefined;
+          const matchedLeader = leaderId
+            ? leaders.find((l) => l.id === leaderId) || addedLeaders.find((l) => l.id === leaderId)
+            : undefined;
+
+          const cleanInvitedByName = matchedLeader
+            ? matchedLeader.fullName
+            : rawInvitedBy
+            ? toTitleCase(rawInvitedBy)
+            : row.member.invitedBy || 'Spreadsheet Import';
+
           const member: Member = {
             ...(row.member as Member),
             id: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
+            fullName: toTitleCase(row.member.fullName || ''),
             initials: initialsOf(row.member.fullName || ''),
             church: row.member.church || church,
+            invitedBy: cleanInvitedByName,
             invitedByLeaderId: leaderId,
           };
           const ok = await saveMemberToSupabase(member);
           if (ok) addedMembers.push(member);
         } else if (kind === 'leaders' && row.leader) {
+          const cleanLeaderName = toTitleCase(row.leader.fullName || '');
           const code = generateLeaderCode();
           const leader: Leader = {
             ...(row.leader as Leader),
             id: code,
             leaderCode: code,
+            fullName: cleanLeaderName,
+            initials: initialsOf(cleanLeaderName),
             church: row.leader.church || church,
             isAppointed: false,
             downstreamCount: 0,
             promotionStatus: 'Confirmed',
             joinedDate: new Date().toISOString().slice(0, 10),
-            initials: initialsOf(row.leader.fullName || ''),
           };
           const ok = await saveLeaderToSupabase(leader);
           if (ok) {
