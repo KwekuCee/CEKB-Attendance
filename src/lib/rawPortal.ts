@@ -9,6 +9,19 @@ const ALLOW_LOCAL_FALLBACK =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_LOCAL_PORTAL === 'true') ||
   (typeof process !== 'undefined' && process.env?.VITE_ENABLE_LOCAL_PORTAL === 'true');
 
+function withActionablePortalError(data: any, action: unknown) {
+  if (action === 'mnotifyUser' && data?.error?.message === 'Unknown request.') {
+    return {
+      ...data,
+      error: {
+        ...data.error,
+        message: 'Sender ID and SMS are not enabled on the server yet. Deploy the latest portal-db Supabase Edge Function, then try again.',
+      },
+    };
+  }
+  return data;
+}
+
 export async function rawPortal(payload: Record<string, unknown>, token?: string | null): Promise<any> {
   if (!URL) {
     if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
@@ -32,12 +45,15 @@ export async function rawPortal(payload: Record<string, unknown>, token?: string
     if (!res.ok) {
       if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
       const response = await res.json().catch(() => null);
-      return response || { success: false, error: { message: `The server rejected the request (${res.status}).` } };
+      return withActionablePortalError(
+        response || { success: false, error: { message: `The server rejected the request (${res.status}).` } },
+        payload.action,
+      );
     }
     const data = await res.json().catch(() => null);
     if (!data && ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
     if (!data) return { success: false, error: { message: 'The server returned an invalid response.' } };
-    return data;
+    return withActionablePortalError(data, payload.action);
   } catch (err: any) {
     if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
     console.error('portal-db request failed:', err?.message || err);

@@ -29,9 +29,32 @@ Apply the database schema through the normal Supabase migration process:
 supabase/migrations/20261011200000_mnotify_sender_id_and_campaigns.sql
 ```
 
-It creates `sender_id_requests`, `sender_id_status_history`, `admin_alerts`, `sms_campaigns`, and `sms_recipients`, plus indexes and the `mnotify_management` default settings row. The Developer Console full-schema and updates SQL exports include the same tables. All these tables have RLS enabled, revoke access from `PUBLIC`, `anon`, and `authenticated`, and grant access only to `service_role`. This app uses portal sessions rather than Supabase Auth for user identity, so ownership and role checks are enforced in `portal-db` before any service-role query: users can only view their own sender requests/campaigns; only the Developer can view the cross-account operational dashboard or manually approve/reject requests.
+For SQL Editor setup, open the [complete schema SQL](../supabase/migrations/20261011200000_mnotify_sender_id_and_campaigns.sql), copy its contents, and run it once in the target Supabase project's SQL Editor. It is idempotent for the new feature objects. Alternatively, apply it through the Supabase CLI migration workflow. **Apply the schema before deploying/using the new Sender IDs & SMS screens.**
 
-The migration is provided for review and has **not** been applied to the live database by this change. Do not run it against production until you have reviewed the SQL.
+### New database objects
+
+| Object | Purpose and key columns |
+| --- | --- |
+| `sender_id_requests` | One row per user request: owner email/name and church, requested `sender_name` and `purpose`, approval `status`, provider submission status/response/error, review fields, notification timestamp, and creation/update times. A case-insensitive partial unique index prevents duplicate active sender names while allowing rejected names to be resubmitted. |
+| `sender_id_status_history` | Append-only status audit: request FK, actor, previous/new status, optional reason, and timestamp. |
+| `admin_alerts` | SMS/email alert queue and result tracking: optional request FK, masked recipient, channel/status, attempts, provider campaign ID, error, sent/created timestamps. |
+| `sms_campaigns` | Campaign ownership and audit details: sender request FK/name, message, recipient/page counts, configured unit rate and estimate, actual provider credits, provider campaign ID, idempotency key, status, and report polling timestamp. |
+| `sms_recipients` | Per-campaign delivery state: campaign FK, recipient phone, pending/delivered/failed status, provider message ID, failure reason, and update time. |
+| `admin_settings` row `mnotify_management` | JSON configuration for the admin alert phone and Sender ID, Developer-set credit rate and low-balance threshold, low-balance alert state, and last known balance/check time. The migration seeds the alert phone as `+233550160237` and alert Sender ID as `CEKBU DEV` without overwriting existing settings. |
+
+The campaign-to-recipient and request-to-status-history relationships cascade on deletion; an alert's request link is set to null if its request is deleted. Indexes cover owner history, request status, alert status, campaign idempotency/owner history, and campaign recipient status. All five new tables have RLS enabled, revoke access from `PUBLIC`, `anon`, and `authenticated`, and grant access only to `service_role`. This app uses portal sessions rather than Supabase Auth for user identity, so ownership and role checks are enforced in `portal-db` before any service-role query: users can only view their own sender requests/campaigns; only the Developer can view cross-account operational data or manually approve/reject requests. The same DDL is included in the Developer Console's **Database Schema → New Updates SQL (SMS & Autonomy)** copyable script.
+
+### Deploy the feature handler
+
+The browser calls `portal-db` with the `mnotifyUser` action. If the deployed function predates this feature, it responds `Unknown request.` even though the updated source is in the repository. Deploy the latest function after reviewing the change and applying the schema:
+
+```powershell
+npx supabase login
+npx supabase link --project-ref bouwuqpzplazpwuwyphq
+npx supabase functions deploy portal-db
+```
+
+Then configure the Edge Function secrets described above and retry Sender ID registration. The migration and function deployment are separate operations; deploying the frontend alone does not update the Edge Function.
 
 ## Scheduled approval and delivery polling
 

@@ -45,3 +45,13 @@ test('mNotify migration keeps the new tables service-role-only', async () => {
   assert.match(migration, /REVOKE ALL ON TABLE public\.%I FROM PUBLIC, anon, authenticated/);
   assert.match(migration, /CREATE POLICY "Server side access only"/);
 });
+
+test('portal-db routes Sender ID actions and registration from the admin UI', async () => {
+  const [edgeFunction, settingsView] = await Promise.all([
+    readFile(new URL('../supabase/functions/portal-db/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/SettingsView.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(edgeFunction, /case 'mnotifyUser':\s*return await handleMnotifyUserAction/);
+  assert.match(edgeFunction, /if \(op === 'submitSenderId'\)/);
+  assert.match(settingsView, /action: 'mnotifyUser',\s*op: 'submitSenderId'/);
+});
