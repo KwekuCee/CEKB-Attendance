@@ -89,11 +89,20 @@ export default function DeveloperPortal() {
   const act = async (payload: Record<string, unknown>, msg: string) => {
     if (!token) return;
     const r = await rawPortal({ action: 'devAction', ...payload }, token);
-    const text = r?.success ? msg : r?.error?.message || r?.error || 'Action failed.';
+    const text = r?.smsError
+      ? `Announcement posted; admin SMS failed: ${r.smsError}`
+      : r?.sms
+        ? `Announcement posted; SMS accepted for ${r.sms.accepted}, failed ${r.sms.failed}; ${r.sms.creditsUsed} credits used.`
+        : r?.success ? msg : r?.error?.message || r?.error || 'Action failed.';
     setNotice(text);
     setTimeout(() => setNotice(''), 3500);
     if (r?.success) load(token);
     return r;
+  };
+
+  const sendAdminSms = async (message: string) => {
+    if (!token) return null;
+    return rawPortal({ action: 'sendAdminSms', message }, token);
   };
 
   const login = async (e: React.FormEvent) => {
@@ -271,7 +280,7 @@ export default function DeveloperPortal() {
             {tab === 'registrations' && <Registrations a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
             {tab === 'messaging' && <Messaging a={a} act={act} />}
-            {tab === 'sms' && <SmsHub a={a} act={act} />}
+            {tab === 'sms' && <SmsHub a={a} act={act} sendAdminSms={sendAdminSms} />}
             {tab === 'services' && <ServicesManager a={a} act={act} />}
             {tab === 'storage' && (
               <Storage
@@ -2309,7 +2318,7 @@ function Messaging({ a, act }: any) {
                   checked={alsoSms}
                   onChange={(e) => setAlsoSms(e.target.checked)}
                 />
-                <span>Send SMS to registered branch phone numbers (when enabled)</span>
+                <span>Send SMS to verified Church Admin phone numbers (when enabled)</span>
               </label>
             </div>
             <Button
@@ -2395,24 +2404,18 @@ function Messaging({ a, act }: any) {
 /*                   6. SMS GATEWAY & TEMPLATES (FULL CRUD)                   */
 /* ========================================================================== */
 
-function SmsHub({ a, act }: any) {
+function SmsHub({ a, act, sendAdminSms }: any) {
   const [cfg, setCfg] = useState<any>(() => ({
-    provider: 'Hubtel',
-    senderId: 'CE KORLE BU',
-    apiKey: '',
-    apiSecret: '',
+    provider: 'Mnotify',
+    senderId: '',
     enabled: false,
-    autoSendRegistration: false,
-    autoSendCheckin: false,
-    defaultCountryCode: '+233',
-    lowCreditThreshold: 50,
     ...(a.smsConfig || {}),
   }));
 
-  // Test runner state
-  const [testPhone, setTestPhone] = useState('+233');
-  const [testMsg, setTestMsg] = useState('Hello from CEKB Developer Console! This is a test dispatch.');
+  const [testMsg, setTestMsg] = useState('');
   const [testBusy, setTestBusy] = useState(false);
+  const [sendResult, setSendResult] = useState<any>(null);
+  const [sendError, setSendError] = useState('');
 
   // Template CRUD state
   const [showTplModal, setShowTplModal] = useState(false);
@@ -2480,13 +2483,23 @@ function SmsHub({ a, act }: any) {
 
   const handleSendTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!testPhone.trim() || !testMsg.trim()) return;
+    if (!testMsg.trim()) return;
     setTestBusy(true);
-    await act(
-      { op: 'sendTestSms', phone: testPhone.trim(), message: testMsg.trim(), provider: cfg.provider },
-      `Test SMS dispatched to ${testPhone}`,
-    );
-    setTestBusy(false);
+    setSendError('');
+    setSendResult(null);
+    try {
+      const response = await sendAdminSms(testMsg.trim());
+      if (response?.success) {
+        setSendResult(response.sms);
+      } else {
+        setSendError(response?.error?.message || response?.error || 'Could not send the admin update.');
+        setSendResult(response?.sms || null);
+      }
+    } catch {
+      setSendError('Could not reach the SMS service. Please try again.');
+    } finally {
+      setTestBusy(false);
+    }
   };
 
   const openCreateTpl = () => {
@@ -2536,104 +2549,42 @@ function SmsHub({ a, act }: any) {
             SMS Gateway & Telemetry Configuration
           </h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Configure your SMS provider (Hubtel, Arkesel, Twilio, Termii, Mnotify) and maintain customized SMS templates with dynamic variables so you never have to prompt or write code for SMS dispatches.
+            Configure an approved mNotify sender ID and send platform updates only to verified Church Admin accounts. The mNotify API key is kept server-side.
           </p>
         </div>
         <Badge variant={cfg.enabled ? 'primary' : 'neutral'}>
-          {cfg.enabled ? 'Gateway Enabled' : 'Gateway Inactive'}
+          {cfg.enabled ? 'Admin SMS Enabled' : 'Admin SMS Disabled'}
         </Badge>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Gateway settings */}
-        <Card title="SMS Provider & Credentials" subtitle="Enter your gateway API credentials and sender ID.">
+        <Card title="mNotify sender configuration" subtitle="Only use a sender ID approved in your mNotify account.">
           <div className="space-y-3">
             <label className="block space-y-1">
-              <span className="text-xs font-semibold">SMS Provider</span>
-              <select
-                value={cfg.provider}
-                onChange={(e) => setCfg({ ...cfg, provider: e.target.value })}
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
-              >
-                <option value="Hubtel">Hubtel (Ghana)</option>
-                <option value="Arkesel">Arkesel (Ghana)</option>
-                <option value="Twilio">Twilio (Global)</option>
-                <option value="Termii">Termii (West Africa)</option>
-                <option value="Mnotify">Mnotify (Ghana)</option>
-                <option value="Webhook">Custom HTTP Webhook</option>
-              </select>
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold">Sender ID (max 11 chars)</span>
-                <input
-                  value={cfg.senderId}
-                  maxLength={11}
-                  onChange={(e) => setCfg({ ...cfg, senderId: e.target.value })}
-                  placeholder="e.g. CE KORLE BU"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm font-semibold uppercase"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold">Default Country Code</span>
-                <input
-                  value={cfg.defaultCountryCode}
-                  onChange={(e) => setCfg({ ...cfg, defaultCountryCode: e.target.value })}
-                  placeholder="+233"
-                  className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
-                />
-              </label>
-            </div>
-
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold">API Key / Client ID</span>
+              <span className="text-xs font-semibold">Approved Sender ID (1–11 letters or numbers)</span>
               <input
-                type="password"
-                value={cfg.apiKey}
-                onChange={(e) => setCfg({ ...cfg, apiKey: e.target.value })}
-                placeholder="Enter provider API key"
+                value={cfg.senderId}
+                maxLength={11}
+                pattern="[A-Za-z0-9]{1,11}"
+                onChange={(e) => setCfg({ ...cfg, senderId: e.target.value })}
+                placeholder="e.g. CEKBUpdates"
+                required
                 className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm font-mono"
               />
             </label>
+            <p className="text-xs text-muted-foreground">
+              mNotify API key: {a.smsConfig?.apiKeyConfigured ? 'configured as a server secret' : 'not configured — add MNOTIFY_API_KEY in Lovable Secrets'}.
+            </p>
 
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold">API Secret / Client Secret</span>
-              <input
-                type="password"
-                value={cfg.apiSecret}
-                onChange={(e) => setCfg({ ...cfg, apiSecret: e.target.value })}
-                placeholder="Enter client secret (if applicable)"
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm font-mono"
-              />
-            </label>
-
-            <div className="pt-2 space-y-2 border-t border-border">
+            <div className="pt-2 border-t border-border">
               <label className="flex items-center justify-between text-sm cursor-pointer">
-                <span>Enable Live SMS Dispatch</span>
+                <span>Enable administrator update SMS</span>
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-primary"
                   checked={cfg.enabled}
                   onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
-                />
-              </label>
-              <label className="flex items-center justify-between text-sm cursor-pointer">
-                <span>Auto-send SMS on New Leader Registration</span>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={cfg.autoSendRegistration}
-                  onChange={(e) => setCfg({ ...cfg, autoSendRegistration: e.target.checked })}
-                />
-              </label>
-              <label className="flex items-center justify-between text-sm cursor-pointer">
-                <span>Auto-send SMS Confirmation on Service Check-in</span>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={cfg.autoSendCheckin}
-                  onChange={(e) => setCfg({ ...cfg, autoSendCheckin: e.target.checked })}
                 />
               </label>
             </div>
@@ -2646,39 +2597,37 @@ function SmsHub({ a, act }: any) {
         </Card>
 
         {/* Test SMS Runner */}
-        <Card
-          title="Interactive Test SMS Dispatcher"
-          subtitle="Directly test SMS delivery to any mobile phone right from the console."
-        >
+        <Card title="Send update to Church Admins" subtitle="Recipients are looked up from verified Church Admin accounts; you cannot enter arbitrary numbers.">
           <form onSubmit={handleSendTest} className="space-y-3">
             <label className="block space-y-1">
-              <span className="text-xs font-semibold">Recipient Mobile Number</span>
-              <input
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-                placeholder="+233501234567"
-                required
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm font-mono"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold">Message Preview</span>
+              <span className="text-xs font-semibold">Update message</span>
               <textarea
                 value={testMsg}
                 rows={4}
+                maxLength={1000}
                 onChange={(e) => setTestMsg(e.target.value)}
                 required
                 className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
               />
               <span className="text-xs text-muted-foreground block text-right">
-                {testMsg.length} characters ({Math.ceil(testMsg.length / 160)} SMS credits)
+                {testMsg.length}/1,000 characters · mNotify reports actual credits used after sending
               </span>
             </label>
-            <Button type="submit" disabled={testBusy} className="w-full">
+            <Button type="submit" disabled={testBusy || !testMsg.trim() || !cfg.enabled} className="w-full">
               <span className="material-symbols-outlined text-base mr-1">send</span>
-              {testBusy ? 'Dispatching…' : 'Dispatch Test SMS'}
+              {testBusy ? 'Sending…' : 'Send update to admins'}
             </Button>
           </form>
+          {sendError && <p role="alert" className="mt-3 text-sm text-destructive">{sendError}</p>}
+          {sendResult && (
+            <p role="status" className="mt-3 rounded-xl bg-muted/60 p-3 text-sm">
+              mNotify accepted {sendResult.accepted || 0}; failed {sendResult.failed || 0}; skipped without a valid phone {sendResult.skippedNoPhone || 0}. Credits used: {sendResult.creditsUsed || 0}.
+              {sendResult.creditsLeft !== null && sendResult.creditsLeft !== undefined ? ` Credits left: ${sendResult.creditsLeft}.` : ''}
+              {sendResult.warning ? ` ${sendResult.warning}` : ''}
+              {sendResult.error ? ` ${sendResult.error}` : ''}
+              {' '}Acceptance is not a final handset delivery receipt.
+            </p>
+          )}
         </Card>
       </div>
 

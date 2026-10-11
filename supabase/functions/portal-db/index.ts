@@ -1,5 +1,6 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
 import { sendMail } from '../_shared/mailer.ts';
+import { sendMnotifySms } from '../_shared/mnotify.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
 // Server-side data gateway for the CEKB portal.
 //
@@ -25,7 +26,7 @@ async function platform(fresh = false): Promise<PlatformConfig> {
   platformCache = { at: Date.now(), cfg };
   return cfg;
 }
-const SENSITIVE_COLUMNS = ['password_hash', 'password'];
+const SENSITIVE_COLUMNS = ['password_hash', 'password', 'apiKey', 'apiSecret', 'api_key', 'api_secret'];
 
 /** Columns visitors (not signed in) may read, per table. */
 const PUBLIC_READ: Record<string, string> = {
@@ -131,7 +132,34 @@ function stripSensitive(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (!SENSITIVE_COLUMNS.includes(k)) out[k] = v;
+      if (!SENSITIVE_COLUMNS.includes(k)) out[k] = stripSensitive(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+function safeSmsConfig(value: unknown) {
+  const config = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    provider: 'Mnotify',
+    senderId: typeof config.senderId === 'string' ? config.senderId.slice(0, 11) : '',
+    enabled: config.enabled === true,
+    apiKeyConfigured: !!Deno.env.get('MNOTIFY_API_KEY')?.trim(),
+  };
+}
+
+function stripSmsCredentials(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripSmsCredentials);
+  if (value && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(row)) {
+      out[key] = key === 'setting_value' && row.setting_key === 'sms_config'
+        ? safeSmsConfig(item)
+        : stripSmsCredentials(item);
     }
     return out;
   }
@@ -203,6 +231,16 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   if (!ALLOWED_TABLES.has(table)) return json({ error: { message: 'Table not available.' } }, 400);
 
   const isRead = op === 'select';
+  if (table === 'admin_settings' && !isRead) {
+    const rows = (Array.isArray(body.values) ? body.values : [body.values]) as Array<Record<string, unknown>>;
+    const writesSmsConfig = op === 'insert' || op === 'upsert'
+      ? rows.some((row) => typeof row?.setting_key !== 'string' || row.setting_key === 'sms_config')
+      : !(body.filters || []).some((filter) =>
+        filter.column === 'setting_key' &&
+        ((filter.op === 'eq' && filter.value !== 'sms_config') ||
+          (filter.op === 'neq' && filter.value === 'sms_config')));
+    if (writesSmsConfig) return json({ error: { message: 'Use the protected SMS settings action to update this configuration.' } }, 403);
+  }
   if (SUPERADMIN_ONLY.has(table) && (session?.role !== 'Superadmin' || !isRead)) {
     return json({ error: { message: 'Only the group account can view this.' } }, 403);
   }
@@ -444,7 +482,8 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     console.error(`portal-db ${op} ${table} failed:`, error.message);
     return json({ error: { message: 'We could not complete that request. Please try again.', code: error.code === '23505' ? '23505' : undefined } }, 200);
   }
-  return json({ data: stripSensitive(data) });
+  const sanitized = table === 'admin_settings' ? stripSmsCredentials(data) : data;
+  return json({ data: stripSensitive(sanitized) });
 }
 
 // ---------------------------------------------------------------- login action
@@ -611,6 +650,168 @@ async function handleDevStats(session: Session | null) {
   } });
 }
 
+function normalizeGhanaPhone(value: unknown): string | null {
+  const digits = String(value || '').replace(/\D/g, '');
+  const local = digits.startsWith('233') && digits.length === 12 ? `0${digits.slice(3)}` : digits;
+  return /^0\d{9}$/.test(local) ? local : null;
+}
+
+interface AdminSmsDispatchResult {
+  error: string | null;
+  sms: {
+    accepted: number;
+    failed: number;
+    skippedNoPhone: number;
+    creditsUsed: number;
+    creditsLeft: number | null;
+    campaignIds: string[];
+    warning?: string | null;
+    error?: string | null;
+  } | null;
+}
+
+async function dispatchAdminUpdateSms(message: string, session: Session): Promise<AdminSmsDispatchResult> {
+  const role = session.role;
+  const isGlobalSender = role === 'Developer' || role === 'Superadmin';
+  const isBranchSender = role === 'Church Admin' || role === 'Church Pastor';
+  if (!isGlobalSender && !isBranchSender) return { error: 'Only admin accounts can send administrator SMS updates.', sms: null };
+  if (isBranchSender && !session.church_name) return { error: 'Your account is not linked to a church.', sms: null };
+
+  const church = isBranchSender ? session.church_name : null;
+  let profilesQuery = admin.from('user_profiles')
+    .select('email, full_name, phone, church_name')
+    .eq('role', 'Church Admin')
+    .eq('admin_verified', true)
+    .limit(1001);
+  let accountsQuery = admin.from('church_admin_accounts')
+    .select('admin_email, admin_name, admin_phone, church_name')
+    .eq('role', 'Church Admin')
+    .eq('email_verified', true)
+    .eq('status', 'Active')
+    .limit(1001);
+  if (church) {
+    profilesQuery = profilesQuery.ilike('church_name', church);
+    accountsQuery = accountsQuery.ilike('church_name', church);
+  }
+
+  const [{ data: profiles, error: profilesError }, { data: accounts, error: accountsError }] = await Promise.all([
+    profilesQuery,
+    accountsQuery,
+  ]);
+  if (profilesError || accountsError) {
+    console.error('Admin SMS recipient lookup failed:', profilesError?.message || accountsError?.message);
+    return { error: 'Could not load verified administrator recipients.', sms: null };
+  }
+
+  const targets = new Map<string, { phone: string; church: string }>();
+  for (const row of [...(accounts || []), ...(profiles || [])] as Array<Record<string, unknown>>) {
+    const email = String(row.admin_email || row.email || '').trim().toLowerCase();
+    const phone = String(row.admin_phone || row.phone || '').trim();
+    const targetKey = email || `phone:${phone}`;
+    if (!targetKey) continue;
+    const existing = targets.get(targetKey);
+    if (!existing || (!existing.phone && phone)) {
+      targets.set(targetKey, {
+        phone,
+        church: String(row.church_name || ''),
+      });
+    }
+  }
+
+  if (targets.size > 500) return { error: 'There are more than 500 verified admin accounts; please contact support.', sms: null };
+  const normalized = Array.from(targets.values()).map((target) => ({
+    phone: normalizeGhanaPhone(target.phone),
+    church: target.church,
+  }));
+  const recipients = Array.from(new Set(
+    normalized.map((target) => target.phone).filter((phone): phone is string => !!phone),
+  ));
+  const skippedNoPhone = normalized.length - recipients.length;
+  if (!recipients.length) {
+    return {
+      error: 'No verified Church Admin accounts with valid Ghana phone numbers were found for this scope.',
+      sms: { accepted: 0, failed: 0, skippedNoPhone, creditsUsed: 0, creditsLeft: null, campaignIds: [] },
+    };
+  }
+
+  const cleanMessage = message.trim();
+  if (!cleanMessage || cleanMessage.length > 1000) return { error: 'Enter a message between 1 and 1,000 characters.', sms: null };
+  const { data: configRow, error: configError } = await admin
+    .from('admin_settings')
+    .select('setting_value')
+    .eq('setting_key', 'sms_config')
+    .maybeSingle();
+  if (configError) {
+    console.error('Could not load SMS settings:', configError.message);
+    return { error: 'Could not load the SMS configuration.', sms: null };
+  }
+  const config = configRow?.setting_value as Record<string, unknown> | null;
+  const senderId = typeof config?.senderId === 'string' ? config.senderId.trim() : '';
+  if (config?.enabled !== true) return { error: 'SMS sending is disabled by the developer.', sms: null };
+  if (!/^[A-Za-z0-9]{1,11}$/.test(senderId)) {
+    return { error: 'Configure an approved mNotify sender ID (1–11 letters or numbers) before sending.', sms: null };
+  }
+
+  const delivery = await sendMnotifySms(recipients, senderId, cleanMessage);
+  const result = {
+    accepted: delivery.accepted,
+    failed: delivery.failed,
+    skippedNoPhone,
+    creditsUsed: delivery.creditsUsed,
+    creditsLeft: delivery.creditsLeft,
+    campaignIds: delivery.campaignIds,
+    error: delivery.error,
+  };
+  const { error: logError } = await admin.from('email_send_log').insert({
+    template_name: 'admin_update_sms',
+    recipient_email: 'verified Church Admins',
+    recipient_phone: null,
+    channel: 'sms',
+    subject: null,
+    body_preview: cleanMessage.slice(0, 200),
+    status: delivery.accepted > 0 ? 'sent' : 'failed',
+    error_message: delivery.error,
+    metadata: {
+      channel: 'sms',
+      provider: 'mNotify',
+      church: church || 'All Churches',
+      accepted: delivery.accepted,
+      failed: delivery.failed,
+      skippedNoPhone,
+      creditsUsed: delivery.creditsUsed,
+      creditsLeft: delivery.creditsLeft,
+      campaignIds: delivery.campaignIds,
+    },
+  });
+  if (logError) console.error('Could not write admin SMS delivery log:', logError.message);
+
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor: session.user_name || (role === 'Developer' ? 'Developer' : 'Administrator'),
+    church_name: church,
+    action: `Admin SMS update: ${delivery.accepted} accepted, ${delivery.failed} failed`,
+    category: 'System',
+    icon: 'sms',
+  });
+  if (auditError) console.error('Could not write admin SMS audit log:', auditError.message);
+
+  if (delivery.accepted === 0) return { error: delivery.error || 'mNotify did not accept the SMS.', sms: result };
+  return {
+    error: null,
+    sms: {
+      ...result,
+      warning: logError || auditError ? 'SMS was accepted, but the platform could not record every audit entry.' : null,
+    },
+  };
+}
+
+async function handleAdminSms(body: any, session: Session | null) {
+  if (!session) return json({ error: { message: 'Please sign in to send an SMS.' } }, 401);
+  const message = typeof body?.message === 'string' ? body.message : '';
+  const result = await dispatchAdminUpdateSms(message, session);
+  if (result.error) return json({ success: false, error: { message: result.error }, sms: result.sms }, 400);
+  return json({ success: true, sms: result.sms });
+}
+
 // Totals-only deep analytics for the developer console. Never returns personal fields.
 const DEV_TABLES = ['churches', 'members', 'leaders', 'attendance_records', 'cell_reports', 'announcements', 'audit_logs', 'email_send_log', 'user_profiles', 'church_admin_accounts', 'portal_sessions', 'absence_records', 'qr_tokens', 'service_types', 'suppressed_emails'];
 const SAFE_LOG_CATEGORIES = new Set(['System', 'Security', 'Settings', 'Church']);
@@ -756,7 +957,7 @@ async function handleDevAnalytics(session: Session | null) {
       actor: ['Developer', 'System', 'Group Pastor'].includes(l.actor) ? l.actor : 'Church account' })),
     announcements: anns || [],
     featureMatrix: fm?.setting_value || null, platform: plat?.setting_value || null,
-    smsConfig: smsConf?.setting_value || null,
+    smsConfig: smsConf ? safeSmsConfig(smsConf.setting_value) : null,
     smsTemplates: smsTpls?.setting_value || null,
   } });
 }
@@ -1202,15 +1403,23 @@ async function handleDevAction(body: any, session: Session | null) {
   }
 
   if (op === 'saveSmsConfig') {
-    const conf = body.config || {};
-    await admin.from('admin_settings').upsert({
+    const config = body.config && typeof body.config === 'object' && !Array.isArray(body.config)
+      ? body.config as Record<string, unknown>
+      : {};
+    const senderId = typeof config.senderId === 'string' ? config.senderId.trim() : '';
+    if (senderId && !/^[A-Za-z0-9]{1,11}$/.test(senderId)) {
+      return json({ error: 'Sender ID must contain 1–11 letters or numbers only.' }, 400);
+    }
+    const safeConfig = { provider: 'Mnotify', senderId, enabled: config.enabled === true };
+    const { error: saveError } = await admin.from('admin_settings').upsert({
       setting_key: 'sms_config',
-      setting_value: conf,
+      setting_value: safeConfig,
       is_global: true,
       setting_type: 'json'
     }, { onConflict: 'setting_key' });
-    await log(`Updated SMS Gateway configuration (${conf.provider || 'Gateway'})`, 'Settings');
-    return json({ success: true });
+    if (saveError) return json({ error: 'Could not save the SMS configuration.' }, 500);
+    await log(`Updated SMS Gateway configuration (${senderId ? 'mNotify sender ID set' : 'sender ID cleared'})`, 'Settings');
+    return json({ success: true, config: safeConfig });
   }
 
   if (op === 'saveSmsTemplate') {
@@ -1253,21 +1462,6 @@ async function handleDevAction(body: any, session: Session | null) {
     }, { onConflict: 'setting_key' });
     await log(`Deleted SMS template`, 'Settings');
     return json({ success: true });
-  }
-
-  if (op === 'sendTestSms') {
-    const phone = String(body.phone || '').trim();
-    const message = String(body.message || '').trim();
-    if (!phone || !message) return json({ error: 'Phone and message required' }, 400);
-    await admin.from('email_send_log').insert({
-      template_name: 'test_sms',
-      recipient_email: phone,
-      status: 'sent',
-      error_message: null,
-      metadata: { channel: 'sms', provider: body.provider || 'Gateway', preview: message.slice(0, 100) }
-    });
-    await log(`Dispatched test SMS to ${phone}`, 'System');
-    return json({ success: true, timestamp: new Date().toISOString() });
   }
 
   if (op === 'createServiceType') {
@@ -1339,8 +1533,15 @@ async function handleDevAction(body: any, session: Session | null) {
         await admin.from('email_send_log').insert(res.map((r) => ({ template_name: 'developer_broadcast', recipient_email: 'staff', status: r.ok ? 'sent' : 'failed', error_message: r.ok ? null : r.error?.slice(0, 500) })));
       }
     }
+    let sms: AdminSmsDispatchResult['sms'] | undefined;
+    let smsError: string | undefined;
+    if (body.sms) {
+      const result = await dispatchAdminUpdateSms(`${title}: ${message}`, session!);
+      sms = result.sms;
+      smsError = result.error || undefined;
+    }
     await log(`Broadcast announcement: ${title}${body.email ? ` (emailed ${emailed} staff)` : ''}`);
-    return json({ success: true, emailed });
+    return json({ success: true, emailed, sms, smsError });
   }
   if (op === 'backup') {
     const [{ data: settings }, { data: services }, { data: churches }] = await Promise.all([
@@ -1467,6 +1668,16 @@ Deno.serve(async (req) => {
         return await handleDevAnalytics(session);
       case 'devAction':
         return await handleDevAction(body, session);
+      case 'sendAdminSms': {
+        if (session?.role === 'Developer' || session?.role === 'Superadmin') {
+          const limited = await rateLimit(req, 'admin-sms', 10, 600, corsHeaders, session.user_email || session.role, true);
+          if (limited) return limited;
+        } else if (session?.role === 'Church Admin' || session?.role === 'Church Pastor') {
+          const limited = await rateLimit(req, 'branch-admin-sms', 5, 600, corsHeaders, session.user_email || session.role, true);
+          if (limited) return limited;
+        }
+        return await handleAdminSms(body, session);
+      }
       case 'featureMatrix':
         return await handleFeatureMatrix();
       case 'checkGroupCode': {

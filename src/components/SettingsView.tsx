@@ -27,6 +27,8 @@ import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUti
 import { SUPABASE_SQL_SCHEMA } from '../data/supabase_schema';
 import { ReportCodesPanel } from './ReportCodesPanel';
 import { UshersPanel } from './UshersPanel';
+import { Button } from './Button';
+import { rawPortal } from '../lib/rawPortal';
 
 interface SettingsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -203,6 +205,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, [matchingChurch?.name, matchingAdmin?.adminEmail, user.church, user.name]);
 
   const [toastMessage, setToastMessage] = useState('');
+  const canSendAdminSms = isSuperadmin || user.role === 'Church Admin' || (user.role as string) === 'Church Pastor';
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -623,6 +626,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Tab Content Cards */}
       <div className="space-y-6">
+        {canSendAdminSms && activeTab === 'profile' && <AdminSmsUpdates user={user} />}
         {activeTab === 'profile' && (
           <ReportCodesPanel
             isSuperadmin={isSuperadmin}
@@ -1589,3 +1593,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     </motion.div>
   );
 };
+
+function AdminSmsUpdates({ user }: { user: UserProfile | AuthSessionUser }) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<any>(null);
+
+  const send = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!message.trim()) return;
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const response = await rawPortal({ action: 'sendAdminSms', message: message.trim() });
+      if (!response?.success) {
+        setError(response?.error?.message || response?.error || 'Could not send the admin update.');
+        setResult(response?.sms || null);
+      } else {
+        setResult(response.sms);
+        setMessage('');
+      }
+    } catch {
+      setError('Could not reach the SMS service. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const scope = user.role === 'Superadmin' ? 'all churches' : user.church;
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
+      <div>
+        <h2 className="text-lg font-headline font-bold">SMS updates for Church Admins</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Send a message to verified Church Admin accounts {scope ? `in ${scope}` : 'in your church'}. Recipients and phone numbers are selected by the server; arbitrary numbers cannot be targeted.
+        </p>
+      </div>
+      <form onSubmit={send} className="space-y-3">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">Update message</span>
+          <textarea
+            value={message}
+            rows={4}
+            maxLength={1000}
+            required
+            onChange={(event) => setMessage(event.target.value)}
+            className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm"
+            placeholder="Write a short update for the church administrators…"
+          />
+          <span className="block text-right text-xs text-muted-foreground">{message.length}/1,000 characters</span>
+        </label>
+        <Button type="submit" disabled={busy || !message.trim()}>
+          <span className="material-symbols-outlined mr-1 text-base" aria-hidden="true">send</span>
+          {busy ? 'Sending…' : 'Send admin update'}
+        </Button>
+      </form>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {result && (
+        <p role="status" className="rounded-xl bg-muted/60 p-3 text-sm">
+          mNotify accepted {result.accepted || 0}; failed {result.failed || 0}; skipped without a valid phone {result.skippedNoPhone || 0}. Credits used: {result.creditsUsed || 0}.
+          {result.creditsLeft !== null && result.creditsLeft !== undefined ? ` Credits left: ${result.creditsLeft}.` : ''}
+          {result.warning ? ` ${result.warning}` : ''}
+          {result.error ? ` ${result.error}` : ''}
+          {' '}Acceptance is not a final handset delivery receipt.
+        </p>
+      )}
+    </section>
+  );
+}
