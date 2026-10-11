@@ -145,39 +145,6 @@ export default function App() {
       bsctCount: 0,
     },
     {
-      id: 'c281b845-d7d5-434a-a07b-140c3a1625e0',
-      name: 'PLASTICS',
-      pastor: 'James Mckeown',
-      membersCount: 0,
-      status: 'Suspended',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-    {
-      id: 'e967da47-1e5a-4fa5-a2c3-7a8afa7555fc',
-      name: 'CE Coleiro Central',
-      pastor: 'Pastor in Charge',
-      membersCount: 0,
-      status: 'Suspended',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-    {
-      id: 'd10c33c8-0c4a-4935-b0be-b7efb5655101',
-      name: 'PEPPMAK',
-      pastor: 'Pepp Makr',
-      membersCount: 0,
-      status: 'Suspended',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-    {
       id: 'e66409b8-1027-4bb8-b318-a7f0d32b5510',
       name: 'CE KORLE BU 5',
       pastor: 'DAASEBRE AHENSAN',
@@ -261,13 +228,7 @@ export default function App() {
         if (dbLeaders && dbLeaders.length > 0) setLeaders(dbLeaders);
         if (dbAttendance) setAttendanceRecords(dbAttendance);
         if (dbChurches && dbChurches.length > 0) {
-          setChurches(prev => {
-            const map = new Map<string, ChurchBranch>();
-            // Keep new from DB, then ensure previous ones aren't lost
-            dbChurches.forEach(c => map.set(c.name.toLowerCase(), c));
-            prev.forEach(c => { if (!map.has(c.name.toLowerCase())) map.set(c.name.toLowerCase(), c); });
-            return Array.from(map.values());
-          });
+          setChurches(dbChurches);
         }
         if (dbChurchAdmins) setChurchAdmins(dbChurchAdmins);
         if (dbAuditLogs) setAuditLogs(dbAuditLogs);

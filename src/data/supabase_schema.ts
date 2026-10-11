@@ -474,6 +474,7 @@ BEGIN
     DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
     DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.portal_sessions WHERE church_name ILIKE OLD.name;
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -482,6 +483,8 @@ DROP TRIGGER IF EXISTS trg_church_deletion_safety ON public.churches;
 CREATE TRIGGER trg_church_deletion_safety
 BEFORE DELETE ON public.churches
 FOR EACH ROW EXECUTE FUNCTION public.handle_church_deletion_safety();
+
+CREATE INDEX IF NOT EXISTS idx_churches_status ON public.churches(status);
 `;
 
 export const SUPABASE_UPDATE_SQL = `-- ============================================================================
@@ -509,6 +512,7 @@ BEGIN
     DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
     DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.portal_sessions WHERE church_name ILIKE OLD.name;
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -517,6 +521,8 @@ DROP TRIGGER IF EXISTS trg_church_deletion_safety ON public.churches;
 CREATE TRIGGER trg_church_deletion_safety
 BEFORE DELETE ON public.churches
 FOR EACH ROW EXECUTE FUNCTION public.handle_church_deletion_safety();
+
+CREATE INDEX IF NOT EXISTS idx_churches_status ON public.churches(status);
 
 -- 2. SMS Templates Table & Seed Templates
 CREATE TABLE IF NOT EXISTS public.sms_templates (

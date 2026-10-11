@@ -642,7 +642,11 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
   if (action === 'devAction') {
     const op = String(payload.op || '');
     if (op === 'setChurchStatus') {
-      const ch = (store.tables.churches || []).find((c: any) => c.name === payload.name);
+      const name = String(payload.name || '').trim().toLowerCase();
+      const id = payload.id;
+      const ch = (store.tables.churches || []).find(
+        (c: any) => (id && String(c.id) === String(id)) || (name && String(c.name || '').trim().toLowerCase() === name)
+      );
       if (ch) ch.status = payload.status;
       saveLocalStore(store);
       return { success: true };
@@ -1026,6 +1030,14 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       };
 
       // 2. Completely delete all associated records from the database
+      if (store.tables.qr_tokens) {
+        store.tables.qr_tokens = store.tables.qr_tokens.filter((q: any) => !matchesTarget(q));
+      }
+      if (store.tables.audit_logs) {
+        store.tables.audit_logs.forEach((al: any) => {
+          if (matchesTarget(al)) al.church_id = null;
+        });
+      }
       if (store.tables.members) {
         store.tables.members = store.tables.members.filter((m: any) => !matchesTarget(m));
       }

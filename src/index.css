@@ -216,8 +216,39 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .scanner-screen select, .scanner-screen input { min-height: 38px !important; }
 .scanner-screen .text-xs { font-size: 12px; }
 
-@keyframes scanline { 0% { top: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
-.animate-scanline { animation: scanline 2.2s cubic-bezier(.4,0,.2,1) infinite; }
+:root {
+  --scanner-laser-range: 276px;
+}
+@media (max-width: 600px), (max-height: 760px) {
+  :root {
+    --scanner-laser-range: 208px;
+  }
+}
+@keyframes scanline {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, var(--scanner-laser-range, 276px), 0);
+    opacity: 0;
+  }
+}
+.animate-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  will-change: transform, opacity;
+  animation: scanline 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: hsl(var(--background)); }
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: var(--radius-panel); }

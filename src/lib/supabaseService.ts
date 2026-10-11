@@ -738,8 +738,9 @@ export async function deleteChurchFromSupabase(churchIdOrName: string): Promise<
       targetId = target;
     }
 
-    // 2. Break circular FKs before deletion
+    // 2. Break circular FKs and unlink audit logs before deletion
     if (targetId) {
+      await client.from('audit_logs').update({ church_id: null }).eq('church_id', targetId);
       await client.from('leaders').update({ parent_leader_id: null }).eq('church_id', targetId);
       await client.from('members').update({ invited_by_leader_id: null }).eq('church_id', targetId);
     }
@@ -748,12 +749,30 @@ export async function deleteChurchFromSupabase(churchIdOrName: string): Promise<
       await client.from('members').update({ invited_by_leader_id: null }).ilike('church_name', targetName);
     }
 
-    // 3. Delete all associated records completely from the database
+    // 3. Delete dependent child records
+    // Clear QR passes for members of this church to prevent foreign key errors
+    try {
+      let mIds: string[] = [];
+      if (targetId) {
+        const { data: mems } = await client.from('members').select('id').eq('church_id', targetId);
+        if (mems) mIds = mems.map((m: any) => m.id);
+      }
+      if (targetName) {
+        const { data: mems } = await client.from('members').select('id').ilike('church_name', targetName);
+        if (mems) mIds = Array.from(new Set([...mIds, ...mems.map((m: any) => m.id)]));
+      }
+      if (mIds.length > 0) {
+        await client.from('qr_tokens').delete().in('member_id', mIds);
+      }
+    } catch {}
+
     if (targetId) {
       await client.from('attendance_records').delete().eq('church_id', targetId);
       await client.from('absence_records').delete().eq('church_id', targetId);
       await client.from('cell_reports').delete().eq('church_id', targetId);
+      await client.from('church_report_codes').delete().eq('church_id', targetId);
       await client.from('promotion_queue').delete().eq('church_id', targetId);
+      await client.from('announcements').delete().eq('church_id', targetId);
       await client.from('members').delete().eq('church_id', targetId);
       await client.from('leaders').delete().eq('church_id', targetId);
       await client.from('church_admin_accounts').delete().eq('church_id', targetId);
@@ -765,11 +784,13 @@ export async function deleteChurchFromSupabase(churchIdOrName: string): Promise<
       await client.from('attendance_records').delete().ilike('church_name', targetName);
       await client.from('absence_records').delete().ilike('church_name', targetName);
       await client.from('cell_reports').delete().ilike('church_name', targetName);
+      await client.from('church_report_codes').delete().ilike('church_name', targetName);
       await client.from('promotion_queue').delete().ilike('church_name', targetName);
       await client.from('members').delete().ilike('church_name', targetName);
       await client.from('leaders').delete().ilike('church_name', targetName);
       await client.from('church_admin_accounts').delete().ilike('church_name', targetName);
       await client.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').ilike('church_name', targetName);
+      await client.from('portal_sessions').delete().ilike('church_name', targetName);
     }
 
     // 4. Delete the church itself

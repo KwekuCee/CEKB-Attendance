@@ -769,8 +769,13 @@ async function handleDevAction(body: any, session: Session | null) {
   if (op === 'setChurchStatus') {
     const status = String(body.status);
     if (!['Active', 'Inactive', 'Suspended'].includes(status)) return json({ error: 'Bad status' }, 400);
-    await admin.from('churches').update({ status }).eq('name', String(body.name));
-    await log(`Set church "${body.name}" status to ${status}`, 'Church');
+    const id = body.id;
+    const name = String(body.name || '').trim();
+    let q = admin.from('churches').update({ status });
+    if (id) q = q.eq('id', id);
+    else q = q.ilike('name', name);
+    await q;
+    await log(`Set church "${name}" status to ${status}`, 'Church');
     return json({ success: true });
   }
 
@@ -1051,7 +1056,25 @@ async function handleDevAction(body: any, session: Session | null) {
       await admin.from('audit_logs').update({ church_id: null }).eq('church_id', targetId);
     }
 
-    // 3. Delete child records completely by church_id and church_name
+    // 3. Delete dependent child records
+    // Delete QR passes for members of this church to prevent foreign key constraint failures
+    try {
+      let mIds: string[] = [];
+      if (targetId) {
+        const { data: mems } = await admin.from('members').select('id').eq('church_id', targetId);
+        if (mems) mIds = mems.map((m: any) => m.id);
+      }
+      if (targetName) {
+        const { data: mems } = await admin.from('members').select('id').ilike('church_name', targetName);
+        if (mems) mIds = Array.from(new Set([...mIds, ...mems.map((m: any) => m.id)]));
+      }
+      if (mIds.length > 0) {
+        await admin.from('qr_tokens').delete().in('member_id', mIds);
+      }
+    } catch (e) {
+      console.warn('qr_tokens cleanup notice:', e);
+    }
+
     if (targetId) {
       await admin.from('attendance_records').delete().eq('church_id', targetId);
       await admin.from('absence_records').delete().eq('church_id', targetId);

@@ -893,6 +893,10 @@ function Churches({ a, act }: any) {
       const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
       localStorage.setItem('cekbu_churches', JSON.stringify(stored.filter((c: any) => c.name !== targetName && c.id !== targetId)));
     } catch {}
+    try {
+      const admins = JSON.parse(localStorage.getItem('cekbu_church_admins') || '[]');
+      localStorage.setItem('cekbu_church_admins', JSON.stringify(admins.filter((adm: any) => adm.churchName?.toLowerCase() !== targetName.toLowerCase() && adm.churchId !== targetId)));
+    } catch {}
     setBusy(false);
     setDeleteTarget(null);
   };
@@ -1027,12 +1031,26 @@ function Churches({ a, act }: any) {
             <select
               className="rounded-lg border border-input bg-background px-2 py-1 text-xs font-semibold"
               value={c.status}
-              onChange={(e) =>
-                act(
-                  { op: 'setChurchStatus', name: c.name, status: e.target.value },
-                  `${c.name} status updated to ${e.target.value}`,
-                )
-              }
+              onChange={async (e) => {
+                const newStatus = e.target.value;
+                await act(
+                  { op: 'setChurchStatus', id: c.id, name: c.name, status: newStatus },
+                  `${c.name} status updated to ${newStatus}`,
+                );
+                try {
+                  const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
+                  localStorage.setItem(
+                    'cekbu_churches',
+                    JSON.stringify(
+                      stored.map((item: any) =>
+                        item.id === c.id || (item.name && item.name.toLowerCase() === c.name.toLowerCase())
+                          ? { ...item, status: newStatus }
+                          : item
+                      )
+                    )
+                  );
+                } catch {}
+              }}
             >
               {['Active', 'Inactive', 'Suspended'].map((s) => (
                 <option key={s}>{s}</option>

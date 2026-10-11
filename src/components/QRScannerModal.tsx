@@ -1,10 +1,34 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { AuthSessionUser } from '../types';
-import jsQR from 'jsqr';
+import type jsQRType from 'jsqr';
 import { Member, AttendanceRecord, ViewType } from '../types';
 import { useToast } from '../context/ToastContext';
 import { Button } from './Button';
 
+// Lazy dynamic loader for jsQR to keep bundle size small and load on-demand
+let jsQRInstance: typeof jsQRType | null = null;
+const loadJsQR = async (): Promise<typeof jsQRType | null> => {
+  if (!jsQRInstance) {
+    try {
+      const mod = await import('jsqr');
+      jsQRInstance = ((mod as any).default || mod) as typeof jsQRType;
+    } catch {
+      return null;
+    }
+  }
+  return jsQRInstance;
+};
+
+const createBarcodeDetector = () => {
+  if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+    try {
+      return new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
 
 interface QRScannerModalProps {
   members: Member[];
@@ -69,6 +93,11 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scanLockRef = useRef(false);
   const handleCodeRef = useRef<(value: string) => void>(() => { });
+  const detectorRef = useRef<any>(null);
+
+  useEffect(() => {
+    detectorRef.current = createBarcodeDetector();
+  }, []);
 
   useEffect(() => {
     if (!serviceOptions.includes(serviceType)) {
@@ -78,15 +107,15 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
   const bgImageUrl = 'https://lh3.googleusercontent.com/aida-public/AB6AXuAiyCmtx-XHebXJST5E1hExdoWCfkgB34IaY-mKBw36293DZ6MIwhbnexnGkUqdlqAaNKZudX4bT2zO3x95HvA-lTaU15gsuAMZV2jZZsFMFrfQui0ziSX_Xq-qFRxnT-29EqDgNZ-a99tcqQH2nGsrH--n68U7Ndv-C3YH7gI22HeUbpQeFNlmO6MqYpPNO377VPx8sE_d-iyvVmQqOkQ4R_Yh8tljgZHrf6dVgucORLA2AJzEiJby7c5Jl8SG4n76cJ_XEGpCt7o';
 
-  // Camera stream on/off
+  // Camera stream on/off with mobile-optimized resolution (720p instead of 4K/1080p)
   useEffect(() => {
     let activeStream: MediaStream | null = null;
     if (useRealCamera) {
       navigator.mediaDevices?.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
         },
         audio: false
       })
@@ -199,45 +228,76 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
   handleCodeRef.current = handleScannedValue;
 
-  // Continuously look for a pass in the camera picture while scanning
+  // Continuously look for a pass in the camera picture with hardware acceleration & throttling
   useEffect(() => {
     if (!useRealCamera || scannerState !== 'scanning') return;
     let frame = 0;
+    let lastScanTime = 0;
+    let isDecoding = false;
     scanLockRef.current = false;
 
-    const tick = () => {
+    const tick = async () => {
       const video = videoRef.current;
-      if (video && video.readyState === video.HAVE_ENOUGH_DATA && !scanLockRef.current) {
-        const canvas = canvasRef.current || (canvasRef.current = document.createElement('canvas'));
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        if (w && h) {
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null;
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, w, h);
+      if (video && video.readyState >= 2 && !scanLockRef.current && !isDecoding) {
+        const now = performance.now();
+        // Throttle scans to ~12 FPS (every 80ms): instant detection without freezing mobile CPU
+        if (now - lastScanTime >= 80) {
+          lastScanTime = now;
+          isDecoding = true;
+
+          // 1. Try native hardware BarcodeDetector (Chrome Android & iOS Safari 17+ GPU pipeline)
+          if (detectorRef.current) {
             try {
-              const attempts: Array<{ x: number; y: number; w: number; h: number }> = [
-                { x: 0, y: 0, w, h },
-                // A tighter middle crop helps when the pass fills only part of the picture
-                { x: Math.round(w * 0.15), y: Math.round(h * 0.15), w: Math.round(w * 0.7), h: Math.round(h * 0.7) },
-                { x: Math.round(w * 0.3), y: Math.round(h * 0.3), w: Math.round(w * 0.4), h: Math.round(h * 0.4) }
-              ];
-              for (const area of attempts) {
-                if (area.w < 40 || area.h < 40) continue;
-                const image = ctx.getImageData(area.x, area.y, area.w, area.h);
-                const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
-                if (result && result.data) {
-                  scanLockRef.current = true;
-                  handleCodeRef.current(result.data);
-                  return;
+              const codes = await detectorRef.current.detect(video);
+              if (codes && codes.length > 0 && codes[0]?.rawValue) {
+                scanLockRef.current = true;
+                handleCodeRef.current(codes[0].rawValue);
+                isDecoding = false;
+                return;
+              }
+            } catch {
+              // fallback to software decode
+            }
+          }
+
+          // 2. High-performance software decode with downscaled canvas (95% fewer pixels)
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          if (vw && vh && !scanLockRef.current) {
+            try {
+              const canvas = canvasRef.current || (canvasRef.current = document.createElement('canvas'));
+              // Scale down to max 480px dimension to drastically cut pixel processing time
+              const maxDim = 480;
+              const scale = Math.min(1, maxDim / Math.max(vw, vh));
+              const w = Math.round(vw * scale);
+              const h = Math.round(vh * scale);
+
+              if (canvas.width !== w || canvas.height !== h) {
+                canvas.width = w;
+                canvas.height = h;
+              }
+
+              const ctx = canvas.getContext('2d', { willReadFrequently: true });
+              if (ctx) {
+                ctx.drawImage(video, 0, 0, w, h);
+                const decoder = await loadJsQR();
+                if (decoder && !scanLockRef.current) {
+                  const image = ctx.getImageData(0, 0, w, h);
+                  const result = decoder(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
+                  if (result && result.data) {
+                    scanLockRef.current = true;
+                    handleCodeRef.current(result.data);
+                    isDecoding = false;
+                    return;
+                  }
                 }
               }
             } catch {
-              // ignore a bad frame and try the next one
+              // skip frame on glitch
             }
           }
+
+          isDecoding = false;
         }
       }
       frame = requestAnimationFrame(tick);
@@ -259,15 +319,21 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
         img.src = url;
       });
       const canvas = document.createElement('canvas');
-      const scale = Math.min(1400 / Math.max(img.width, img.height), 1);
+      const scale = Math.min(1000 / Math.max(img.width, img.height), 1);
       canvas.width = Math.round(img.width * (scale || 1));
       canvas.height = Math.round(img.height * (scale || 1));
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
+      const decoder = await loadJsQR();
+      if (!decoder) {
+        setScannerState('error');
+        toast.showError('Decoder unavailable', 'Unable to load QR decoder.');
+        return;
+      }
       const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const result = jsQR(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
+      const result = decoder(image.data, image.width, image.height, { inversionAttempts: 'attemptBoth' });
       if (result?.data) {
         handleScannedValue(result.data);
       } else {

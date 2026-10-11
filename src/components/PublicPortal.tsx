@@ -45,27 +45,32 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   );
   const { isInstalled: isPWAInstalled, triggerInstallOrSave } = usePWAInstall();
 
-  // Dynamically derive effective list of churches from DB and registered admins
+  // Dynamically derive effective list of active churches from DB and registered admins
   const effectiveChurches = useMemo(() => {
     const map = new Map<string, ChurchBranch>();
 
-    // 1. Add database churches
+    // 1. Add database churches that are NOT Suspended
     (churches || []).forEach(c => {
-      if (c && c.name) map.set(c.name.toLowerCase(), c);
+      if (c && c.name && c.status !== 'Suspended') {
+        map.set(c.name.toLowerCase(), c);
+      }
     });
 
-    // 3. Add any registered Church Admin accounts' churches
+    // 2. Add registered Church Admin accounts' churches only if not suspended and not deleted
     (churchAdmins || []).forEach(a => {
       if (a && a.churchName) {
         const key = a.churchName.toLowerCase();
+        const existingCh = (churches || []).find(c => c && c.name && c.name.toLowerCase() === key);
+        if (existingCh && existingCh.status === 'Suspended') return;
+        if (churches && churches.length > 0 && !existingCh) return; // Do not recreate deleted churches
         if (!map.has(key)) {
           map.set(key, {
-            id: `CH-ADM-${a.id || Date.now()}`,
+            id: existingCh?.id || `CH-ADM-${a.id || Date.now()}`,
             name: a.churchName,
-            pastor: a.adminName || 'Pastor in Charge',
-            membersCount: 0,
-            status: 'Healthy',
-            zone: a.zone || 'Zone 1 (Korle Bu)',
+            pastor: a.adminName || existingCh?.pastor || 'Pastor in Charge',
+            membersCount: existingCh?.membersCount || 0,
+            status: existingCh?.status || 'Healthy',
+            zone: a.zone || existingCh?.zone || 'Zone 1 (Korle Bu)',
             pcfCount: 0,
             cellCount: 0,
             bsctCount: 0
@@ -74,37 +79,13 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       }
     });
 
-    return Array.from(map.values());
+    return Array.from(map.values()).filter(c => c && c.name && c.status !== 'Suspended');
   }, [churches, churchAdmins]);
 
-  // Leader self-registration offers every church branch registered on the
-  // platform (created when a church admin signs up), read live from the
-  // database so new branches show up straight away.
+  // Leader self-registration offers active church branches registered on the platform
   const adminRegisteredChurches = useMemo(() => {
-    const map = new Map<string, ChurchBranch>();
-    (churches || []).forEach(c => {
-      if (c && c.name) map.set(c.name.toLowerCase(), c);
-    });
-    (churchAdmins || []).forEach(a => {
-      if (a && a.churchName) {
-        const key = a.churchName.toLowerCase();
-        if (!map.has(key)) {
-          map.set(key, {
-            id: `CH-ADM-${a.id || Date.now()}`,
-            name: a.churchName,
-            pastor: a.adminName || 'Pastor in Charge',
-            membersCount: 0,
-            status: 'Healthy',
-            zone: a.zone || 'Zone 1 (Korle Bu)',
-            pcfCount: 0,
-            cellCount: 0,
-            bsctCount: 0
-          });
-        }
-      }
-    });
-    return Array.from(map.values());
-  }, [churches, churchAdmins]);
+    return effectiveChurches;
+  }, [effectiveChurches]);
 
   // Dynamic service types list from props and database
   const [dbServiceTypes, setDbServiceTypes] = useState<string[]>([]);
