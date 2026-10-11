@@ -1,5 +1,7 @@
 import { rateLimit } from '../_shared/rate-limit.ts';
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+import { corsHeaders as baseCors } from 'npm:@supabase/supabase-js@2/cors';
+import { getPortalSession } from '../_shared/portal-session.ts';
+const corsHeaders = { ...baseCors, 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-session' };
 
 const SYSTEM_PROMPT = `You are the CEKB Group Support Assistant, a helpful in-app guide for a
 multi-church attendance and membership platform.
@@ -38,6 +40,13 @@ Deno.serve(async (req) => {
   {
     const limited = await rateLimit(req, 'chat', 30, 600, corsHeaders);
     if (limited) return limited;
+  }
+
+  if (!(await getPortalSession(req))) {
+    return new Response(JSON.stringify({ error: 'Please sign in to use the assistant.' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
