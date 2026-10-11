@@ -20,8 +20,9 @@ async function matchOnRecord(r: Recipient): Promise<Recipient | null> {
     if (m && String(m.email || '').trim().toLowerCase() === email) {
       return { id: m.id, name: m.full_name, email, church: m.church_name || undefined, role: m.role || undefined };
     }
+    const isUuid = /^[0-9a-f-]{36}$/i.test(id);
     const { data: l } = await admin.from('leaders').select('id, leader_code, full_name, email, church_name, leader_type')
-      .or(`leader_code.eq.${id.replace(/[^A-Za-z0-9-]/g, '')}`).limit(1).maybeSingle();
+      .eq(isUuid ? 'id' : 'leader_code', id).limit(1).maybeSingle();
     if (l && String(l.email || '').trim().toLowerCase() === email) {
       return { id, name: l.full_name, email, church: l.church_name || undefined, role: l.leader_type || undefined };
     }

@@ -59,9 +59,10 @@ Deno.serve(async (req) => {
     }
 
     const messages = rawMessages
-      .filter((m: any) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
-      .slice(-20)
-      .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+      // Only the visitor's own questions are passed on; callers cannot write the assistant's side.
+      .filter((m: any) => m && typeof m.content === 'string' && m.role === 'user')
+      .slice(-10)
+      .map((m: any) => ({ role: 'user', content: String(m.content).slice(0, 2000) }));
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/responses', {
       method: 'POST',
