@@ -172,6 +172,7 @@ export type Database = {
           church_id: string | null
           church_name: string | null
           id: string
+          is_late: boolean
           leader_name: string | null
           member_id: string | null
           member_name: string
@@ -190,6 +191,7 @@ export type Database = {
           church_id?: string | null
           church_name?: string | null
           id?: string
+          is_late?: boolean
           leader_name?: string | null
           member_id?: string | null
           member_name: string
@@ -208,6 +210,7 @@ export type Database = {
           church_id?: string | null
           church_name?: string | null
           id?: string
+          is_late?: boolean
           leader_name?: string | null
           member_id?: string | null
           member_name?: string
@@ -474,6 +477,7 @@ export type Database = {
           members_count: number
           name: string
           pastor_name: string
+          service_start_times: Json
           status: string
           updated_at: string
           zone: string
@@ -484,6 +488,7 @@ export type Database = {
           members_count?: number
           name: string
           pastor_name?: string
+          service_start_times?: Json
           status?: string
           updated_at?: string
           zone?: string
@@ -494,6 +499,7 @@ export type Database = {
           members_count?: number
           name?: string
           pastor_name?: string
+          service_start_times?: Json
           status?: string
           updated_at?: string
           zone?: string
@@ -502,33 +508,45 @@ export type Database = {
       }
       email_send_log: {
         Row: {
+          body_preview: string | null
+          channel: string
           created_at: string
           error_message: string | null
           id: string
           message_id: string | null
           metadata: Json | null
           recipient_email: string
+          recipient_phone: string | null
           status: string
+          subject: string | null
           template_name: string
         }
         Insert: {
+          body_preview?: string | null
+          channel?: string
           created_at?: string
           error_message?: string | null
           id?: string
           message_id?: string | null
           metadata?: Json | null
           recipient_email: string
+          recipient_phone?: string | null
           status: string
+          subject?: string | null
           template_name: string
         }
         Update: {
+          body_preview?: string | null
+          channel?: string
           created_at?: string
           error_message?: string | null
           id?: string
           message_id?: string | null
           metadata?: Json | null
           recipient_email?: string
+          recipient_phone?: string | null
           status?: string
+          subject?: string | null
           template_name?: string
         }
         Relationships: []
@@ -630,6 +648,8 @@ export type Database = {
           leader_code: string | null
           leader_type: Database["public"]["Enums"]["leader_type_enum"]
           location: string | null
+          onboarding_completed: boolean
+          onboarding_completed_at: string | null
           parent_leader_id: string | null
           photo_url: string | null
           promotion_status: Database["public"]["Enums"]["promotion_status_enum"]
@@ -650,6 +670,8 @@ export type Database = {
           leader_code?: string | null
           leader_type?: Database["public"]["Enums"]["leader_type_enum"]
           location?: string | null
+          onboarding_completed?: boolean
+          onboarding_completed_at?: string | null
           parent_leader_id?: string | null
           photo_url?: string | null
           promotion_status?: Database["public"]["Enums"]["promotion_status_enum"]
@@ -670,6 +692,8 @@ export type Database = {
           leader_code?: string | null
           leader_type?: Database["public"]["Enums"]["leader_type_enum"]
           location?: string | null
+          onboarding_completed?: boolean
+          onboarding_completed_at?: string | null
           parent_leader_id?: string | null
           photo_url?: string | null
           promotion_status?: Database["public"]["Enums"]["promotion_status_enum"]
@@ -1035,6 +1059,42 @@ export type Database = {
           },
         ]
       }
+      sms_templates: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          title: string
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          title: string
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          title?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: []
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -1071,6 +1131,8 @@ export type Database = {
           full_name: string
           id: string
           is_church_admin: boolean | null
+          onboarding_completed: boolean
+          onboarding_completed_at: string | null
           password_hash: string
           phone: string | null
           role: Database["public"]["Enums"]["user_role_enum"]
@@ -1089,6 +1151,8 @@ export type Database = {
           full_name: string
           id?: string
           is_church_admin?: boolean | null
+          onboarding_completed?: boolean
+          onboarding_completed_at?: string | null
           password_hash: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role_enum"]
@@ -1107,6 +1171,8 @@ export type Database = {
           full_name?: string
           id?: string
           is_church_admin?: boolean | null
+          onboarding_completed?: boolean
+          onboarding_completed_at?: string | null
           password_hash?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role_enum"]
@@ -1198,6 +1264,8 @@ export type Database = {
         | "Leader"
         | "Usher"
         | "Church Pastor"
+        | "Developer"
+        | "Member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1339,6 +1407,8 @@ export const Constants = {
         "Leader",
         "Usher",
         "Church Pastor",
+        "Developer",
+        "Member",
       ],
     },
   },
