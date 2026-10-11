@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { AuthSessionUser } from '../types';
 import { Member, ViewType, AuditLogItem, ChurchBranch } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth, formatBirthdayDisplay } from '../utils/analyticsUtils';
+import { csvQ } from '../utils/csvSafe';
 
 interface AnalyticsViewProps {
   user?: {
@@ -102,7 +103,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const handleExportAnalyticsCSV = () => {
     const headers = 'Member ID,Full Name,Phone,Gender,Education,Occupation,Location,Church,DOB,Status\n';
     const rows = filteredMembers.map(m =>
-      `"${m.id}","${m.fullName}","${m.phone}","${m.gender || 'N/A'}","${m.education || 'N/A'}","${m.occupation || 'N/A'}","${m.location || 'N/A'}","${m.church}","${m.dob || 'N/A'}","${m.status}"`
+      `${csvQ(m.id)},${csvQ(m.fullName)},${csvQ(m.phone)},${csvQ(m.gender || 'N/A')},${csvQ(m.education || 'N/A')},${csvQ(m.occupation || 'N/A')},${csvQ(m.location || 'N/A')},${csvQ(m.church)},${csvQ(m.dob || 'N/A')},${csvQ(m.status)}`
     ).join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

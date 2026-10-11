@@ -48,6 +48,24 @@ const PUBLIC_WRITE = new Set([
   'audit_logs',
 ]);
 
+/** System-maintained columns never accepted from branch accounts or visitors. */
+const PROTECTED_COLUMNS: Record<string, string[]> = {
+  members: ['service_count', 'created_at', 'updated_at'],
+  leaders: ['downstream_count', 'promotion_status', 'created_at', 'updated_at'],
+  churches: ['members_count', 'created_at', 'updated_at'],
+  user_profiles: ['auth_user_id', 'created_at', 'updated_at'],
+  church_admin_accounts: ['admin_verified', 'created_at'],
+  attendance_records: ['is_late'],
+  audit_logs: ['id', 'created_at'],
+};
+/** Extra columns visitors may never set. */
+const ANON_PROTECTED: Record<string, string[]> = {
+  churches: ['status'],
+  leaders: ['is_appointed', 'parent_leader_id', 'onboarding_completed', 'onboarding_completed_at'],
+  members: ['foundation_class'],
+  attendance_records: ['verified_by'],
+};
+
 /** Tables only a Superadmin may change. */
 const SUPERADMIN_WRITE = new Set(['admin_settings']);
 
@@ -321,6 +339,48 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     }
   }
 
+  // Only plain column names may be written, and system-maintained columns are never
+  // taken from the browser (except for the group account).
+  if (!isRead && op !== 'delete') {
+    const rows = (Array.isArray(body.values) ? body.values : body.values ? [body.values] : []) as Array<Record<string, unknown>>;
+    if (!rows.length || rows.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) {
+      return json({ error: { message: 'Invalid data.' } }, 400);
+    }
+    const protectedCols = session?.role === 'Superadmin' ? [] : [...(PROTECTED_COLUMNS[table] || []), ...(!session ? (ANON_PROTECTED[table] || []) : [])];
+    for (const r of rows) {
+      for (const k of Object.keys(r)) {
+        if (!/^[a-z][a-z0-9_]{0,62}$/.test(k)) return json({ error: { message: 'Invalid field.' } }, 400);
+        if (protectedCols.includes(k)) delete r[k];
+      }
+      if (session && session.role !== 'Superadmin' && op === 'update' && BRANCH_SCOPED.has(table)) {
+        delete r.church_id;
+        if ('church_name' in r) r.church_name = session.church_name;
+      }
+    }
+  }
+
+  // Branch accounts may only change their own church's record.
+  if (session && session.role !== 'Superadmin' && table === 'churches' && !isRead) {
+    if (op !== 'update' || !session.church_name) return json({ error: { message: 'Only the group account can change church records.' } }, 403);
+    for (const r of (Array.isArray(body.values) ? body.values : [body.values]) as Array<Record<string, unknown>>) {
+      delete r.name; delete r.status; delete r.id;
+    }
+  }
+
+  // Visitors may only add a church admin record for the pastor account they just created.
+  if (!session && table === 'church_admin_accounts') {
+    for (const r of (Array.isArray(body.values) ? body.values : [body.values]) as Array<Record<string, unknown>>) {
+      const email = String(r.admin_email || '').trim();
+      const { data: pastor } = await admin.from('user_profiles').select('role, church_name, created_at, admin_verified')
+        .ilike('email', email).maybeSingle();
+      if (!pastor || pastor.role !== 'Church Pastor' || pastor.admin_verified ||
+          Date.now() - new Date(pastor.created_at as string).getTime() > 30 * 60000) {
+        return json({ error: { message: 'Church admins are appointed by their church pastor.' } }, 403);
+      }
+      r.church_name = pastor.church_name; r.role = 'Church Pastor'; r.admin_verified = false;
+    }
+  }
+
   let query: any = admin.from(table);
 
   if (op === 'select') {
@@ -329,7 +389,9 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     query = query.insert(body.values as any);
     if (body.returning) query = query.select(body.returning);
   } else if (op === 'upsert') {
-    query = query.upsert(body.values as any, body.upsert as any);
+    const conflict = typeof body.upsert?.onConflict === 'string' && /^[a-z_,]+$/.test(body.upsert.onConflict) ? body.upsert.onConflict : undefined;
+    // Visitors can add new rows but never overwrite existing ones.
+    query = query.upsert(body.values as any, { onConflict: conflict, ignoreDuplicates: !session });
     if (body.returning) query = query.select(body.returning);
   } else if (op === 'update') {
     query = query.update(body.values as any);
@@ -340,7 +402,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   }
 
   for (const filter of body.filters || []) {
-    if (!FILTER_OPS.has(filter.op)) {
+    if (!FILTER_OPS.has(filter.op) || !/^[a-z_]+$/.test(String(filter.column))) {
       return json({ error: { message: 'Unsupported filter.' } }, 400);
     }
     if (filter.op === 'not') {
@@ -359,8 +421,16 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
     if (table === 'user_profiles' && op !== 'select') query = query.in('role', staffRoles);
   }
 
+  if (session && session.role !== 'Superadmin' && table === 'churches' && op === 'update') {
+    query = query.ilike('name', session.church_name);
+  }
+
   if (body.or) {
     if (!session) return json({ error: { message: 'Please sign in to run this search.' } }, 401);
+    // Only simple "column.op.value" terms; no nested and()/or() groups.
+    const terms = String(body.or).split(',');
+    const ok = terms.length <= 10 && terms.every((t) => /^[a-z_]+\.(eq|neq|ilike|like|gt|gte|lt|lte|is)\.[^(),]{0,200}$/.test(t));
+    if (!ok) return json({ error: { message: 'Unsupported search.' } }, 400);
     query = query.or(body.or);
   }
   if (body.order) {
@@ -372,7 +442,7 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   const { data, error } = await query;
   if (error) {
     console.error(`portal-db ${op} ${table} failed:`, error.message);
-    return json({ error: { message: error.message, code: error.code } }, 200);
+    return json({ error: { message: 'We could not complete that request. Please try again.', code: error.code === '23505' ? '23505' : undefined } }, 200);
   }
   return json({ data: stripSensitive(data) });
 }
@@ -446,8 +516,12 @@ async function handleUpload(body: any, session: Session | null) {
     return json({ error: { message: 'Please sign in to upload a photo.' } }, 401);
   }
   const path = String(body?.path || '');
+  if (!/^[A-Za-z0-9._-]{1,80}\/\d{10,16}\.(jpg|jpeg|png|webp|gif|heic)$/i.test(path)) {
+    return json({ error: { message: 'Invalid photo upload.' } }, 400);
+  }
   const base64 = String(body?.content || '').replace(/^data:[^;]+;base64,/, '');
-  const contentType = String(body?.contentType || 'image/jpeg');
+  const rawType = String(body?.contentType || 'image/jpeg');
+  const contentType = /^image\/(jpeg|png|webp|gif|heic)$/.test(rawType) ? rawType : 'image/jpeg';
   if (!path || !base64 || path.includes('..')) {
     return json({ error: { message: 'Invalid photo upload.' } }, 400);
   }
@@ -457,8 +531,8 @@ async function handleUpload(body: any, session: Session | null) {
   }
   const { error } = await admin.storage
     .from('member-photos')
-    .upload(path, bytes, { contentType, upsert: true });
-  if (error) return json({ error: { message: error.message } }, 200);
+    .upload(path, bytes, { contentType, upsert: false });
+  if (error) return json({ error: { message: 'Photo upload failed.' } }, 200);
   return json({ data: { path } });
 }
 
@@ -466,8 +540,20 @@ async function handleSignedUrl(body: any, session: Session | null) {
   if (!session) return json({ error: { message: 'Please sign in to view photos.' } }, 401);
   const path = String(body?.path || '');
   if (!path || path.includes('..')) return json({ error: { message: 'Invalid photo.' } }, 400);
+  if (session.role !== 'Superadmin') {
+    if (session.role === 'Developer') return json({ error: { message: 'Not allowed.' } }, 403);
+    const church = session.church_name || '';
+    const checks = await Promise.all([
+      admin.from('members').select('id').eq('photo_url', path).ilike('church_name', church).limit(1),
+      admin.from('leaders').select('id').eq('photo_url', path).ilike('church_name', church).limit(1),
+      admin.from('church_admin_accounts').select('id').eq('photo_url', path).ilike('church_name', church).limit(1),
+      admin.from('user_profiles').select('id').eq('avatar_url', path).ilike('church_name', church).limit(1),
+      admin.from('user_profiles').select('id').eq('avatar_url', path).ilike('email', session.user_email || '').limit(1),
+    ]);
+    if (!checks.some((c: any) => c.data && c.data.length)) return json({ error: { message: 'Photo not found.' } }, 404);
+  }
   const { data, error } = await admin.storage.from('member-photos').createSignedUrl(path, 3600);
-  if (error) return json({ error: { message: error.message } }, 200);
+  if (error) return json({ error: { message: 'Photo not available.' } }, 200);
   return json({ data });
 }
 

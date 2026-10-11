@@ -6,6 +6,30 @@ import { rateLimit } from '../_shared/rate-limit.ts';
 import { corsHeaders as baseCorsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { sendMail } from '../_shared/mailer.ts';
 import { getPortalSession } from '../_shared/portal-session.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
+const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+/** Signed-out callers may only email a pass to the address already on that person's record. */
+async function matchOnRecord(r: Recipient): Promise<Recipient | null> {
+  const id = String(r?.id || '').trim();
+  const email = String(r?.email || '').trim().toLowerCase();
+  if (!id || !email || id.length > 64) return null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { data: m } = await admin.from('members').select('id, full_name, email, church_name, role').eq('id', id).maybeSingle();
+    if (m && String(m.email || '').trim().toLowerCase() === email) {
+      return { id: m.id, name: m.full_name, email, church: m.church_name || undefined, role: m.role || undefined };
+    }
+    const isUuid = /^[0-9a-f-]{36}$/i.test(id);
+    const { data: l } = await admin.from('leaders').select('id, leader_code, full_name, email, church_name, leader_type')
+      .eq(isUuid ? 'id' : 'leader_code', id).limit(1).maybeSingle();
+    if (l && String(l.email || '').trim().toLowerCase() === email) {
+      return { id, name: l.full_name, email, church: l.church_name || undefined, role: l.leader_type || undefined };
+    }
+    await new Promise((res) => setTimeout(res, 700));
+  }
+  return null;
+}
 
 const corsHeaders = {
   ...baseCorsHeaders,
@@ -29,7 +53,10 @@ function qrImageUrl(code: string): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=520x520&ecc=H&margin=12&data=${encodeURIComponent(code)}`;
 }
 
-function passHtml(r: Recipient): string {
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+function passHtml(raw: Recipient): string {
+  const r = { id: raw.id, name: esc(raw.name), email: raw.email, church: esc(raw.church), role: esc(raw.role) };
   const church = r.church || 'CEKB';
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;padding:24px">
@@ -48,7 +75,7 @@ function passHtml(r: Recipient): string {
         <img src="${qrImageUrl(r.id)}" alt="Attendance QR code" width="260" height="260"
              style="border:8px solid #ffffff;border-radius:12px;background:#ffffff" />
         <div style="margin-top:14px;font-family:monospace;font-size:15px;font-weight:bold;color:#1d4ed8">
-          ID: ${r.id}
+          ID: ${esc(r.id)}
         </div>
         <p style="font-size:12px;color:#64748b;margin-top:18px">
           Tip: save this email or take a screenshot of the code so you always have it with you.
@@ -69,12 +96,22 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => null);
-    const recipients: Recipient[] = Array.isArray(body?.recipients) ? body.recipients : [];
+    let recipients: Recipient[] = Array.isArray(body?.recipients) ? body.recipients : [];
 
-    // One pass at a time is allowed for self check-in / self registration.
-    // Anything larger is an admin action and needs a signed-in session.
+    // One pass at a time is allowed for self check-in / self registration, but only
+    // to the email already saved on that person's record. Bulk sends need sign-in.
+    const session = await getPortalSession(req);
+    if (!session && recipients.length === 1) {
+      const matched = await matchOnRecord(recipients[0]);
+      if (!matched) {
+        return new Response(JSON.stringify({ error: 'This pass can only be sent to the email on record.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      recipients = [matched];
+    }
     if (recipients.length > 1) {
-      const session = await getPortalSession(req);
       if (!session) {
         return new Response(JSON.stringify({ error: 'Please sign in to email codes in bulk.' }), {
           status: 401,
@@ -109,7 +146,7 @@ Deno.serve(async (req) => {
 
       const result = await sendMail({
         to: r.email.trim(),
-        subject: `Your CEKB attendance code (${r.id})`,
+        subject: `Your CEKB attendance code (${String(r.id).replace(/[\r\n]/g, '')})`,
         html: passHtml(r),
         fromName: 'CEKB Attendance',
       });
@@ -129,7 +166,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('send-qr-passes error', err);
-    return new Response(JSON.stringify({ error: String(err) }), {
+    return new Response(JSON.stringify({ error: 'Something went wrong.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

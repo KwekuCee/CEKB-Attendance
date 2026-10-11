@@ -9,6 +9,7 @@ import { InsightsPanel } from './InsightsPanel';
 import { Button } from './Button';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { ImportDataPanel } from './ImportDataPanel';
+import { csvQ } from '../utils/csvSafe';
 
 
 interface DashboardOverviewProps {
@@ -214,7 +215,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
   const handleExportCSV = () => {
     const headers = 'ID,Full Name,Phone,Email,Role,Church,Joined Date\n';
-    const rows = branchMembers.map(m => `"${m.id}","${m.fullName}","${m.phone}","${m.email || 'N/A'}","${m.role}","${m.church}","${m.joinDate}"`).join('\n');
+    const rows = branchMembers.map(m => `${csvQ(m.id)},${csvQ(m.fullName)},${csvQ(m.phone)},${csvQ(m.email || 'N/A')},${csvQ(m.role)},${csvQ(m.church)},${csvQ(m.joinDate)}`).join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

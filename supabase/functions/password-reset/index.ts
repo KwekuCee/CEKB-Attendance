@@ -76,7 +76,10 @@ Deno.serve(async (req) => {
         expires_at: expiresAt,
       });
 
-      const origin = String(body?.origin || '').replace(/\/$/, '');
+      // Only our own sites may receive reset links.
+      const ALLOWED = ['https://gcycattendance.online', 'https://www.gcycattendance.online', 'https://happy-import-zone.lovable.app'];
+      const requested = String(body?.origin || '').replace(/\/$/, '');
+      const origin = ALLOWED.includes(requested) || /^https:\/\/[a-z0-9-]+\.lovable\.app$/.test(requested) && requested.includes('c690eefd') ? requested : ALLOWED[0];
       const link = `${origin}/?reset_token=${token}`;
 
       const sendResult = await sendGmail({
@@ -98,9 +101,7 @@ Deno.serve(async (req) => {
         emailSent,
         message: emailSent
           ? 'A reset link has been sent to your email. It expires in one hour.'
-          : 'We could not send the email right now. Use the link below to set your new password.',
-        // Only returned when email delivery is unavailable, so the admin is never locked out.
-        link: emailSent ? undefined : link,
+          : 'We could not send the email right now. Please try again in a few minutes.',
       });
     }
 
