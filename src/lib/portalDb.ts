@@ -25,16 +25,81 @@ function getDefaultLocalStore(): LocalDbStore {
     tables: {
       churches: [
         {
-          id: '11111111-1111-4111-8111-111111111111',
-          name: 'CE Korle Bu Central',
-          pastor_name: 'Pastor Emmanuel',
+          id: 'ac36a93a-3f0d-4609-a023-2a4226cc6e40',
+          name: 'MAKARIOS CHURCH',
+          pastor_name: 'Pastor Michael Essilfie',
+          members_count: 52,
+          status: 'Growing',
+          zone: 'Zone 1 (Korle Bu)',
+          pcf_count: 0,
+          cell_count: 0,
+          bsct_count: 0,
+          created_at: '2026-09-20T10:26:09.770826+00:00',
+          updated_at: now,
+        },
+        {
+          id: '73f1bcb6-f57c-4116-bb0b-71fb7540cb1a',
+          name: 'CEKBU 2',
+          pastor_name: 'Pst. Daasebre Ahensan',
+          members_count: 2,
+          status: 'Growing',
+          zone: 'Zone 1 (Korle Bu)',
+          pcf_count: 0,
+          cell_count: 0,
+          bsct_count: 0,
+          created_at: '2026-09-26T14:44:20.495494+00:00',
+          updated_at: now,
+        },
+        {
+          id: 'd10c33c8-0c4a-4935-b0be-b7efb5655101',
+          name: 'PEPPMAKROS',
+          pastor_name: 'Pepp Makros',
+          members_count: 0,
+          status: 'Growing',
+          zone: 'Zone 1 (Korle Bu)',
+          pcf_count: 0,
+          cell_count: 0,
+          bsct_count: 0,
+          created_at: '2026-10-09T14:08:20.204145+00:00',
+          updated_at: now,
+        },
+        {
+          id: 'c281b845-d7d5-434a-a07b-140c3a1625e0',
+          name: 'PLASTICS',
+          pastor_name: 'James Mckeown',
+          members_count: 0,
+          status: 'Growing',
+          zone: 'Zone 1 (Korle Bu)',
+          pcf_count: 0,
+          cell_count: 0,
+          bsct_count: 0,
+          created_at: '2026-10-09T16:30:20.829032+00:00',
+          updated_at: now,
+        },
+        {
+          id: 'e66409b8-1027-4bb8-b318-a7f0d32b5510',
+          name: 'CE KORLE BU 5',
+          pastor_name: 'DAASEBRE AHENSAN',
+          members_count: 0,
+          status: 'Growing',
+          zone: 'Zone 1 (Korle Bu)',
+          pcf_count: 0,
+          cell_count: 0,
+          bsct_count: 0,
+          created_at: '2026-10-09T22:41:16.658524+00:00',
+          updated_at: now,
+        },
+        {
+          id: 'e967da47-1e5a-4fa5-a2c3-7a8afa7555fc',
+          name: 'CE Coleiro Central',
+          pastor_name: 'Pastor in Charge',
           members_count: 0,
           status: 'Healthy',
           zone: 'Zone 1 (Korle Bu)',
           pcf_count: 0,
           cell_count: 0,
           bsct_count: 0,
-          created_at: now,
+          created_at: '2026-10-10T14:15:52.483033+00:00',
           updated_at: now,
         },
       ],
@@ -54,12 +119,26 @@ function getDefaultLocalStore(): LocalDbStore {
           updated_at: now,
         },
         {
+          id: 'usr-makarios-1',
+          username: 'pastor.michael@makarios.org',
+          email: 'pastor.michael@makarios.org',
+          full_name: 'Pastor Michael Essilfie',
+          role: 'Church Pastor',
+          church_name: 'MAKARIOS CHURCH',
+          zone: 'Zone 1 (Korle Bu)',
+          phone: '+233 24 555 1234',
+          password_hash: 'admin123',
+          admin_verified: true,
+          created_at: now,
+          updated_at: now,
+        },
+        {
           id: 'usr-pastor-1',
           username: 'admin@cekorlebu.org',
           email: 'admin@cekorlebu.org',
           full_name: 'Pastor Emmanuel',
           role: 'Church Pastor',
-          church_name: 'CE Korle Bu Central',
+          church_name: 'MAKARIOS CHURCH',
           zone: 'Zone 1 (Korle Bu)',
           phone: '+233 24 555 0000',
           password_hash: 'admin123',
@@ -71,10 +150,10 @@ function getDefaultLocalStore(): LocalDbStore {
       church_admin_accounts: [
         {
           id: 'ADM-101',
-          church_name: 'CE Korle Bu Central',
-          admin_name: 'Pastor Emmanuel',
-          admin_email: 'admin@cekorlebu.org',
-          admin_phone: '+233 24 555 0000',
+          church_name: 'MAKARIOS CHURCH',
+          admin_name: 'Pastor Michael Essilfie',
+          admin_email: 'pastor.michael@makarios.org',
+          admin_phone: '+233 24 555 1234',
           zone: 'Zone 1 (Korle Bu)',
           role: 'Church Pastor',
           admin_verified: true,
@@ -104,10 +183,17 @@ function getDefaultLocalStore(): LocalDbStore {
 }
 
 let memoryStore: LocalDbStore | null = null;
+const CACHE_SYNC_KEY = 'cekb_portal_live_synced_v4';
 
 export function loadLocalStore(): LocalDbStore {
   if (memoryStore) return memoryStore;
   try {
+    if (typeof window !== 'undefined' && localStorage.getItem(CACHE_SYNC_KEY) !== 'true') {
+      localStorage.removeItem(LOCAL_DB_KEY);
+      localStorage.removeItem('cekbu_churches');
+      localStorage.removeItem('cekbu_church_admins');
+      localStorage.setItem(CACHE_SYNC_KEY, 'true');
+    }
     const raw = localStorage.getItem(LOCAL_DB_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -1256,19 +1342,22 @@ export interface PortalResponse<T = any> {
 }
 
 export async function callPortal<T = any>(payload: Record<string, unknown>): Promise<PortalResponse<T>> {
-  if (!FUNCTIONS_BASE || !ANON_KEY) {
+  if (!FUNCTIONS_BASE) {
     return runLocalPortal(payload);
   }
   try {
     const token = getPortalToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'x-portal-session': token } : {}),
+    };
+    if (ANON_KEY) {
+      headers['apikey'] = ANON_KEY;
+      headers['Authorization'] = `Bearer ${ANON_KEY}`;
+    }
     const res = await fetch(FUNCTIONS_BASE, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
-        ...(token ? { 'x-portal-session': token } : {}),
-      },
+      headers,
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -1277,7 +1366,10 @@ export async function callPortal<T = any>(payload: Record<string, unknown>): Pro
     }
     const body = await res.json().catch(() => null);
     if (!body) return runLocalPortal(payload);
-    if (body.error) return runLocalPortal(payload);
+    if (body.error) {
+      console.warn('portal-db returned error:', body.error);
+      return { data: null, error: typeof body.error === 'string' ? { message: body.error } : body.error };
+    }
     return { data: (body.data ?? null) as T, error: null };
   } catch (err: any) {
     console.warn('portal-db fetch failed, falling back to local portal:', err?.message);
@@ -1420,23 +1512,52 @@ export const portalDb = {
         if (res?.success && res.token) setPortalToken(res.token);
         return { data: { success: !!res?.success, user: res?.user, error: res?.error, email: res?.email }, error: null };
       }
-      const res = await fetch(FUNCTIONS_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (ANON_KEY) {
+        headers['apikey'] = ANON_KEY;
+        headers['Authorization'] = `Bearer ${ANON_KEY}`;
+      }
+      try {
+        const res = await fetch(FUNCTIONS_BASE, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            action: 'login',
+            identifier: params.p_identifier,
+            password: params.p_password,
+            role: params.p_role,
+            otp: params.p_otp,
+          }),
+        })
+          .then((r) => r.json())
+          .catch(() => null);
+
+        if (!res) {
+          const localRes = await runLocalPortal({
+            action: 'login',
+            identifier: params.p_identifier,
+            password: params.p_password,
+            role: params.p_role,
+            otp: params.p_otp,
+          });
+          if (localRes?.success && localRes.token) setPortalToken(localRes.token);
+          return { data: { success: !!localRes?.success, user: localRes?.user, error: localRes?.error, email: localRes?.email }, error: null };
+        }
+        if (res.success && res.token) setPortalToken(res.token);
+        return { data: { success: !!res.success, user: res.user, error: res.error, email: res.email }, error: null };
+      } catch {
+        const localRes = await runLocalPortal({
           action: 'login',
           identifier: params.p_identifier,
           password: params.p_password,
           role: params.p_role,
           otp: params.p_otp,
-        }),
-      })
-        .then((r) => r.json())
-        .catch(() => null);
-
-      if (!res) return { data: null, error: { message: 'Could not reach the sign-in service.' } };
-      if (res.success && res.token) setPortalToken(res.token);
-      return { data: { success: !!res.success, user: res.user, error: res.error, email: res.email }, error: null };
+        });
+        if (localRes?.success && localRes.token) setPortalToken(localRes.token);
+        return { data: { success: !!localRes?.success, user: localRes?.user, error: localRes?.error, email: localRes?.email }, error: null };
+      }
     }
     return { data: null, error: { message: 'Not available from the browser.' } };
   },
