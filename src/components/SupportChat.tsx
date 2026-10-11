@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../integrations/supabase/client';
+import { getPortalToken } from '../lib/portalDb';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -43,8 +44,11 @@ export const SupportChat: React.FC<SupportChatProps> = ({ onClose }) => {
     setError('');
     setIsSending(true);
     try {
+      const token = getPortalToken();
+      if (!token) throw new Error('Please sign in to use the assistant.');
       const { data, error: fnError } = await supabase.functions.invoke('support-chat', {
-        body: { messages: nextMessages.filter((m) => m.role === 'user' || m.role === 'assistant') }
+        body: { messages: nextMessages.filter((m) => m.role === 'user' || m.role === 'assistant') },
+        headers: { 'x-portal-session': token }
       });
       if (fnError) throw new Error(fnError.message);
       if ((data as any)?.error) throw new Error((data as any).error);
