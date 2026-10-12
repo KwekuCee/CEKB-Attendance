@@ -10,7 +10,7 @@ import {
 } from '../_shared/mnotify.ts';
 import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
-import { estimateSmsCost } from '../../../src/lib/smsPricing.ts';
+import { estimateSmsCost } from '../_shared/smsPricing.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
