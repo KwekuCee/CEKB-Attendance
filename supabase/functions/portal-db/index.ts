@@ -894,9 +894,19 @@ async function addSenderStatusHistory(id: string, actor: string, from: string | 
   if (error) console.error('Could not record sender-ID status history:', error.message);
 }
 
+// The registered phone of the admin/pastor who owns a Sender ID request.
+async function getOwnerPhone(email: string): Promise<string | null> {
+  if (!email) return null;
+  const [{ data: profile }, { data: account }] = await Promise.all([
+    admin.from('user_profiles').select('phone').ilike('email', email).limit(1).maybeSingle(),
+    admin.from('church_admin_accounts').select('admin_phone').ilike('admin_email', email).limit(1).maybeSingle(),
+  ]);
+  return normalizeGhanaPhone(String(profile?.phone || '')) || normalizeGhanaPhone(String(account?.admin_phone || '')) || null;
+}
+
 async function sendSenderRequestAlert(sender: any, existingAlertId?: string) {
   const cfg = await getMnotifyManagementConfig();
-  const normalizedPhone = normalizeGhanaPhone(cfg.adminPhone);
+  const normalizedPhone = await getOwnerPhone(String(sender.user_email || ''));
   const alert = {
     sender_id_request_id: sender.id,
     channel: 'sms',
@@ -917,13 +927,13 @@ async function sendSenderRequestAlert(sender: any, existingAlertId?: string) {
     await admin.from('admin_alerts').update({
       status: 'failed',
       attempts: 0,
-      error_message: 'Configure a valid admin phone and approved alert sender ID.',
+      error_message: normalizedPhone ? 'Configure an approved alert sender ID.' : 'The admin has no valid registered phone number.',
     }).eq('id', alertId);
     return { status: 'failed', error: 'Admin alert settings are incomplete.' };
   }
 
-  const prefix = `New Sender ID request: ${sender.sender_name} | Purpose: `;
-  const suffix = ` | User: ${(sender.user_name || 'Portal user').slice(0, 22)}. Create it in mNotify dashboard.`;
+  const prefix = `Your Sender ID request ${sender.sender_name} was received | Purpose: `;
+  const suffix = ` | We'll text you once it is approved.`;
   const message = `${prefix}${String(sender.purpose || '').slice(0, Math.max(0, 158 - prefix.length - suffix.length))}${suffix}`.slice(0, 160);
   let lastError = 'mNotify did not accept the alert.';
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -982,26 +992,26 @@ async function notifySenderOwner(sender: any, status: 'verified' | 'rejected', r
     });
   }
   let smsSent = false;
-  if (profile?.admin_verified === true) {
-    const phone = normalizeGhanaPhone(profile.phone);
-    const { data: cfgRow } = await admin.from('admin_settings').select('setting_value')
-      .eq('setting_key', 'sms_config').maybeSingle();
-    const configuredSender = String((cfgRow?.setting_value as any)?.senderId || '');
-    if (phone && /^[A-Za-z0-9 ]{1,11}$/.test(configuredSender)) {
-      const notification = status === 'verified'
-        ? `${sender.sender_name} is approved. ${instructions}`
-        : `${sender.sender_name} was rejected: ${reason || 'Please check your email and resubmit.'}`;
-      smsSent = (await sendMnotifySms([phone], configuredSender, notification.slice(0, 1000))).accepted > 0;
-      await admin.from('email_send_log').insert({
-        template_name: 'mnotify_sender_id_status_sms',
-        recipient_email: 'verified phone',
-        recipient_phone: 'verified user phone',
-        channel: 'sms',
-        status: smsSent ? 'sent' : 'failed',
-        error_message: smsSent ? null : 'Sender ID status notification SMS could not be delivered.',
-        metadata: { church: sender.church_name, sender_id: sender.sender_name, status },
-      });
+  const phone = normalizeGhanaPhone(String(profile?.phone || '')) || await getOwnerPhone(String(sender.user_email || ''));
+  const cfg = await getMnotifyManagementConfig();
+  // An approved ID can announce itself; otherwise use the platform alert ID.
+  const smsSender = status === 'verified' ? sender.sender_name : cfg.alertSenderId;
+  if (phone && /^[A-Za-z0-9 ]{1,11}$/.test(String(smsSender || ''))) {
+    const notification = status === 'verified'
+      ? `Your Sender ID ${sender.sender_name} is approved on mNotify and ready to use. Open Settings > Sender IDs & SMS to send messages.`
+      : `${sender.sender_name} was rejected: ${reason || 'Please check your email and resubmit.'}`;
+    let result = await sendMnotifySms([phone], smsSender, notification.slice(0, 480));
+    if (!result.accepted && smsSender !== cfg.alertSenderId && cfg.alertSenderId) {
+      result = await sendMnotifySms([phone], cfg.alertSenderId, notification.slice(0, 480));
     }
+    smsSent = result.accepted > 0;
+    await admin.from('admin_alerts').insert({
+      sender_id_request_id: sender.id, channel: 'sms', recipient: `***${phone.slice(-4)}`,
+      status: smsSent ? 'sent' : 'failed', attempts: 1,
+      provider_campaign_id: result.campaignIds[0] || null,
+      error_message: smsSent ? null : (result.error || 'Status SMS not accepted.').slice(0, 300),
+      sent_at: smsSent ? new Date().toISOString() : null,
+    });
   }
   return { emailSent, smsSent };
 }
@@ -1222,8 +1232,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     }).eq('id', sender.id);
     if (saveError) console.error('Could not save mNotify sender response:', saveError.message);
     if (updatedStatus !== 'pending') await addSenderStatusHistory(sender.id, 'mNotify API', 'pending', updatedStatus, provider.error);
-    const alertConfig = await getMnotifyManagementConfig();
-    const alertPhone = normalizeGhanaPhone(alertConfig.adminPhone);
+    const alertPhone = await getOwnerPhone(email);
     const { data: alertRow, error: alertInsertError } = await admin.from('admin_alerts').insert({
       sender_id_request_id: sender.id,
       channel: 'sms',
