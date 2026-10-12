@@ -61,11 +61,11 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   const targetChurch = user?.church || '';
   const effectiveChurch = (() => {
     if (!targetChurch || targetChurch.toLowerCase().includes('calabar')) {
-      return (leaders[0]?.church || churches[0]?.name || '');
+      return (leaders[0]?.church || churches?.[0]?.name || '');
     }
     const hasMatching = leaders.some(l => l.church && l.church.toLowerCase() === targetChurch.toLowerCase());
     if (!hasMatching && leaders.length > 0) {
-      return (leaders[0]?.church || churches[0]?.name || '');
+      return (leaders[0]?.church || churches?.[0]?.name || '');
     }
     return targetChurch;
   })();
