@@ -64,8 +64,8 @@ Deno.serve(async (req: Request) => {
 
     if (!memberRow || (memberRow.church_name || '').toLowerCase() !== churchName.trim().toLowerCase()) {
       return new Response(
-        JSON.stringify({ success: false, error: 'This person is not on that branch’s records.' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: true, sent: false }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

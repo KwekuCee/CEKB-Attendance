@@ -300,7 +300,9 @@ export async function saveLeaderToSupabase(leader: Leader): Promise<boolean> {
 
 /** Short scan code printed on a leader's pass, e.g. LDR-4821. */
 export function generateLeaderCode(): string {
-  return `LDR-${Math.floor(1000 + Math.random() * 9000)}`;
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return `LDR-${Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')}`;
 }
 
 /**

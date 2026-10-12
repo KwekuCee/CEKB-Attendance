@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
   if (!(await isScheduledCall(req)) && authenticateCronRequest(req)) {
     const session = await getPortalSession(req);
     if (!session) return json({ success: false, message: 'Please sign in to send reminders.' }, 401);
+    if (!['Superadmin', 'Church Admin', 'Church Pastor'].includes(session.role)) return json({ success: false, message: 'Only church admins and pastors can send reminders.' }, 403);
   }
 
   const admin = createClient(
