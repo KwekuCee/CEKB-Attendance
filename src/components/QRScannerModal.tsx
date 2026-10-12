@@ -503,10 +503,19 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-700">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-xs font-bold text-slate-200 ">
-            {user?.church || 'Check-in station'}
+        <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-2xl border border-slate-700 max-w-[45%]">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <span className="text-xs font-bold text-slate-200 leading-tight truncate">
+            {user?.name ? `Signed in as ${user.name}` : (user?.church || 'Check-in station')}
+            {user?.name && user?.church && (
+              <span className="block text-[10px] font-semibold text-slate-400 truncate">
+                {user.church} · You've scanned{' '}
+                {(attendance || []).filter(a =>
+                  a?.verifiedBy === `${user.name} (QR Scanner)` &&
+                  (a.date || '').slice(0, 10) === today
+                ).length} today
+              </span>
+            )}
           </span>
         </div>
 
