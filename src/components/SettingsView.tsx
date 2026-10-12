@@ -1,3 +1,4 @@
+import { csvQ } from '../utils/csvSafe';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { motion } from 'motion/react';
@@ -1303,12 +1304,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           const handleExportAuditCSV = () => {
             const headers = ['ID', 'Timestamp', 'Administrator / Actor', 'Branch', 'Category', 'Action Title'];
             const rows = filteredAuditLogs.map(l => [
-              `"${l.id}"`,
-              `"${l.timestamp}"`,
-              `"${l.user || (l as any).actor || 'System'}"`,
-              `"${l.church || (l as any).branch || 'Group HQ'}"`,
-              `"${l.category || 'General'}"`,
-              `"${l.action.replace(/"/g, '""')}"`
+              csvQ(l.id),
+              csvQ(l.timestamp),
+              csvQ(l.user || (l as any).actor || 'System'),
+              csvQ(l.church || (l as any).branch || 'Group HQ'),
+              csvQ(l.category || 'General'),
+              csvQ(l.action)
             ]);
 
             const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');

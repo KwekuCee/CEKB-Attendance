@@ -43,6 +43,13 @@
       "when": 1791696234354,
       "tag": "0005_lock_sms_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791766366371,
+      "tag": "0006_drop_open_access_policies",
+      "breakpoints": true
     }
   ]
 }

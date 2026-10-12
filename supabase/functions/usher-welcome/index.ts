@@ -44,7 +44,9 @@ Deno.serve(async (req) => {
     return json({ success: false, error: 'This usher belongs to another branch.' }, 403);
   }
 
-  const origin = /^https:\/\/[a-z0-9.-]+$/i.test(String(body?.origin || '')) ? String(body.origin) : 'https://gcycattendance.online';
+  const ALLOWED_ORIGINS = ['https://gcycattendance.online', 'https://www.gcycattendance.online', 'https://happy-import-zone.lovable.app', 'https://id-preview--c690eefd-d2ed-4980-ab5f-c93210c0aea8.lovable.app'];
+  const reqOrigin = String(body?.origin || '').replace(/\/$/, '');
+  const origin = ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : 'https://gcycattendance.online';
   const name = esc(usher.full_name || 'there');
   const church = esc(usher.church_name || 'your church');
 
@@ -60,6 +62,6 @@ Deno.serve(async (req) => {
 <p style="color:#5b6b80;font-size:13px">Forgot your password? Use “Forgot Password?” on the sign-in page. If you weren’t expecting this, you can ignore this email.</p>`,
   });
 
-  if (!result.ok) return json({ success: false, error: result.error || 'Email could not be sent.' }, 502);
+  if (!result.ok) { console.error('usher-welcome send failed:', result.error); return json({ success: false, error: 'Email could not be sent. Please try again later.' }, 502); }
   return json({ success: true });
 });

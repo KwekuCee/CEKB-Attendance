@@ -11,11 +11,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
 /** Signed-out callers may only email a pass to the address already on that person's record. */
-async function matchOnRecord(r: Recipient): Promise<Recipient | null> {
+async function matchOnRecord(r: Recipient, tries = 4): Promise<Recipient | null> {
   const id = String(r?.id || '').trim();
   const email = String(r?.email || '').trim().toLowerCase();
   if (!id || !email || id.length > 64) return null;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < tries; attempt++) {
     const { data: m } = await admin.from('members').select('id, full_name, email, church_name, role').eq('id', id).maybeSingle();
     if (m && String(m.email || '').trim().toLowerCase() === email) {
       return { id: m.id, name: m.full_name, email, church: m.church_name || undefined, role: m.role || undefined };
@@ -26,7 +26,7 @@ async function matchOnRecord(r: Recipient): Promise<Recipient | null> {
     if (l && String(l.email || '').trim().toLowerCase() === email) {
       return { id, name: l.full_name, email, church: l.church_name || undefined, role: l.leader_type || undefined };
     }
-    await new Promise((res) => setTimeout(res, 700));
+    if (attempt < tries - 1) await new Promise((res) => setTimeout(res, 700));
   }
   return null;
 }
@@ -110,6 +110,18 @@ Deno.serve(async (req) => {
         });
       }
       recipients = [matched];
+    }
+    if (session && recipients.length >= 1 && recipients.length <= 500) {
+      // Signed-in senders may only email people on record, at the email on record,
+      // and (except the group account) only within their own branch.
+      const checked: Recipient[] = [];
+      for (const r of recipients) {
+        const m = await matchOnRecord(r, 1);
+        if (!m) continue;
+        if (session.role !== 'Superadmin' && String(m.church || '').toLowerCase() !== String(session.church_name || '').toLowerCase()) continue;
+        checked.push(m);
+      }
+      recipients = checked;
     }
     if (recipients.length > 1) {
       if (!session) {

@@ -10,7 +10,7 @@ import {
 } from '../_shared/mnotify.ts';
 import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
-import { estimateSmsCost } from '../../../src/lib/smsPricing.ts';
+import { estimateSmsCost } from '../_shared/smsPricing.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -63,8 +63,13 @@ const PROTECTED_COLUMNS: Record<string, string[]> = {
   members: ['service_count', 'created_at', 'updated_at'],
   leaders: ['downstream_count', 'promotion_status', 'created_at', 'updated_at'],
   churches: ['members_count', 'created_at', 'updated_at'],
-  user_profiles: ['auth_user_id', 'created_at', 'updated_at'],
-  church_admin_accounts: ['admin_verified', 'created_at'],
+  user_profiles: ['auth_user_id', 'created_at', 'updated_at', 'email_verification_token', 'email_verification_sent_at', 'is_church_admin', 'onboarding_completed_at'],
+  church_admin_accounts: ['admin_verified', 'email_verified', 'created_at'],
+  cell_reports: ['created_at', 'updated_at'],
+  announcements: ['created_at'],
+  absence_records: ['created_at', 'updated_at'],
+  promotion_queue: ['flagged_at', 'status'],
+  service_types: ['created_at', 'updated_at'],
   attendance_records: ['is_late'],
   audit_logs: ['id', 'created_at'],
 };
@@ -390,8 +395,10 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
       Record<string, unknown>
     >;
     for (const row of rows) {
-      if (row && typeof row === 'object' && 'church_name' in row) {
+      if (row && typeof row === 'object') {
         row.church_name = session.church_name;
+        if (session.church_id) row.church_id = session.church_id;
+        else delete row.church_id;
       }
     }
   }
@@ -409,6 +416,8 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
         if (!/^[a-z][a-z0-9_]{0,62}$/.test(k)) return json({ error: { message: 'Invalid field.' } }, 400);
         if (protectedCols.includes(k)) delete r[k];
       }
+      // Updates never move a row to a new identity.
+      if (op === 'update' && session?.role !== 'Superadmin') delete r.id;
       if (session && session.role !== 'Superadmin' && op === 'update' && BRANCH_SCOPED.has(table)) {
         delete r.church_id;
         if ('church_name' in r) r.church_name = session.church_name;

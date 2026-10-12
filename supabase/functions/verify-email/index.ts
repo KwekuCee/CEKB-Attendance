@@ -148,7 +148,8 @@ Deno.serve(async (req) => {
       return json({ success: true, message: 'If that email belongs to an account, a verification link has been sent.' });
     }
     if (verified) {
-      return json({ success: true, alreadyVerified: true, message: 'This email is already verified. You can sign in.' });
+      // Same answer as an unknown address, so account status is never revealed.
+      return json({ success: true, message: 'If that email belongs to an account, a verification link has been sent.' });
     }
 
     const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
