@@ -447,7 +447,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     onAddLeader(newLeader);
 
     // Each leader gets their own sign-in so they can follow their group.
-    let accountNote = ' You can now sign in with your email and password.';
+    let accountNote = ' Check your email and click the confirmation link, then sign in with your email and password.';
     const accountClient: any = getSupabase();
     if (accountClient) {
       const email = newLeader.email.trim().toLowerCase();
@@ -456,6 +456,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         role: 'Leader', church_name: newLeader.church, phone: newLeader.contact,
       });
       if (accErr) accountNote = ` Your leader account could not be created (${accErr.message}).`;
+      else sendAdminVerificationEmail(email, newLeader.fullName, true).catch(() => {});
     }
 
     // Every leader is also a member: keep the membership records in step and

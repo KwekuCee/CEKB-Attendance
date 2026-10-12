@@ -375,8 +375,14 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
           if (pastor) return json({ error: { message: 'This church already has a pastor account. Ask the pastor to appoint you instead.' } }, 409);
         }
         row.role = role;
-        // Leaders can sign in straight away; pastors must confirm their email first.
-        row.admin_verified = role === 'Leader';
+        // Everyone confirms their email before signing in, so nobody can claim a
+        // church's leader account with an address they don't control.
+        row.admin_verified = false;
+        if (role === 'Leader') {
+          const { data: ch } = await admin.from('churches').select('name').ilike('name', String(row.church_name || '')).maybeSingle();
+          if (!ch) return json({ error: { message: 'Choose a registered church.' } }, 400);
+          row.church_name = ch.name;
+        }
       } else {
         row.admin_verified = false;
       }
@@ -1284,6 +1290,20 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       else invalid.push(raw.slice(0, 40));
     }
     if (invalid.length) return json({ error: { message: `Correct invalid Ghana phone number(s): ${invalid.slice(0, 10).join(', ')}` } }, 400);
+    // Only numbers saved on the sender's church records (members, leaders, staff).
+    const allowed = new Set<string>();
+    if (session.church_name) {
+      const [m, l, u] = await Promise.all([
+        admin.from('members').select('phone').ilike('church_name', session.church_name).limit(20000),
+        admin.from('leaders').select('contact').ilike('church_name', session.church_name).limit(5000),
+        admin.from('user_profiles').select('phone').ilike('church_name', session.church_name).limit(2000),
+      ]);
+      for (const r of (m.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.phone || '')); if (p) allowed.add(p); }
+      for (const r of (l.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.contact || '')); if (p) allowed.add(p); }
+      for (const r of (u.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.phone || '')); if (p) allowed.add(p); }
+    }
+    const notOnRecord = [...valid].filter((p) => !allowed.has(p));
+    if (notOnRecord.length) return json({ error: { message: `These numbers are not on your church's records: ${notOnRecord.slice(0, 10).join(', ')}` } }, 400);
     const recipients = [...valid];
     if (!recipients.length || recipients.length > 100) return json({ error: { message: 'Enter between 1 and 100 unique valid Ghana phone numbers.' } }, 400);
     const senderIdRequestId = String(body.senderIdRequestId || '');
