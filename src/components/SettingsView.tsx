@@ -1682,6 +1682,17 @@ function SenderSmsWorkspace() {
   const [busy, setBusy] = useState(false);
   const [deliveryFilter, setDeliveryFilter] = useState('All');
   const pendingSend = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [audience, setAudience] = useState<'custom' | 'leaders' | 'members' | 'all'>('custom');
+  const [contacts, setContacts] = useState<Array<{ id: string; name: string; phone: string; kind: 'member' | 'leader'; code: string | null }>>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [contactSearch, setContactSearch] = useState('');
+  const [codeKind, setCodeKind] = useState<'member' | 'leader'>('member');
+  const [codePicked, setCodePicked] = useState<Set<string>>(new Set());
+  const [codeSearch, setCodeSearch] = useState('');
+
+  useEffect(() => {
+    void rawPortal({ action: 'mnotifyUser', op: 'contacts' }).then((r: any) => { if (r?.success) setContacts(r.contacts || []); });
+  }, []);
 
   const load = async () => {
     const result = await rawPortal({ action: 'mnotifyUser', op: 'dashboard' });
@@ -1715,7 +1726,31 @@ function SenderSmsWorkspace() {
     }
     return { valid: [...found], invalid };
   }, [recipients]);
-  const validRecipients = recipientResult.valid;
+  const validRecipients = useMemo(() => {
+    if (audience === 'custom') {
+      const set = new Set(recipientResult.valid);
+      contacts.forEach((c) => { if (picked.has(`${c.kind}:${c.id}`)) set.add(c.phone); });
+      return [...set];
+    }
+    return [...new Set(contacts.filter((c) => audience === 'all' || (audience === 'leaders' ? c.kind === 'leader' : c.kind === 'member')).map((c) => c.phone))];
+  }, [audience, recipientResult.valid, contacts, picked]);
+  const toggle = (set: Set<string>, key: string, setter: (s: Set<string>) => void) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setter(next);
+  };
+  const sendCodes = async () => {
+    if (!selectedSenderId) return;
+    const ids = [...codePicked];
+    const label = ids.length ? `${ids.length} selected ${codeKind}(s)` : `all ${codeKind}s with a phone number`;
+    if (!window.confirm(`Send each person their ${codeKind} code by SMS to ${label}?`)) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await rawPortal({ action: 'mnotifyUser', op: 'sendCodes', kind: codeKind, ids: ids.length ? ids : undefined, senderIdRequestId: selectedSenderId });
+      if (result?.success) { setNotice(`Codes sent: ${result.accepted} accepted, ${result.failed} failed. Credits used: ${result.creditsUsed}.`); setCodePicked(new Set()); }
+      else setError(result?.error?.message || 'Codes were not sent.');
+    } catch { setError('Could not reach the SMS service.'); } finally { setBusy(false); }
+  };
   const estimate = estimateSmsCost(message, validRecipients.length, Number(dashboard?.unitRate || 0));
   const verifiedSenders = (dashboard?.senderIds || []).filter((item: any) => item.status === 'verified');
 
@@ -1771,7 +1806,7 @@ function SenderSmsWorkspace() {
     setError('');
     setNotice('');
     try {
-      const fingerprint = `${selectedSenderId}|${message.trim()}|${validRecipients.join(',')}`;
+      const fingerprint = `${selectedSenderId}|${audience}|${message.trim()}|${validRecipients.join(',')}`;
       if (!pendingSend.current || pendingSend.current.fingerprint !== fingerprint) {
         pendingSend.current = { fingerprint, key: crypto.randomUUID() };
       }
@@ -1779,7 +1814,8 @@ function SenderSmsWorkspace() {
         action: 'mnotifyUser',
         op: 'sendSms',
         senderIdRequestId: selectedSenderId,
-        recipients,
+        audience,
+        recipients: audience === 'custom' ? validRecipients : [],
         message: message.trim(),
         idempotencyKey: pendingSend.current.key,
       });
@@ -1792,6 +1828,7 @@ function SenderSmsWorkspace() {
           : `mNotify accepted ${result.accepted} message(s), failed ${result.failed}. Actual credits used: ${result.creditsUsed}. Delivery receipts may update after sending.`);
         setMessage('');
         setRecipients('');
+        setPicked(new Set());
         await load();
       }
     } catch {
@@ -1905,17 +1942,32 @@ function SenderSmsWorkspace() {
                 {verifiedSenders.map((sender: any) => <option key={sender.id} value={sender.id}>{sender.sender_name}</option>)}
               </select>
             </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold">Ghana recipient numbers (comma, space, or newline separated; max 100)</span>
-              <textarea value={recipients} onChange={(event) => setRecipients(event.target.value)} rows={3} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" placeholder="0241234567, +233201234567" />
-              <span className="text-xs text-muted-foreground">{validRecipients.length} valid unique recipient(s). Numbers are normalized to local Ghana format before sending.</span>
-              {(recipientResult.invalid.length > 0 || validRecipients.length > 100) && (
-                <span className="block text-xs text-destructive">
-                  {recipientResult.invalid.length > 0 && `Invalid number(s): ${recipientResult.invalid.slice(0, 10).join(', ')}. `}
-                  {validRecipients.length > 100 && 'A campaign is limited to 100 unique recipients.'}
-                </span>
-              )}
-            </label>
+            <div className="space-y-2">
+              <span className="text-sm font-semibold">Send to</span>
+              <div className="flex flex-wrap gap-2">
+                {([['custom', 'Selected brethren'], ['leaders', 'All leaders'], ['members', 'All members'], ['all', 'All leaders & members']] as const).map(([value, label]) => (
+                  <Button key={value} type="button" variant={audience === value ? 'primary' as any : 'secondary'} onClick={() => setAudience(value)}>{label}</Button>
+                ))}
+              </div>
+              {audience === 'custom' ? (
+                <>
+                  <input value={contactSearch} onChange={(e) => setContactSearch(e.target.value)} placeholder="Search leaders and members by name" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
+                  <div className="max-h-56 overflow-auto rounded-xl border border-border divide-y divide-border">
+                    {contacts.filter((c) => c.name.toLowerCase().includes(contactSearch.toLowerCase())).slice(0, 300).map((c) => (
+                      <label key={`${c.kind}:${c.id}`} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={picked.has(`${c.kind}:${c.id}`)} onChange={() => toggle(picked, `${c.kind}:${c.id}`, setPicked)} />
+                        <span className="flex-1">{c.name}</span>
+                        <span className="text-xs text-muted-foreground">{c.kind === 'leader' ? 'Leader' : 'Member'} · {c.phone}</span>
+                      </label>
+                    ))}
+                    {contacts.length === 0 && <p className="p-3 text-xs text-muted-foreground">No leaders or members with phone numbers yet.</p>}
+                  </div>
+                  <textarea value={recipients} onChange={(event) => setRecipients(event.target.value)} rows={2} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" placeholder="Or type numbers saved on your church records: 0241234567, +233201234567" />
+                  {recipientResult.invalid.length > 0 && <span className="block text-xs text-destructive">Invalid number(s): {recipientResult.invalid.slice(0, 10).join(', ')}</span>}
+                </>
+              ) : null}
+              <span className="block text-xs text-muted-foreground">{validRecipients.length} unique recipient(s).{validRecipients.length > 3000 ? ' A campaign is limited to 3,000.' : ''}</span>
+            </div>
             <label className="block space-y-1">
               <span className="text-sm font-semibold">Message</span>
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} maxLength={1000} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
@@ -1923,10 +1975,31 @@ function SenderSmsWorkspace() {
                 {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · estimated {dashboard?.unitRate ? estimate.estimatedCost : 'rate not configured'} credits
               </span>
             </label>
-            <Button type="submit" disabled={busy || !message.trim() || !validRecipients.length || recipientResult.invalid.length > 0 || validRecipients.length > 100 || !dashboard?.unitRate}>
+            <Button type="submit" disabled={busy || !message.trim() || !validRecipients.length || (audience === 'custom' && recipientResult.invalid.length > 0) || validRecipients.length > 3000 || !dashboard?.unitRate}>
               {busy ? 'Sending…' : 'Review cost & send'}
             </Button>
           </form>
+          <div className="space-y-3 rounded-xl border border-border p-4">
+            <h3 className="font-semibold">Send member or leader codes</h3>
+            <p className="text-xs text-muted-foreground">Each person receives their own code by SMS from your selected Sender ID. Leave everyone unticked to send to all.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={codeKind === 'member' ? 'primary' as any : 'secondary'} onClick={() => { setCodeKind('member'); setCodePicked(new Set()); }}>Member codes</Button>
+              <Button type="button" variant={codeKind === 'leader' ? 'primary' as any : 'secondary'} onClick={() => { setCodeKind('leader'); setCodePicked(new Set()); }}>Leader codes</Button>
+            </div>
+            <input value={codeSearch} onChange={(e) => setCodeSearch(e.target.value)} placeholder="Search by name" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
+            <div className="max-h-56 overflow-auto rounded-xl border border-border divide-y divide-border">
+              {contacts.filter((c) => c.kind === codeKind && c.code && c.name.toLowerCase().includes(codeSearch.toLowerCase())).slice(0, 300).map((c) => (
+                <label key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={codePicked.has(c.id)} onChange={() => toggle(codePicked, c.id, setCodePicked)} />
+                  <span className="flex-1">{c.name}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{c.code}</span>
+                </label>
+              ))}
+            </div>
+            <Button type="button" disabled={busy || !selectedSenderId} onClick={() => void sendCodes()}>
+              {busy ? 'Sending…' : codePicked.size ? `Send codes to ${codePicked.size} selected` : `Send codes to all ${codeKind}s`}
+            </Button>
+          </div>
         </>
       )}
 

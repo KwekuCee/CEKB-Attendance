@@ -894,9 +894,19 @@ async function addSenderStatusHistory(id: string, actor: string, from: string | 
   if (error) console.error('Could not record sender-ID status history:', error.message);
 }
 
+// The registered phone of the admin/pastor who owns a Sender ID request.
+async function getOwnerPhone(email: string): Promise<string | null> {
+  if (!email) return null;
+  const [{ data: profile }, { data: account }] = await Promise.all([
+    admin.from('user_profiles').select('phone').ilike('email', email).limit(1).maybeSingle(),
+    admin.from('church_admin_accounts').select('admin_phone').ilike('admin_email', email).limit(1).maybeSingle(),
+  ]);
+  return normalizeGhanaPhone(String(profile?.phone || '')) || normalizeGhanaPhone(String(account?.admin_phone || '')) || null;
+}
+
 async function sendSenderRequestAlert(sender: any, existingAlertId?: string) {
   const cfg = await getMnotifyManagementConfig();
-  const normalizedPhone = normalizeGhanaPhone(cfg.adminPhone);
+  const normalizedPhone = await getOwnerPhone(String(sender.user_email || ''));
   const alert = {
     sender_id_request_id: sender.id,
     channel: 'sms',
@@ -917,13 +927,13 @@ async function sendSenderRequestAlert(sender: any, existingAlertId?: string) {
     await admin.from('admin_alerts').update({
       status: 'failed',
       attempts: 0,
-      error_message: 'Configure a valid admin phone and approved alert sender ID.',
+      error_message: normalizedPhone ? 'Configure an approved alert sender ID.' : 'The admin has no valid registered phone number.',
     }).eq('id', alertId);
     return { status: 'failed', error: 'Admin alert settings are incomplete.' };
   }
 
-  const prefix = `New Sender ID request: ${sender.sender_name} | Purpose: `;
-  const suffix = ` | User: ${(sender.user_name || 'Portal user').slice(0, 22)}. Create it in mNotify dashboard.`;
+  const prefix = `Your Sender ID request ${sender.sender_name} was received | Purpose: `;
+  const suffix = ` | We'll text you once it is approved.`;
   const message = `${prefix}${String(sender.purpose || '').slice(0, Math.max(0, 158 - prefix.length - suffix.length))}${suffix}`.slice(0, 160);
   let lastError = 'mNotify did not accept the alert.';
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -982,26 +992,26 @@ async function notifySenderOwner(sender: any, status: 'verified' | 'rejected', r
     });
   }
   let smsSent = false;
-  if (profile?.admin_verified === true) {
-    const phone = normalizeGhanaPhone(profile.phone);
-    const { data: cfgRow } = await admin.from('admin_settings').select('setting_value')
-      .eq('setting_key', 'sms_config').maybeSingle();
-    const configuredSender = String((cfgRow?.setting_value as any)?.senderId || '');
-    if (phone && /^[A-Za-z0-9 ]{1,11}$/.test(configuredSender)) {
-      const notification = status === 'verified'
-        ? `${sender.sender_name} is approved. ${instructions}`
-        : `${sender.sender_name} was rejected: ${reason || 'Please check your email and resubmit.'}`;
-      smsSent = (await sendMnotifySms([phone], configuredSender, notification.slice(0, 1000))).accepted > 0;
-      await admin.from('email_send_log').insert({
-        template_name: 'mnotify_sender_id_status_sms',
-        recipient_email: 'verified phone',
-        recipient_phone: 'verified user phone',
-        channel: 'sms',
-        status: smsSent ? 'sent' : 'failed',
-        error_message: smsSent ? null : 'Sender ID status notification SMS could not be delivered.',
-        metadata: { church: sender.church_name, sender_id: sender.sender_name, status },
-      });
+  const phone = normalizeGhanaPhone(String(profile?.phone || '')) || await getOwnerPhone(String(sender.user_email || ''));
+  const cfg = await getMnotifyManagementConfig();
+  // An approved ID can announce itself; otherwise use the platform alert ID.
+  const smsSender = status === 'verified' ? sender.sender_name : cfg.alertSenderId;
+  if (phone && /^[A-Za-z0-9 ]{1,11}$/.test(String(smsSender || ''))) {
+    const notification = status === 'verified'
+      ? `Your Sender ID ${sender.sender_name} is approved on mNotify and ready to use. Open Settings > Sender IDs & SMS to send messages.`
+      : `${sender.sender_name} was rejected: ${reason || 'Please check your email and resubmit.'}`;
+    let result = await sendMnotifySms([phone], smsSender, notification.slice(0, 480));
+    if (!result.accepted && smsSender !== cfg.alertSenderId && cfg.alertSenderId) {
+      result = await sendMnotifySms([phone], cfg.alertSenderId, notification.slice(0, 480));
     }
+    smsSent = result.accepted > 0;
+    await admin.from('admin_alerts').insert({
+      sender_id_request_id: sender.id, channel: 'sms', recipient: `***${phone.slice(-4)}`,
+      status: smsSent ? 'sent' : 'failed', attempts: 1,
+      provider_campaign_id: result.campaignIds[0] || null,
+      error_message: smsSent ? null : (result.error || 'Status SMS not accepted.').slice(0, 300),
+      sent_at: smsSent ? new Date().toISOString() : null,
+    });
   }
   return { emailSent, smsSent };
 }
@@ -1153,6 +1163,30 @@ async function refreshCampaignReport(campaign: any) {
   return { success: true, counts: { delivered: counts[0], failed: counts[1], pending: counts[2] } };
 }
 
+type SmsContact = { id: string; name: string; phone: string; kind: 'member' | 'leader'; code: string | null };
+async function loadChurchSmsDirectory(churchName: string) {
+  const [m, l, u] = await Promise.all([
+    admin.from('members').select('id, full_name, phone, role').ilike('church_name', churchName).limit(20000),
+    admin.from('leaders').select('id, full_name, contact, leader_code').ilike('church_name', churchName).limit(5000),
+    admin.from('user_profiles').select('phone').ilike('church_name', churchName).limit(2000),
+  ]);
+  const list: SmsContact[] = [];
+  const leaderNames = new Set<string>();
+  for (const r of (l.data || []) as any[]) {
+    const phone = normalizeGhanaPhone(String(r.contact || ''));
+    leaderNames.add(String(r.full_name || '').trim().toLowerCase());
+    if (phone) list.push({ id: String(r.id), name: String(r.full_name || ''), phone, kind: 'leader', code: r.leader_code || null });
+  }
+  for (const r of (m.data || []) as any[]) {
+    const phone = normalizeGhanaPhone(String(r.phone || ''));
+    // Leaders are mirrored as members; keep them in the leader list only.
+    if (!phone || (r.role === 'Leader' && leaderNames.has(String(r.full_name || '').trim().toLowerCase()))) continue;
+    list.push({ id: String(r.id), name: String(r.full_name || ''), phone, kind: 'member', code: String(r.id) });
+  }
+  const staffPhones = ((u.data || []) as any[]).map((r) => normalizeGhanaPhone(String(r.phone || ''))).filter(Boolean) as string[];
+  return Object.assign(list, { staffPhones });
+}
+
 async function handleMnotifyUserAction(body: any, session: Session | null, req: Request) {
   if (!session || !SMS_MANAGER_ROLES.has(session.role) || !session.user_email) {
     return json({ error: { message: 'Church Admin or Church Pastor sign-in is required.' } }, 403);
@@ -1222,8 +1256,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     }).eq('id', sender.id);
     if (saveError) console.error('Could not save mNotify sender response:', saveError.message);
     if (updatedStatus !== 'pending') await addSenderStatusHistory(sender.id, 'mNotify API', 'pending', updatedStatus, provider.error);
-    const alertConfig = await getMnotifyManagementConfig();
-    const alertPhone = normalizeGhanaPhone(alertConfig.adminPhone);
+    const alertPhone = await getOwnerPhone(email);
     const { data: alertRow, error: alertInsertError } = await admin.from('admin_alerts').insert({
       sender_id_request_id: sender.id,
       channel: 'sms',
@@ -1266,6 +1299,46 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     return json(result.success ? { success: true, status: result.status, pending: result.pending } : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
   }
 
+  if (op === 'contacts') {
+    if (!session.church_name) return json({ success: true, contacts: [] });
+    const directory = await loadChurchSmsDirectory(session.church_name);
+    return json({ success: true, contacts: directory.map(({ id, name, phone, kind, code }) => ({ id, name, phone, kind, code })) });
+  }
+
+  if (op === 'sendCodes') {
+    const limited = await rateLimit(req, 'user-sms-codes', 5, 600, corsHeaders, email, true, true);
+    if (limited) return limited;
+    const kind = String(body.kind || '');
+    if (kind !== 'member' && kind !== 'leader') return json({ error: { message: 'Choose members or leaders.' } }, 400);
+    if (!session.church_name) return json({ error: { message: 'Your account is not linked to a church.' } }, 400);
+    const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name')
+      .eq('id', String(body.senderIdRequestId || '')).ilike('user_email', email).eq('status', 'verified').maybeSingle();
+    if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
+    const ids = Array.isArray(body.ids) ? new Set(body.ids.map(String)) : null;
+    const directory = await loadChurchSmsDirectory(session.church_name);
+    const targets = directory.filter((c) => c.kind === kind && c.code && (!ids || ids.has(c.id))).slice(0, 1000);
+    if (!targets.length) return json({ error: { message: `No ${kind}s with a phone number and code were found.` } }, 400);
+    let accepted = 0; let failed = 0; let credits = 0;
+    for (const t of targets) {
+      const first = t.name.split(' ')[0] || 'Beloved';
+      const text = kind === 'leader'
+        ? `Hello ${first}, your ${session.church_name} leader code is ${t.code}. Use it with your registered phone to sign in and submit cell reports.`
+        : `Hello ${first}, your ${session.church_name} member code is ${t.code}. Keep it for check-in at church services.`;
+      const r = await sendMnotifySms([t.phone], sender.sender_name, text);
+      if (r.accepted) { accepted++; credits += r.creditsUsed; } else failed++;
+    }
+    await admin.from('email_send_log').insert({
+      template_name: `${kind}_code_sms`, recipient_email: 'campaign', channel: 'sms',
+      status: accepted ? 'sent' : 'failed', error_message: failed ? `${failed} code SMS not accepted.` : null,
+      metadata: { church: session.church_name, accepted, failed, credits },
+    });
+    await admin.from('audit_logs').insert({
+      actor: session.role, action: `Sent ${kind} codes by SMS (${accepted} accepted, ${failed} failed)`,
+      category: 'Messaging', church_name: session.church_name, icon: 'sms',
+    });
+    return json({ success: accepted > 0, accepted, failed, creditsUsed: credits, error: accepted ? null : { message: 'mNotify did not accept the code messages.' } });
+  }
+
   if (op === 'sendSms') {
     const limited = await rateLimit(req, 'user-sms-send', 10, 600, corsHeaders, email, true, true);
     if (limited) return limited;
@@ -1273,39 +1346,33 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) return json({ error: { message: 'Invalid send request. Reload the form and try again.' } }, 400);
     if (!message || [...message].length > 1000) return json({ error: { message: 'Enter a message between 1 and 1,000 characters.' } }, 400);
-    const inputRecipients = Array.isArray(body.recipients)
-      ? body.recipients
-      : String(body.recipients || '').split(/[\s,;]+/);
-    const valid = new Set<string>();
-    const invalid: string[] = [];
-    for (const value of inputRecipients) {
-      const raw = String(value || '').trim();
-      if (!raw) continue;
-      if (!/^\+?[\d\s().-]+$/.test(raw)) {
-        invalid.push(raw.slice(0, 40));
-        continue;
+    const audience = String(body.audience || 'custom');
+    if (!['custom', 'leaders', 'members', 'all'].includes(audience)) return json({ error: { message: 'Choose who should receive this SMS.' } }, 400);
+    if (!session.church_name) return json({ error: { message: 'Your account is not linked to a church.' } }, 400);
+    const directory = await loadChurchSmsDirectory(session.church_name);
+    let recipients: string[];
+    if (audience === 'custom') {
+      const inputRecipients = Array.isArray(body.recipients)
+        ? body.recipients
+        : String(body.recipients || '').split(/[\s,;]+/);
+      const valid = new Set<string>();
+      const invalid: string[] = [];
+      for (const value of inputRecipients) {
+        const raw = String(value || '').trim();
+        if (!raw) continue;
+        const phone = /^\+?[\d\s().-]+$/.test(raw) ? normalizeGhanaPhone(raw) : null;
+        if (phone) valid.add(phone); else invalid.push(raw.slice(0, 40));
       }
-      const phone = normalizeGhanaPhone(raw);
-      if (phone) valid.add(phone);
-      else invalid.push(raw.slice(0, 40));
+      if (invalid.length) return json({ error: { message: `Correct invalid Ghana phone number(s): ${invalid.slice(0, 10).join(', ')}` } }, 400);
+      const allowed = new Set([...directory.map((c) => c.phone), ...directory.staffPhones]);
+      const notOnRecord = [...valid].filter((p) => !allowed.has(p));
+      if (notOnRecord.length) return json({ error: { message: `These numbers are not on your church's records: ${notOnRecord.slice(0, 10).join(', ')}` } }, 400);
+      recipients = [...valid];
+    } else {
+      recipients = [...new Set(directory.filter((c) => audience === 'all' || (audience === 'leaders' ? c.kind === 'leader' : c.kind === 'member')).map((c) => c.phone))];
     }
-    if (invalid.length) return json({ error: { message: `Correct invalid Ghana phone number(s): ${invalid.slice(0, 10).join(', ')}` } }, 400);
-    // Only numbers saved on the sender's church records (members, leaders, staff).
-    const allowed = new Set<string>();
-    if (session.church_name) {
-      const [m, l, u] = await Promise.all([
-        admin.from('members').select('phone').ilike('church_name', session.church_name).limit(20000),
-        admin.from('leaders').select('contact').ilike('church_name', session.church_name).limit(5000),
-        admin.from('user_profiles').select('phone').ilike('church_name', session.church_name).limit(2000),
-      ]);
-      for (const r of (m.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.phone || '')); if (p) allowed.add(p); }
-      for (const r of (l.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.contact || '')); if (p) allowed.add(p); }
-      for (const r of (u.data || []) as any[]) { const p = normalizeGhanaPhone(String(r.phone || '')); if (p) allowed.add(p); }
-    }
-    const notOnRecord = [...valid].filter((p) => !allowed.has(p));
-    if (notOnRecord.length) return json({ error: { message: `These numbers are not on your church's records: ${notOnRecord.slice(0, 10).join(', ')}` } }, 400);
-    const recipients = [...valid];
-    if (!recipients.length || recipients.length > 100) return json({ error: { message: 'Enter between 1 and 100 unique valid Ghana phone numbers.' } }, 400);
+    if (!recipients.length) return json({ error: { message: 'No valid phone numbers were found for this audience.' } }, 400);
+    if (recipients.length > 3000) return json({ error: { message: 'A campaign is limited to 3,000 unique recipients.' } }, 400);
     const senderIdRequestId = String(body.senderIdRequestId || '');
     const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name, status')
       .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').maybeSingle();
