@@ -85,3 +85,4 @@
 
 - [x] Usher sign-in page and role, password peek, usher welcome email, lazy loading, restyled emails + plain-text versions
 - [ ] Inbox delivery: needs SPF/DKIM/DMARC confirmed for gcycattendance.online at the email provider
+- Security: leader sign-up requires email confirmation; SMS only to numbers saved on the sender's church records.

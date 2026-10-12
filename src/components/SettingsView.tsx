@@ -1814,7 +1814,7 @@ function SenderSmsWorkspace() {
   const exportRecipients = (campaign: any) => {
     const recipientsToExport = (campaign.recipients || []).filter((row: any) => deliveryFilter === 'All' || row.status === deliveryFilter);
     const rows = [['Recipient', 'Status', 'Failure reason'], ...recipientsToExport.map((row: any) => [row.recipient_phone, row.status, row.failure_reason || ''])];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const csv = rows.map((row) => row.map((cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const link = document.createElement('a');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     link.href = url;

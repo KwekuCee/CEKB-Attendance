@@ -57,7 +57,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
   const targetChurch = user?.church || '';
   const effectiveChurch = (() => {
     if (!targetChurch || targetChurch.toLowerCase().includes('calabar')) {
-      return members[0]?.church || churches[0]?.name || '';
+      return members[0]?.church || churches?.[0]?.name || '';
     }
     const hasMatching = members.some(m => m.church && m.church.toLowerCase() === targetChurch.toLowerCase());
     if (!hasMatching && members.length > 0) {
