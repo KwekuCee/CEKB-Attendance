@@ -67,6 +67,53 @@ export type Database = {
           },
         ]
       }
+      admin_alerts: {
+        Row: {
+          attempts: number
+          channel: string
+          created_at: string
+          error_message: string | null
+          id: string
+          provider_campaign_id: string | null
+          recipient: string
+          sender_id_request_id: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          provider_campaign_id?: string | null
+          recipient: string
+          sender_id_request_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          provider_campaign_id?: string | null
+          recipient?: string
+          sender_id_request_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_alerts_sender_id_request_id_fkey"
+            columns: ["sender_id_request_id"]
+            isOneToOne: false
+            referencedRelation: "sender_id_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_settings: {
         Row: {
           admin_id: string | null
@@ -379,6 +426,7 @@ export type Database = {
           church_id: string | null
           church_name: string
           created_at: string
+          email_verified: boolean
           id: string
           joined_date: string | null
           password: string | null
@@ -395,6 +443,7 @@ export type Database = {
           church_id?: string | null
           church_name: string
           created_at?: string
+          email_verified?: boolean
           id: string
           joined_date?: string | null
           password?: string | null
@@ -411,6 +460,7 @@ export type Database = {
           church_id?: string | null
           church_name?: string
           created_at?: string
+          email_verified?: boolean
           id?: string
           joined_date?: string | null
           password?: string | null
@@ -1012,6 +1062,110 @@ export type Database = {
         }
         Relationships: []
       }
+      sender_id_requests: {
+        Row: {
+          church_id: string | null
+          church_name: string | null
+          created_at: string
+          id: string
+          notification_sent_at: string | null
+          purpose: string
+          rejection_reason: string | null
+          review_required: boolean
+          reviewed_at: string | null
+          reviewed_by: string | null
+          sender_name: string
+          status: string
+          submission_error: string | null
+          submission_response: Json | null
+          submission_status: string
+          submitted_to_mnotify_at: string | null
+          updated_at: string
+          user_email: string
+          user_name: string | null
+        }
+        Insert: {
+          church_id?: string | null
+          church_name?: string | null
+          created_at?: string
+          id?: string
+          notification_sent_at?: string | null
+          purpose: string
+          rejection_reason?: string | null
+          review_required?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sender_name: string
+          status?: string
+          submission_error?: string | null
+          submission_response?: Json | null
+          submission_status?: string
+          submitted_to_mnotify_at?: string | null
+          updated_at?: string
+          user_email: string
+          user_name?: string | null
+        }
+        Update: {
+          church_id?: string | null
+          church_name?: string | null
+          created_at?: string
+          id?: string
+          notification_sent_at?: string | null
+          purpose?: string
+          rejection_reason?: string | null
+          review_required?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sender_name?: string
+          status?: string
+          submission_error?: string | null
+          submission_response?: Json | null
+          submission_status?: string
+          submitted_to_mnotify_at?: string | null
+          updated_at?: string
+          user_email?: string
+          user_name?: string | null
+        }
+        Relationships: []
+      }
+      sender_id_status_history: {
+        Row: {
+          changed_by: string
+          created_at: string
+          from_status: string | null
+          id: string
+          reason: string | null
+          sender_id_request_id: string
+          to_status: string
+        }
+        Insert: {
+          changed_by: string
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          reason?: string | null
+          sender_id_request_id: string
+          to_status: string
+        }
+        Update: {
+          changed_by?: string
+          created_at?: string
+          from_status?: string | null
+          id?: string
+          reason?: string | null
+          sender_id_request_id?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sender_id_status_history_sender_id_request_id_fkey"
+            columns: ["sender_id_request_id"]
+            isOneToOne: false
+            referencedRelation: "sender_id_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_types: {
         Row: {
           church_id: string | null
@@ -1055,6 +1209,115 @@ export type Database = {
             columns: ["church_id"]
             isOneToOne: false
             referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_campaigns: {
+        Row: {
+          actual_credits: number | null
+          church_name: string | null
+          created_at: string
+          estimated_cost: number
+          id: string
+          idempotency_key: string
+          last_polled_at: string | null
+          message: string
+          pages_per_message: number
+          provider_campaign_id: string | null
+          recipient_count: number
+          sender_id_request_id: string
+          sender_name: string
+          status: string
+          total_pages: number
+          unit_rate: number
+          user_email: string
+          user_name: string | null
+        }
+        Insert: {
+          actual_credits?: number | null
+          church_name?: string | null
+          created_at?: string
+          estimated_cost?: number
+          id?: string
+          idempotency_key: string
+          last_polled_at?: string | null
+          message: string
+          pages_per_message?: number
+          provider_campaign_id?: string | null
+          recipient_count?: number
+          sender_id_request_id: string
+          sender_name: string
+          status?: string
+          total_pages?: number
+          unit_rate: number
+          user_email: string
+          user_name?: string | null
+        }
+        Update: {
+          actual_credits?: number | null
+          church_name?: string | null
+          created_at?: string
+          estimated_cost?: number
+          id?: string
+          idempotency_key?: string
+          last_polled_at?: string | null
+          message?: string
+          pages_per_message?: number
+          provider_campaign_id?: string | null
+          recipient_count?: number
+          sender_id_request_id?: string
+          sender_name?: string
+          status?: string
+          total_pages?: number
+          unit_rate?: number
+          user_email?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_campaigns_sender_id_request_id_fkey"
+            columns: ["sender_id_request_id"]
+            isOneToOne: false
+            referencedRelation: "sender_id_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_recipients: {
+        Row: {
+          campaign_id: string
+          failure_reason: string | null
+          id: string
+          provider_message_id: string | null
+          recipient_phone: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          failure_reason?: string | null
+          id?: string
+          provider_message_id?: string | null
+          recipient_phone: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          failure_reason?: string | null
+          id?: string
+          provider_message_id?: string | null
+          recipient_phone?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "sms_campaigns"
             referencedColumns: ["id"]
           },
         ]
@@ -1128,6 +1391,8 @@ export type Database = {
           church_name: string | null
           created_at: string
           email: string
+          email_verification_sent_at: string | null
+          email_verification_token: string | null
           full_name: string
           id: string
           is_church_admin: boolean | null
@@ -1148,6 +1413,8 @@ export type Database = {
           church_name?: string | null
           created_at?: string
           email: string
+          email_verification_sent_at?: string | null
+          email_verification_token?: string | null
           full_name: string
           id?: string
           is_church_admin?: boolean | null
@@ -1168,6 +1435,8 @@ export type Database = {
           church_name?: string | null
           created_at?: string
           email?: string
+          email_verification_sent_at?: string | null
+          email_verification_token?: string | null
           full_name?: string
           id?: string
           is_church_admin?: boolean | null
