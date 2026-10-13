@@ -71,6 +71,22 @@ function normalizeGhanaNumber(value: unknown): string {
   return digits.startsWith('233') && digits.length === 12 ? `0${digits.slice(3)}` : digits;
 }
 
+function providerErrorText(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 240);
+  if (Array.isArray(value)) {
+    const messages = value.map(providerErrorText).filter((message): message is string => !!message);
+    return messages.length ? messages.join('; ').slice(0, 240) : null;
+  }
+  if (value && typeof value === 'object') {
+    const fields = value as Record<string, unknown>;
+    for (const key of ['message', 'error', 'description', 'details']) {
+      const message = providerErrorText(fields[key]);
+      if (message) return message;
+    }
+  }
+  return null;
+}
+
 export async function sendMnotifySms(
   recipients: string[],
   sender: string,
@@ -149,8 +165,12 @@ export async function sendMnotifySms(
       }
     } else {
       result.failed += batch.length;
-      const providerMessage = typeof payload?.message === 'string' ? payload.message.trim().slice(0, 240) : '';
-      result.error = providerMessage || 'mNotify did not accept the SMS request.';
+      const providerMessage = providerErrorText(payload?.message)
+        || providerErrorText(payload?.error)
+        || providerErrorText(payload?.errors)
+        || providerErrorText(payload?.summary);
+      result.error = providerMessage
+        || `mNotify rejected the SMS request (HTTP ${response.status}${payload?.code ? `, code ${String(payload.code).slice(0, 30)}` : ''}).`;
     }
   }
 

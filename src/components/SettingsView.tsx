@@ -33,7 +33,6 @@ interface SettingsViewProps {
   serviceTypes?: Array<{ id: string; name: string; active?: boolean }> | string[];
   onUpdateServiceTypes?: (types: any) => void;
   settingsTab: SettingsTab;
-  onSettingsTabChange: (tab: SettingsTab) => void;
   onAddAuditLog?: (log: AuditLogItem) => void;
   onUpdateUser?: (updated: Partial<AuthSessionUser>) => void;
 }
@@ -49,17 +48,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   serviceTypes = [],
   onUpdateServiceTypes,
   settingsTab,
-  onSettingsTabChange,
   onAddAuditLog,
   onUpdateUser
 }) => {
   const isSuperadmin = user.role === 'Superadmin';
-  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
-  useEffect(() => setActiveTab(settingsTab), [settingsTab]);
-  const selectTab = (tab: SettingsTab) => {
-    setActiveTab(tab);
-    onSettingsTabChange(tab);
-  };
+  const activeTab = settingsTab;
 
   // Audit Logs & Accountability State (capped to 10 and deduplicated)
   const [currentLogs, setCurrentLogs] = useState<AuditLogItem[]>(() => {
@@ -427,112 +420,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-        <button
-          onClick={() => selectTab('profile')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'profile'
-              ? 'bg-slate-900 text-blue-300 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">account_box</span>
-          <span>{isSuperadmin ? 'HQ & Group Profile' : 'Branch Profile'}</span>
-        </button>
-
-        <button
-          onClick={() => selectTab('accountability')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'accountability'
-              ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/40'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">fact_check</span>
-          <span>Admin Accountability & Action Logs</span>
-          <span className={`text-xs font-extrabold px-1.5 py-0.5 rounded-md ${
-            activeTab === 'accountability' ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-800'
-          }`}>
-            {currentLogs.length}
-          </span>
-        </button>
-
-        {isSuperadmin && (
-          <button
-            onClick={() => selectTab('services')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'services'
-                ? 'bg-slate-900 text-blue-300 shadow-sm'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-              }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">tune</span>
-            <span>Global Service Programs</span>
-          </button>
-        )}
-
-        <button
-          onClick={() => selectTab('scanner')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'scanner'
-              ? 'bg-slate-900 text-blue-300 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
-          <span>Scanner & Pass Defaults</span>
-        </button>
-
-        <button
-          onClick={() => selectTab('security')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'security'
-              ? 'bg-slate-900 text-blue-300 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">security</span>
-          <span>Security & Auth Gate</span>
-        </button>
-
-        {!isSuperadmin && (
-          <button
-            onClick={() => selectTab('ushers')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'ushers'
-                ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/40'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-              }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">badge</span>
-            <span>Appoint Ushers & Scanners</span>
-          </button>
-        )}
-
-        <button
-          onClick={() => selectTab('backup')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'backup'
-              ? 'bg-slate-900 text-blue-300 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">backup</span>
-          <span>Data & Backups</span>
-        </button>
-
-        {canSendAdminSms && <button
-          onClick={() => selectTab('messaging')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'messaging'
-              ? 'bg-slate-900 text-blue-300 shadow-sm'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">sms</span>
-          <span>SMS and Messaging</span>
-        </button>}
-      </div>
-
       {/* Tab Content Cards */}
       <div className="space-y-6">
+        {activeTab === 'messaging' && canSendAdminSms && <AdminSmsUpdates user={user} />}
         {activeTab === 'messaging' && (['Superadmin', 'Church Admin', 'Church Pastor'] as string[]).includes(user.role) && (
           <SenderSmsWorkspace />
         )}
-        {activeTab === 'messaging' && canSendAdminSms && <AdminSmsUpdates user={user} />}
         {activeTab === 'profile' && (
           <ReportCodesPanel
             isSuperadmin={isSuperadmin}
@@ -940,7 +833,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* TAB: Admin Accountability & Action Logs (Capped at 10 items, no duplicates) */}
+        {/* Activity log records are deduplicated and limited to the latest 10. */}
         {activeTab === 'accountability' && (() => {
           // Extract unique list of admin actors
           const uniqueActors = Array.from(
@@ -1047,10 +940,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div>
                   <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full mb-2 border border-blue-200/60">
                     <span className="material-symbols-outlined text-[14px]">shield</span>
-                    <span>ADMINISTRATIVE GOVERNANCE & ACCOUNTABILITY (CAPPED AT 10 LOGS)</span>
+                    <span>ADMINISTRATIVE ACTIVITY (LATEST 10 LOGS)</span>
                   </div>
                   <h3 className="font-display font-extrabold text-xl md:text-2xl text-slate-900">
-                    Admin Actions & Accountability Logs
+                    Activity Logs
                   </h3>
                   <p className="text-xs md:text-sm text-slate-500 mt-1 font-body">
                     Complete deduplicated log of administrative operations, security resets, branch profile changes, check-in operations, and member updates.
@@ -1398,6 +1291,8 @@ function SenderSmsWorkspace() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [deliveryFilter, setDeliveryFilter] = useState('All');
+  const [campaignPage, setCampaignPage] = useState(1);
+  const [deliveryPages, setDeliveryPages] = useState<Record<string, number>>({});
   const pendingSend = useRef<{ fingerprint: string; key: string } | null>(null);
   const [audience, setAudience] = useState<'custom' | 'leaders' | 'members' | 'all'>('custom');
   const [contacts, setContacts] = useState<Array<{ id: string; name: string; phone: string; kind: 'member' | 'leader'; code: string | null }>>([]);
@@ -1734,12 +1629,24 @@ function SenderSmsWorkspace() {
             <h3 className="font-semibold">SMS campaign and delivery history</h3>
             <label className="flex items-center gap-2 text-xs">
               <span>Recipient status</span>
-              <select value={deliveryFilter} onChange={(event) => setDeliveryFilter(event.target.value)} className="rounded-lg border border-input bg-background px-2 py-1">
+              <select
+                value={deliveryFilter}
+                onChange={(event) => {
+                  setDeliveryFilter(event.target.value);
+                  setDeliveryPages({});
+                }}
+                className="rounded-lg border border-input bg-background px-2 py-1"
+              >
                 <option>All</option><option value="delivered">Delivered</option><option value="failed">Failed</option><option value="pending">Pending</option>
               </select>
             </label>
           </div>
-          {dashboard.campaigns.map((campaign: any) => (
+          {dashboard.campaigns.slice((campaignPage - 1) * 10, campaignPage * 10).map((campaign: any) => {
+            const filteredRecipients = (campaign.recipients || []).filter((recipient: any) => deliveryFilter === 'All' || recipient.status === deliveryFilter);
+            const recipientPages = Math.max(1, Math.ceil(filteredRecipients.length / 10));
+            const recipientPage = Math.min(deliveryPages[campaign.id] || 1, recipientPages);
+            const visibleRecipients = filteredRecipients.slice((recipientPage - 1) * 10, recipientPage * 10);
+            return (
             <details key={campaign.id} className="rounded-xl border border-border p-3">
               <summary className="cursor-pointer flex flex-wrap justify-between gap-2 text-sm">
                 <span>{campaign.sender_name} · {new Date(campaign.created_at).toLocaleString()}</span>
@@ -1753,15 +1660,34 @@ function SenderSmsWorkspace() {
               <div className="mt-3 overflow-auto">
                 <table className="w-full text-left text-xs">
                   <thead><tr><th className="p-2">Recipient</th><th className="p-2">Status</th><th className="p-2">Failure reason</th></tr></thead>
-                  <tbody>{(campaign.recipients || []).filter((recipient: any) => deliveryFilter === 'All' || recipient.status === deliveryFilter).map((recipient: any) => (
+                  <tbody>{visibleRecipients.map((recipient: any) => (
                     <tr key={recipient.recipient_phone} className="border-t border-border">
                       <td className="p-2">{recipient.recipient_phone}</td><td className="p-2">{recipient.status}</td><td className="p-2">{recipient.failure_reason || '—'}</td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
+              {recipientPages > 1 && (
+                <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span>Delivery records {(recipientPage - 1) * 10 + 1}–{Math.min(recipientPage * 10, filteredRecipients.length)} of {filteredRecipients.length}</span>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" disabled={recipientPage <= 1} onClick={() => setDeliveryPages((pages) => ({ ...pages, [campaign.id]: recipientPage - 1 }))}>Previous</Button>
+                    <Button variant="secondary" disabled={recipientPage >= recipientPages} onClick={() => setDeliveryPages((pages) => ({ ...pages, [campaign.id]: recipientPage + 1 }))}>Next</Button>
+                  </div>
+                </div>
+              )}
             </details>
-          ))}
+            );
+          })}
+          {dashboard.campaigns.length > 10 && (
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span>Campaigns {(campaignPage - 1) * 10 + 1}–{Math.min(campaignPage * 10, dashboard.campaigns.length)} of {dashboard.campaigns.length}</span>
+              <div className="flex gap-2">
+                <Button variant="secondary" disabled={campaignPage <= 1} onClick={() => setCampaignPage((page) => Math.max(1, page - 1))}>Previous</Button>
+                <Button variant="secondary" disabled={campaignPage >= Math.ceil(dashboard.campaigns.length / 10)} onClick={() => setCampaignPage((page) => page + 1)}>Next</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {notice && <p role="status" className="rounded-xl bg-muted/60 p-3 text-sm">{notice}</p>}

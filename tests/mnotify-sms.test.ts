@@ -28,10 +28,13 @@ test('Unicode messages use 70/67 character page boundaries', () => {
 
 test('attendance code texts identify the code and explain how to keep it safe', () => {
   const memberMessage = buildAttendanceCodeSms('Ama Mensah', 'CE-2901', 'member');
-  assert.match(memberMessage, /^Hello Ama Mensah, kindly find below your member code: CE-2901\./);
-  assert.match(memberMessage, /Keep this code safe and only mention it to your Church admin or the Usher in charge of attendance/);
-  assert.match(memberMessage, /Thank you and God bless you\.$/);
+  assert.match(memberMessage, /^Hello Ama Mensah, your member code: CE-2901\./);
+  assert.match(memberMessage, /Keep safe; share only with your church admin or usher/);
+  assert.match(memberMessage, /God bless you\.$/);
   assert.match(buildAttendanceCodeSms('Kwame', 'LDR-001', 'leader'), /your leader code: LDR-001/);
+  const longCodeMessage = buildAttendanceCodeSms('A'.repeat(80), 'X'.repeat(50), 'member');
+  assert.ok(longCodeMessage.length <= 160);
+  assert.ok(longCodeMessage.includes('X'.repeat(50)));
 });
 
 test('SMS dispatch requires the Developer-configured estimate rate and checks live balance', async () => {

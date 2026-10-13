@@ -3,8 +3,10 @@ export function buildAttendanceCodeSms(
   code: string,
   kind: 'member' | 'leader',
 ): string {
-  const safeName = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 80) || 'Beloved';
-  const safeCode = String(code || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 64);
-  const codeLabel = kind === 'leader' ? 'leader code' : 'member code';
-  return `Hello ${safeName}, kindly find below your ${codeLabel}: ${safeCode}. Keep this code safe and only mention it to your Church admin or the Usher in charge of attendance to record your attendance in church. Thank you and God bless you.`;
+  const safeCode = String(code || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 50);
+  const codeLabel = kind === 'leader' ? 'leader' : 'member';
+  const template = `Hello , your ${codeLabel} code: ${safeCode}. Keep safe; share only with your church admin or usher to check in. God bless you.`;
+  const nameBudget = Math.max(0, 160 - template.length);
+  const safeName = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, nameBudget);
+  return safeName ? template.replace('Hello ,', `Hello ${safeName},`) : template.replace('Hello ,', 'Hello,');
 }

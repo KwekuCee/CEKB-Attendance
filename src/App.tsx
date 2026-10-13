@@ -1112,7 +1112,6 @@ export default function App() {
                   serviceTypes={serviceTypes}
                   onUpdateServiceTypes={setServiceTypes}
                   settingsTab={settingsTab}
-                  onSettingsTabChange={setSettingsTab}
                   onAddAuditLog={(log) => setAuditLogs(prev => [log, ...prev])}
                   onUpdateUser={(updated) => setUser(prev => ({ ...prev, ...updated }))}
                 />

@@ -503,7 +503,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .sidebar-settings-submenu { padding-left: 10px; }
 .dashboard-sidebar .sidebar-settings-submenu .sidebar-menu-item { min-height: 38px; padding-top: 6px; padding-bottom: 6px; font-size: 11px; }
 .sidebar-menu-label { min-width: 0; line-height: 1.45; }
-.sidebar-utilities { padding-top: 18px; flex-shrink: 0; }
 .dashboard-sidebar .sidebar-scanner-action { width: 100%; background: hsl(var(--palette-midnight)); color: hsl(var(--navigation-foreground)); margin-bottom: 10px; border: 0; font-size: 12px; }
 .dashboard-sidebar .sidebar-scanner-action:hover { background: hsl(var(--navigation-hover)); }
 .sidebar-account { padding: 18px 8px 0; flex-shrink: 0; }
@@ -519,7 +518,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .sidebar-credit { display: block; color: hsl(var(--navigation-muted)); font-size: 9px; text-align: center; margin-top: 17px; }
 .sidebar-credit:hover { color: hsl(var(--navigation-foreground)); }
 @media (min-width: 768px) { .dashboard-sidebar .sidebar-close { display: none; } }
-@media (max-height: 800px) { .dashboard-shell .dashboard-sidebar { padding-top: 18px; } .sidebar-brand { padding-bottom: 16px; } .sidebar-context { margin-bottom: 14px; } .sidebar-utilities { padding-top: 10px; } .sidebar-account { padding-top: 10px; } .sidebar-credit { margin-top: 10px; } }
+@media (max-height: 800px) { .dashboard-shell .dashboard-sidebar { padding-top: 18px; } .sidebar-brand { padding-bottom: 16px; } .sidebar-context { margin-bottom: 14px; } .sidebar-account { padding-top: 10px; } .sidebar-credit { margin-top: 10px; } }
 
 /* Public flows: contextual navigation left, active attendance or account form right. */
 .portal-main--form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; max-width: none; padding: 30px 34px 76px; align-items: start; }

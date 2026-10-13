@@ -171,7 +171,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
   const maxWeek = Math.max(1, ...weekly.map(([, v]) => v.attendance));
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
+    <div className="mx-auto w-full max-w-7xl p-4 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h2 className="font-display font-extrabold text-xl md:text-2xl text-slate-900">Weekly Cell Reports</h2>

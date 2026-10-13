@@ -71,12 +71,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const settingsItems: { id: SettingsTab; label: string; icon: string }[] = [
     { id: 'profile', label: isSuperadmin ? 'HQ & Group Profile' : 'Branch Profile', icon: 'account_box' },
     ...(canManageMessaging ? [{ id: 'messaging' as const, label: 'SMS and Messaging', icon: 'sms' }] : []),
-    { id: 'accountability', label: 'Admin Accountability', icon: 'fact_check' },
     ...(!isSuperadmin ? [{ id: 'ushers' as const, label: 'Appoint Ushers & Scanners', icon: 'badge' }] : []),
     { id: 'scanner', label: 'Scanner & Pass Defaults', icon: 'qr_code_scanner' },
     { id: 'security', label: 'Security & Auth Gate', icon: 'security' },
     ...(isSuperadmin ? [{ id: 'services' as const, label: 'Global Service Programs', icon: 'tune' }] : []),
     { id: 'backup', label: 'Data & Backups', icon: 'backup' },
+    { id: 'accountability', label: 'Activity Logs', icon: 'history' },
   ];
   const settingsIsActive = currentView === 'settings' || currentView === 'database_schema';
   const navigateSettingsTab = (tab: SettingsTab) => {
@@ -100,6 +100,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="sidebar-navigation" aria-label="Main menu">
           <p className="sidebar-caption sidebar-section-label">Navigation</p>
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
+          {isFeatureOn(matrix, user?.role, 'export') && (
+            <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}>
+              <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span>
+              <span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span>
+            </Button>
+          )}
+          {isFeatureOn(matrix, user?.role, 'support') && (
+            <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}>
+              <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span>
+              <span className="sidebar-menu-label">Admin Support</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             className="sidebar-menu-item"
@@ -108,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             aria-controls="sidebar-settings-submenu"
             onClick={() => {
               if (currentView !== 'settings') {
-                onNavigate('settings');
+                navigate('settings');
                 setSettingsExpanded(true);
               } else {
                 setSettingsExpanded((expanded) => !expanded);
@@ -138,10 +150,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </nav>
-        <div className="sidebar-utilities">
-          {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
-          {isFeatureOn(matrix, user?.role, 'support') && <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>}
-        </div>
         <div className="sidebar-account">
           {onStartWalkthrough && (
             <Button
