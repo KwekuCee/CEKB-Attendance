@@ -691,16 +691,62 @@ export async function saveChurchToSupabase(church: ChurchBranch): Promise<boolea
 export async function deleteChurchFromSupabase(
   churchIdOrName: string,
   token?: string | null,
+  fallbackRole?: 'Developer' | 'Superadmin',
+  churchName?: string,
 ): Promise<{ success: boolean; error?: string }> {
   const target = (churchIdOrName || '').trim();
   if (!target) return { success: false, error: 'No church was selected.' };
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
   try {
-    const response = await rawPortal(
+    let response = await rawPortal(
       isUuid ? { action: 'deleteChurch', id: target } : { action: 'deleteChurch', name: target },
       token,
     );
+    let deletedName = String(response?.deletedChurch || churchName || (!isUuid ? target : ''));
+    const primaryError = typeof response?.error === 'string'
+      ? response.error
+      : response?.error?.message || response?.message || '';
+    const isUnsupportedAction = /unknown request|unknown action/i.test(String(primaryError));
+
+    if (!response?.success && isUnsupportedAction && fallbackRole === 'Developer') {
+      response = await rawPortal({
+        action: 'devAction',
+        op: 'deleteChurch',
+        ...(isUuid ? { id: target } : {}),
+        ...(churchName || !isUuid ? { name: churchName || target } : {}),
+      }, token);
+      deletedName = String(response?.deletedChurch || deletedName);
+    } else if (!response?.success && isUnsupportedAction && fallbackRole === 'Superadmin') {
+      const filters = isUuid
+        ? [{ op: 'eq', column: 'id', value: target }]
+        : [{ op: 'ilike', column: 'name', value: target }];
+      const legacyResult = await rawPortal({
+        action: 'query',
+        table: 'churches',
+        op: 'delete',
+        filters,
+      }, token);
+      const verification = legacyResult?.error
+        ? null
+        : await rawPortal({
+          action: 'query',
+          table: 'churches',
+          op: 'select',
+          columns: 'id',
+          filters,
+        }, token);
+      if (verification && Array.isArray(verification.data) && verification.data.length === 0) {
+        response = { success: true, deletedChurch: deletedName };
+      } else {
+        response = {
+          success: false,
+          error: legacyResult?.error?.message ||
+            'The previous server could not confirm deletion. Apply migration 20261013133000_fix_church_deletion_service_types.sql and deploy the latest portal-db function.',
+        };
+      }
+    }
+
     if (!response?.success) {
       const serverError = typeof response?.error === 'string'
         ? response.error
@@ -709,7 +755,7 @@ export async function deleteChurchFromSupabase(
       const lowerError = normalizedError.toLowerCase();
       let message = normalizedError || 'The server rejected the delete request.';
       if (lowerError.includes('unknown request') || lowerError.includes('unknown action')) {
-        message = 'The portal-db Edge Function is outdated. Deploy the latest Supabase function, then retry.';
+        message = 'The deployed portal-db function does not support church deletion. Deploy the latest Supabase function, then retry.';
       } else if (lowerError.includes('service_types') && lowerError.includes('church_name')) {
         message = 'The database still has the old church-deletion trigger. Apply migration 20261013133000_fix_church_deletion_service_types.sql in the Supabase SQL Editor, then retry.';
       }
@@ -719,10 +765,10 @@ export async function deleteChurchFromSupabase(
 
     try {
       const stored: ChurchBranch[] = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
-      const deletedName = String(response.deletedChurch || target).toLowerCase();
+      const cacheName = String(response.deletedChurch || deletedName || target).toLowerCase();
       localStorage.setItem(
         'cekbu_churches',
-        JSON.stringify(stored.filter(c => c && c.id !== target && (c.name || '').toLowerCase() !== deletedName)),
+        JSON.stringify(stored.filter(c => c && c.id !== target && (c.name || '').toLowerCase() !== cacheName)),
       );
     } catch (cacheError) {
       console.warn('Could not clear the local church cache after deletion:', cacheError);

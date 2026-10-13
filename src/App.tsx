@@ -665,7 +665,12 @@ export default function App() {
 
   const handleDeleteChurch = async (churchId: string): Promise<boolean> => {
     const target = churches.find(c => c.id === churchId);
-    const result = await deleteChurchFromSupabase(churchId);
+    const result = await deleteChurchFromSupabase(
+      churchId,
+      undefined,
+      user?.role === 'Superadmin' ? 'Superadmin' : undefined,
+      target?.name,
+    );
     if (!result.success) {
       toast.showError('Church deletion failed', result.error || 'The church and its records were not deleted.');
       return false;

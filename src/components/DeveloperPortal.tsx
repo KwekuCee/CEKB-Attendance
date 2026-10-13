@@ -898,7 +898,7 @@ function Churches({ a, act, token, load, setNotice }: any) {
     const targetName = deleteTarget.name;
     const targetId = deleteTarget.id;
     try {
-      const result = await deleteChurchFromSupabase(targetId || targetName, token);
+      const result = await deleteChurchFromSupabase(targetId || targetName, token, 'Developer', targetName);
       if (!result.success) {
         setNotice(`Could not delete "${targetName}": ${result.error || 'The server rejected the request.'}`);
         setTimeout(() => setNotice(''), 5000);
