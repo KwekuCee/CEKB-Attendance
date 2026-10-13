@@ -1187,6 +1187,39 @@ async function loadChurchSmsDirectory(churchName: string) {
   return Object.assign(list, { staffPhones });
 }
 
+async function handleMergeLeaders(body: any, session: Session | null) {
+  if (!session || !['Superadmin', 'Church Admin', 'Church Pastor'].includes(session.role)) {
+    return json({ error: { message: 'Only church admins, pastors and the group account can merge leaders.' } }, 403);
+  }
+  const primaryId = String(body?.primaryId || '');
+  const duplicateId = String(body?.duplicateId || '');
+  if (!primaryId || !duplicateId || primaryId === duplicateId) return json({ error: { message: 'Choose two different leaders.' } }, 400);
+  const { data: rows } = await admin.from('leaders').select('id, church_name, full_name').in('id', [primaryId, duplicateId]);
+  const primary = (rows || []).find((r: any) => r.id === primaryId);
+  const duplicate = (rows || []).find((r: any) => r.id === duplicateId);
+  if (!primary || !duplicate) return json({ error: { message: 'Leader not found.' } }, 404);
+  if (session.role !== 'Superadmin') {
+    const own = String(session.church_name || '').toLowerCase();
+    if (String(primary.church_name || '').toLowerCase() !== own || String(duplicate.church_name || '').toLowerCase() !== own) {
+      return json({ error: { message: 'You can only merge leaders in your own church.' } }, 403);
+    }
+  }
+  const p = body?.primary || {};
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  for (const [k, v] of Object.entries({ email: p.email, contact: p.contact, location: p.location, cell_or_pcf_name: p.cellOrPcfName })) {
+    if (typeof v === 'string' && v.trim()) patch[k] = v.trim().slice(0, 200);
+  }
+  await admin.from('leaders').update(patch).eq('id', primaryId);
+  await admin.from('members').update({ invited_by_leader_id: primaryId, invited_by_name: primary.full_name }).eq('invited_by_leader_id', duplicateId);
+  await admin.from('leaders').update({ parent_leader_id: primaryId }).eq('parent_leader_id', duplicateId);
+  await admin.from('promotion_queue').delete().eq('leader_id', duplicateId);
+  await admin.from('cell_reports').update({ leader_id: primaryId, leader_name: primary.full_name }).eq('leader_id', duplicateId);
+  const { error } = await admin.from('leaders').delete().eq('id', duplicateId);
+  if (error) return json({ error: { message: 'Could not remove the duplicate leader.' } }, 500);
+  await admin.from('audit_logs').insert({ actor: session.user_name || session.role, action: `Merged leader '${duplicate.full_name}' into '${primary.full_name}'`, category: 'Leader', church_name: primary.church_name, icon: 'merge_type' });
+  return json({ success: true });
+}
+
 async function handleMnotifyUserAction(body: any, session: Session | null, req: Request) {
   if (!session || !SMS_MANAGER_ROLES.has(session.role) || !session.user_email) {
     return json({ error: { message: 'Church Admin or Church Pastor sign-in is required.' } }, 403);
@@ -2489,6 +2522,8 @@ Deno.serve(async (req) => {
         return await handleDevAction(body, session, req);
       case 'mnotifyUser':
         return await handleMnotifyUserAction(body, session, req);
+      case 'mergeLeaders':
+        return await handleMergeLeaders(body, session);
       case 'mnotifyScheduledPoll': {
         const expected = Deno.env.get('MNOTIFY_POLL_SECRET')?.trim();
         if (!expected || req.headers.get('x-mnotify-poll-secret') !== expected) {

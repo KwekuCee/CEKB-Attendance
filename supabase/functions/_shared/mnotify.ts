@@ -109,7 +109,7 @@ export async function sendMnotifySms(
       response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ recipient: batch, sender, message }),
+        body: JSON.stringify({ recipient: batch, sender, message, is_schedule: false, schedule_date: '' }),
         signal: AbortSignal.timeout(15000),
       });
     } catch {
