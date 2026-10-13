@@ -1168,7 +1168,7 @@ async function pollMnotifyPending() {
   const expiryCutoff = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
   const [{ data: senders }, { data: campaigns }] = await Promise.all([
     admin.from('sender_id_requests').select('*').eq('submission_status', 'submitted')
-      .in('status', ['pending', 'submitted']).lt('updated_at', senderCutoff).limit(100),
+      .in('status', ['pending', 'submitted']).is('deleted_at', null).lt('updated_at', senderCutoff).limit(100),
     admin.from('sms_campaigns').select('*').in('status', ['sent', 'partial'])
       .not('provider_campaign_id', 'is', null).gte('created_at', expiryCutoff)
       .or(`last_polled_at.is.null,last_polled_at.lt.${reportCutoff}`).limit(100),
@@ -1336,7 +1336,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
   if (op === 'dashboard') {
     const [{ data: senderIds, error: senderError }, { data: campaigns, error: campaignError }, cfg] = await Promise.all([
       admin.from('sender_id_requests').select('id, sender_name, purpose, status, submission_status, submission_error, rejection_reason, review_required, created_at, submitted_to_mnotify_at')
-        .ilike('user_email', email).order('created_at', { ascending: false }).limit(50),
+        .ilike('user_email', email).is('deleted_at', null).order('created_at', { ascending: false }).limit(50),
       admin.from('sms_campaigns').select('id, sender_name, message, recipient_count, pages_per_message, total_pages, unit_rate, estimated_cost, actual_credits, status, created_at, provider_campaign_id')
         .ilike('user_email', email).order('created_at', { ascending: false }).limit(30),
       getMnotifyManagementConfig(),
@@ -1361,7 +1361,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     let sender: any;
     let previousStatus: string | null = null;
     if (existingId) {
-      const { data } = await admin.from('sender_id_requests').select('*').eq('id', existingId).ilike('user_email', email).maybeSingle();
+      const { data } = await admin.from('sender_id_requests').select('*').eq('id', existingId).ilike('user_email', email).is('deleted_at', null).maybeSingle();
       if (!data || !['failed', 'rejected'].includes(data.status)) return json({ error: { message: 'This request cannot be resubmitted.' } }, 404);
       previousStatus = data.status;
       const { data: updated, error } = await admin.from('sender_id_requests').update({
@@ -1433,7 +1433,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
   }
 
   if (op === 'refreshSenderId') {
-    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).ilike('user_email', email).maybeSingle();
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).ilike('user_email', email).is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
     const result = await refreshSenderStatus(sender);
     return json(result.success ? { success: true, status: result.status, pending: result.pending } : { success: false, error: { message: result.error } }, result.success ? 200 : 502);
@@ -1452,7 +1452,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     if (kind !== 'member' && kind !== 'leader') return json({ error: { message: 'Choose members or leaders.' } }, 400);
     if (!session.church_name) return json({ error: { message: 'Your account is not linked to a church.' } }, 400);
     const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name')
-      .eq('id', String(body.senderIdRequestId || '')).ilike('user_email', email).eq('status', 'verified').maybeSingle();
+      .eq('id', String(body.senderIdRequestId || '')).ilike('user_email', email).eq('status', 'verified').is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
     const ids = Array.isArray(body.ids) ? new Set(body.ids.map(String)) : null;
     const directory = await loadChurchSmsDirectory(session.church_name);
@@ -1524,7 +1524,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     if (recipients.length > 3000) return json({ error: { message: 'A campaign is limited to 3,000 unique recipients.' } }, 400);
     const senderIdRequestId = String(body.senderIdRequestId || '');
     const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name, status')
-      .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').maybeSingle();
+      .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
     const cfg = await getMnotifyManagementConfig();
     if (cfg.unitRate === null || cfg.unitRate <= 0) {
@@ -2243,7 +2243,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
   if (op === 'senderIdOverview') {
     const [{ data: senders }, { data: alerts }, { data: campaigns }, cfg] = await Promise.all([
       admin.from('sender_id_requests').select('id, sender_name, purpose, status, submission_status, submission_response, submission_error, rejection_reason, review_required, created_at, submitted_to_mnotify_at, notification_sent_at')
-        .order('created_at', { ascending: false }).limit(300),
+        .is('deleted_at', null).order('created_at', { ascending: false }).limit(300),
       admin.from('admin_alerts').select('id, sender_id_request_id, channel, recipient, status, attempts, provider_campaign_id, error_message, sent_at, created_at')
         .order('created_at', { ascending: false }).limit(100),
       admin.from('sms_campaigns').select('id, sender_name, recipient_count, pages_per_message, total_pages, unit_rate, estimated_cost, actual_credits, provider_campaign_id, status, last_polled_at, created_at')
@@ -2278,12 +2278,45 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     });
   }
 
+  if (op === 'deleteSenderId') {
+    const id = String(body.id || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return json({ success: false, error: { message: 'Select a valid Sender ID request.' } }, 400);
+    }
+    const { data: sender, error: lookupError } = await admin.from('sender_id_requests')
+      .select('id, sender_name')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (lookupError) {
+      console.error('Sender ID removal lookup failed:', lookupError.message);
+      return json({ success: false, error: { message: 'Could not load this Sender ID request.' } }, 500);
+    }
+    if (!sender) return json({ success: false, error: { message: 'Sender ID request was already removed or could not be found.' } }, 404);
+
+    const { data: removed, error: removeError } = await admin.from('sender_id_requests')
+      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null)
+      .select('id')
+      .maybeSingle();
+    if (removeError) {
+      console.error(`Sender ID removal failed for ${sender.sender_name}:`, removeError.message);
+      return json({ success: false, error: { message: 'Could not remove this Sender ID request. Confirm the Sender ID cleanup migration is applied.' } }, 500);
+    }
+    if (!removed) return json({ success: false, error: { message: 'Sender ID request was already removed.' } }, 409);
+
+    const { error: auditError } = await log(`Removed Sender ID request "${sender.sender_name}" from the portal. The mNotify registration was not changed.`, 'Messaging');
+    if (auditError) console.error('Could not write Sender ID removal audit log:', auditError.message);
+    return json({ success: true, deletedSenderId: sender.sender_name, providerDeleted: false });
+  }
+
   if (op === 'reviewSenderId') {
     const id = String(body.id || '');
     const status = body.status === 'verified' || body.status === 'rejected' ? body.status : null;
     const reason = String(body.reason || '').trim().slice(0, 500);
     if (!status) return json({ error: { message: 'Choose verified or rejected.' } }, 400);
-    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', id).maybeSingle();
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
     const result = await setSenderStatus(sender, status, session.user_email || 'Developer', reason);
     if (!result.success) return json({ error: { message: result.error } }, 500);
@@ -2292,7 +2325,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
   }
 
   if (op === 'retrySenderId') {
-    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).maybeSingle();
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).is('deleted_at', null).maybeSingle();
     if (!sender || !['failed', 'pending'].includes(sender.submission_status)) {
       return json({ error: { message: 'Only failed sender-ID submissions can be retried.' } }, 400);
     }
@@ -2315,7 +2348,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
 
   if (op === 'retrySenderAlert') {
     const { data: sender } = await admin.from('sender_id_requests').select('id, sender_name, purpose, user_name')
-      .eq('id', String(body.id || '')).maybeSingle();
+      .eq('id', String(body.id || '')).is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
     const result = await sendSenderRequestAlert(sender);
     return json({ success: result.status === 'sent', status: result.status, error: result.error });
@@ -2329,7 +2362,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
   }
 
   if (op === 'refreshSenderId') {
-    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).maybeSingle();
+    const { data: sender } = await admin.from('sender_id_requests').select('*').eq('id', String(body.id || '')).is('deleted_at', null).maybeSingle();
     if (!sender) return json({ error: { message: 'Sender ID request not found.' } }, 404);
     const result = await refreshSenderStatus(sender);
     return json(result.success ? result : { success: false, error: { message: result.error } }, result.success ? 200 : 502);

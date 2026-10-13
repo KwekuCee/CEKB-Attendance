@@ -77,3 +77,23 @@ test('portal-db routes Sender ID actions and registration from the admin UI', as
   assert.match(edgeFunction, /if \(op === 'submitSenderId'\)/);
   assert.match(settingsView, /action: 'mnotifyUser',\s*op: 'submitSenderId'/);
 });
+
+test('Developer can soft-delete a Sender ID request without implying provider deletion', async () => {
+  const [edgeFunction, developerPortal, schema, migration] = await Promise.all([
+    readFile(new URL('../supabase/functions/portal-db/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/DeveloperPortal.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/data/supabase_schema.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20261013160000_soft_delete_sender_id_requests.sql', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(edgeFunction, /if \(op === 'deleteSenderId'\)/);
+  assert.match(edgeFunction, /session\?\.role !== 'Developer'/);
+  assert.match(edgeFunction, /deleted_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(edgeFunction, /providerDeleted: false/);
+  assert.match(edgeFunction, /\.is\('deleted_at', null\)/);
+  assert.match(developerPortal, /op: 'deleteSenderId'/);
+  assert.match(developerPortal, /registration in mNotify will remain active/);
+  assert.match(schema, /deleted_at TIMESTAMPTZ/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ/);
+  assert.match(migration, /deleted_at IS NULL/);
+});

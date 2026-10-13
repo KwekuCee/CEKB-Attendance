@@ -2234,6 +2234,7 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
   const [testBusy, setTestBusy] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);
   const [sendError, setSendError] = useState('');
+  const [deletingSenderId, setDeletingSenderId] = useState<string | null>(null);
   const [managementConfig, setManagementConfig] = useState<any>({
     adminPhone: '',
     alertSenderId: '',
@@ -2513,6 +2514,9 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
         <div className="space-y-5">
           <div>
             <h3 className="font-semibold mb-2">Sender IDs</h3>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Delete removes a request from this portal and hides it from users. It does not cancel the Sender ID registration in mNotify.
+            </p>
             <Table
               head={['Sender ID', 'Purpose', 'Status', 'Submitted', 'Actions']}
               empty="No Sender ID requests have been submitted."
@@ -2530,6 +2534,22 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
                     if (reason.trim()) void act({ op: 'reviewSenderId', id: item.id, status: 'rejected', reason }, 'Sender ID rejected');
                   }}>Reject</Button>}
                   {(mnotifyData?.alerts || []).some((alert: any) => alert.sender_id_request_id === item.id && alert.status === 'failed') && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'retrySenderAlert', id: item.id }, 'Admin alert retried')}>Retry alert</Button>}
+                  <Button
+                    variant="secondary"
+                    className="px-2 py-1 text-xs text-destructive"
+                    disabled={deletingSenderId !== null}
+                    onClick={() => {
+                      if (window.confirm(`Remove ${item.sender_name} from this portal? Its registration in mNotify will remain active.`)) {
+                        setDeletingSenderId(item.id);
+                        void act(
+                          { op: 'deleteSenderId', id: item.id },
+                          `Sender ID ${item.sender_name} removed from the portal. Its mNotify registration remains active.`,
+                        ).finally(() => setDeletingSenderId(null));
+                      }
+                    }}
+                  >
+                    {deletingSenderId === item.id ? 'Deleting…' : 'Delete'}
+                  </Button>
                 </div>,
               ])}
             />

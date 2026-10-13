@@ -86,10 +86,13 @@ CREATE TABLE IF NOT EXISTS public.sender_id_requests (
     reviewed_at TIMESTAMPTZ,
     rejection_reason TEXT,
     notification_sent_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS sender_id_requests_unique_active_name ON public.sender_id_requests (LOWER(sender_name)) WHERE status <> 'rejected';
+ALTER TABLE public.sender_id_requests ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+DROP INDEX IF EXISTS public.sender_id_requests_unique_active_name;
+CREATE UNIQUE INDEX sender_id_requests_unique_active_name ON public.sender_id_requests (LOWER(sender_name)) WHERE status <> 'rejected' AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS sender_id_requests_owner_created ON public.sender_id_requests (LOWER(user_email), created_at DESC);
 CREATE INDEX IF NOT EXISTS sender_id_requests_status_created ON public.sender_id_requests (status, created_at DESC);
 
