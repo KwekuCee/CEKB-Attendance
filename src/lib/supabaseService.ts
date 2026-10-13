@@ -405,31 +405,14 @@ export async function mergeLeadersInSupabase(
   transferredAttendance: AttendanceRecord[],
   transferredChildLeaders: Leader[]
 ): Promise<boolean> {
-  const client = getSupabase();
-  if (!client) return false;
-
   try {
-    // 1. Save updated primary leader with consolidated details
-    await saveLeaderToSupabase(mergedLeader);
-
-    // 2. Re-route members to the primary leader
-    for (const m of transferredMembers) {
-      await saveMemberToSupabase(m).catch((e) => console.warn('Error updating transferred member in Supabase:', e));
-    }
-
-    // 3. Re-route child leaders reporting to duplicate
-    for (const cl of transferredChildLeaders) {
-      await saveLeaderToSupabase(cl).catch((e) => console.warn('Error updating child leader in Supabase:', e));
-    }
-
-    // 4. Re-route attendance records
-    for (const a of transferredAttendance) {
-      await saveAttendanceToSupabase(a).catch((e) => console.warn('Error updating attendance record in Supabase:', e));
-    }
-
-    // 5. Delete the duplicate leader record
-    await deleteLeaderFromSupabase(duplicateLeaderId);
-
+    const { rawPortal } = await import('./rawPortal');
+    const result: any = await rawPortal({
+      action: 'mergeLeaders', primaryId: mergedLeader.id, duplicateId: duplicateLeaderId,
+      primary: { email: mergedLeader.email, contact: (mergedLeader as any).contact, location: (mergedLeader as any).location, cellOrPcfName: (mergedLeader as any).cellOrPcfName },
+    });
+    if (!result?.success) throw new Error(result?.error?.message || 'Merge failed');
+    void transferredMembers; void transferredAttendance; void transferredChildLeaders;
     return true;
   } catch (err) {
     console.error('Error in mergeLeadersInSupabase:', err);
