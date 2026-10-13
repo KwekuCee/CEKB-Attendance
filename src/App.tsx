@@ -82,6 +82,7 @@ const LeaderHome = lazy(() => import('./components/LeaderHome').then(m => ({ def
 const UsherScansCard = lazy(() => import('./components/UsherScansCard').then(m => ({ default: m.UsherScansCard })));
 const ViewLoader = () => <div className="view-loader" role="status" aria-label="Loading"><span /></div>;
 import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
+import { getMemberAttendanceCount } from './utils/memberStatus';
 
 export default function App() {
   const toast = useToast();
@@ -89,14 +90,13 @@ export default function App() {
     const saved = getStoredSession();
     if (saved) return saved;
     return {
-      id: 'usr-1',
-      name: 'Group Pastor',
-      role: 'Superadmin',
-      church: 'GCYC Group HQ',
-      zone: 'Zone 1 (Korle Bu)',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-      email: 'group.pastor@cekorlebu.org',
-      phone: '+233 24 123 4567'
+      id: '',
+      name: '',
+      role: 'Church Admin',
+      church: '',
+      zone: '',
+      avatar: '',
+      email: '',
     };
   });
 
@@ -123,41 +123,7 @@ export default function App() {
       ]);
     }
   };
-  const [churches, setChurches] = useState<ChurchBranch[]>(() => [
-    {
-      id: 'ac36a93a-3f0d-4609-a023-2a4226cc6e40',
-      name: 'MAKARIOS CHURCH',
-      pastor: 'Pastor Michael Essilfie',
-      membersCount: 51,
-      status: 'Growing',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-    {
-      id: '73f1bcb6-f57c-4116-bb0b-71fb7540cb1a',
-      name: 'CEKBU 2',
-      pastor: 'Pst. Daasebre Ahensan',
-      membersCount: 2,
-      status: 'Growing',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-    {
-      id: 'e66409b8-1027-4bb8-b318-a7f0d32b5510',
-      name: 'CE KORLE BU 5',
-      pastor: 'DAASEBRE AHENSAN',
-      membersCount: 0,
-      status: 'Growing',
-      zone: 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0,
-    },
-  ]);
+  const [churches, setChurches] = useState<ChurchBranch[]>([]);
   const [churchAdmins, setChurchAdmins] = useState<ChurchAdminAccount[]>([]);
   const [leaders, setLeaders] = useState<Leader[]>([]);
   const [promotionQueue, setPromotionQueue] = useState<PromotionQueueItem[]>([]);
@@ -223,7 +189,9 @@ export default function App() {
           fetchChurchesFromSupabase(),
           fetchChurchAdminsFromSupabase(),
           fetchAuditLogsFromSupabase(),
-          fetchSuperadminProfileFromSupabase()
+          isLoggedIn && user.role === 'Superadmin'
+            ? fetchSuperadminProfileFromSupabase(user.email)
+            : Promise.resolve(null)
         ]);
 
         if (dbMembers && dbMembers.length > 0) setMembers(dbMembers);
@@ -241,9 +209,10 @@ export default function App() {
               ...prev,
               name: dbSuperadminProfile.name || prev.name,
               email: dbSuperadminProfile.email || prev.email,
-              church: dbSuperadminProfile.churchName || prev.church || 'GCYC Group HQ',
+              church: dbSuperadminProfile.churchName || prev.church,
               zone: dbSuperadminProfile.zone || prev.zone,
-              phone: dbSuperadminProfile.phone || (prev as any).phone || '+233 24 123 4567'
+              phone: dbSuperadminProfile.phone || prev.phone,
+              avatar: dbSuperadminProfile.photoUrl || prev.avatar
             };
           });
         }
@@ -450,11 +419,16 @@ export default function App() {
       if (existingIndex >= 0) {
         const updated = [...prev];
         const existing = updated[existingIndex];
+        const nextServiceCount = Math.max(
+          existing.serviceCount || 0,
+          getMemberAttendanceCount(existing, attendanceRecords),
+        ) + 1;
         updated[existingIndex] = {
           ...existing,
           church: record.church || existing.church,
-          serviceCount: (existing.serviceCount || 1) + 1,
-          status: (existing.serviceCount || 1) >= 2 ? 'General Member' : existing.status,
+          serviceCount: nextServiceCount,
+          status: nextServiceCount >= 2 ? 'General Member' : 'First Timer',
+          role: existing.role === 'First Timer' && nextServiceCount >= 2 ? 'Member' : existing.role,
         };
         if (!enrichedRecord.leaderName && existing.invitedBy) {
           enrichedRecord.leaderName = existing.invitedBy;
@@ -475,7 +449,7 @@ export default function App() {
           initials: (record.memberName || 'Member').split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'MB',
           serviceCount: 1,
           foundationClass: 1,
-          status: record.memberRole === 'First Timer' ? 'First Timer' : 'General Member',
+          status: 'First Timer',
           invitedBy: record.leaderName || 'Self Check-In'
         };
         saveMemberToSupabase(newMember);
@@ -736,35 +710,7 @@ export default function App() {
     toast.showInfo('Signed Out', 'You have been signed out successfully.');
   };
 
-  const handleLoginSuccess = (role?: AuthSessionUser['role'], churchName?: string, adminName?: string, email?: string) => {
-    const effectiveRole = (role || 'Church Admin') as AuthSessionUser['role'];
-    let superadminChurch = 'GCYC Group HQ';
-    let superadminPhone = '+233 24 123 4567';
-    try {
-      const cached = localStorage.getItem('cekbu_superadmin_profile');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.churchName) superadminChurch = parsed.churchName;
-        if (parsed.phone) superadminPhone = parsed.phone;
-      }
-    } catch (e) {}
-
-    const effectiveChurch = effectiveRole === 'Superadmin' ? (churchName || superadminChurch) : (churchName || '');
-    const effectiveName = adminName || (effectiveRole === 'Superadmin' ? 'Group Pastor' : `${effectiveChurch || 'Church'} Admin`);
-
-    const newUserSession: AuthSessionUser = {
-      id: `usr-${Date.now()}`,
-      name: effectiveName,
-      role: effectiveRole,
-      church: effectiveChurch,
-      zone: 'Zone 1 (Korle Bu)',
-      avatar: effectiveRole === 'Superadmin'
-        ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'
-        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-      email: email || '',
-      phone: effectiveRole === 'Superadmin' ? superadminPhone : undefined
-    };
-
+  const handleLoginSuccess = (newUserSession: AuthSessionUser) => {
     saveStoredSession(newUserSession);
     setUser(newUserSession);
     setIsLoggedIn(true);
@@ -774,8 +720,8 @@ export default function App() {
       setShowWalkthrough(true);
     }
     toast.showSuccess(
-      `Signed In as ${effectiveRole}`,
-      `Welcome, ${effectiveName}.${effectiveChurch ? ` Assigned to ${effectiveChurch}.` : ''}`
+      `Signed In as ${newUserSession.role}`,
+      `Welcome, ${newUserSession.name}.${newUserSession.church ? ` Assigned to ${newUserSession.church}.` : ''}`
     );
   };
 
@@ -897,6 +843,7 @@ export default function App() {
         attendanceRecords={attendanceRecords}
         churches={churches}
         churchAdmins={churchAdmins}
+        leaders={leaders}
         onNavigate={setCurrentView}
         settingsTab={settingsTab}
         onNavigateSettingsTab={(tab) => {
@@ -1030,6 +977,7 @@ export default function App() {
                 <MemberDatabase
                   members={members}
                   leaders={leaders}
+                  attendanceRecords={attendanceRecords}
                   user={user}
                   churches={churches}
                   onNavigate={setCurrentView}
@@ -1087,7 +1035,7 @@ export default function App() {
               )}
 
               {currentView === 'cell_reports' && (
-                <CellReportsView user={user} onNavigate={setCurrentView} />
+                <CellReportsView user={user} churches={churches} onNavigate={setCurrentView} />
               )}
 
               {currentView === 'analytics' && (
@@ -1095,6 +1043,8 @@ export default function App() {
                   user={user}
                   members={members}
                   churches={churches}
+                  attendanceRecords={attendanceRecords}
+                  leaders={leaders}
                   onNavigate={setCurrentView}
                   onAddAuditLog={(log) => setAuditLogs(prev => [log, ...prev])}
                 />

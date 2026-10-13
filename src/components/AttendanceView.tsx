@@ -4,7 +4,8 @@ import { AttendanceRecord, ChurchBranch, ViewType, Member, Leader } from '../typ
 import { useToast } from '../context/ToastContext';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
-import { csvQ } from '../utils/csvSafe';
+import { exportAggregateAnalyticsExcel } from '../utils/exportUtils';
+import { isFirstTimer } from '../utils/memberStatus';
 
 interface AttendanceViewProps {
   attendanceRecords: AttendanceRecord[];
@@ -161,49 +162,29 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
   // Calculate stats for selected date
   const totalAttended = filteredRecords.length;
-  const firstTimersCount = filteredRecords.filter(r => r.memberRole === 'First Timer').length;
+  const firstTimersCount = filteredRecords.filter(record => {
+    const member = members.find(item => item.id === record.memberId);
+    return member ? isFirstTimer(member, attendanceRecords) : record.memberRole === 'First Timer';
+  }).length;
   const regularMembersCount = filteredRecords.filter(r => r.memberRole === 'Member' || r.memberRole === 'Leader').length;
 
   // Export to Excel / CSV
   const handleExportExcel = () => {
-    const headers = [
-      'Member ID',
-      'Full Name',
-      'Role',
-      'Church Branch',
-      'Service Type',
-      'Service Date',
-      'Check-in Time',
-      'Leader / PCF Leader',
-      'Cell / PCF Name',
-      'Check-in Method',
-      'Status'
-    ];
-
-    const rows = filteredRecords.map(r => [
-      r.memberId,
-      `${csvQ(r.memberName)}`,
-      r.memberRole,
-      `${csvQ(r.church)}`,
-      `${csvQ(r.serviceType)}`,
-      r.date || selectedDate,
-      `${csvQ(r.timestamp)}`,
-      `${csvQ(r.leaderName || 'Direct / Self')}`,
-      `${csvQ(r.pcfName || 'General PCF')}`,
-      r.checkInMethod,
-      r.status
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.map(c => (typeof c === 'string' && c.startsWith('"') ? c : csvQ(c))).join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `CE_Attendance_Report_${selectedDate}_${isChurchAdmin ? targetChurch.replace(/\s+/g, '_') : 'All'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast.showSuccess('Report Exported', `Attendance report for ${selectedDate} exported to Excel CSV.`);
+    try {
+      exportAggregateAnalyticsExcel(
+        { churches, churchAdmins: [], members, leaders, attendanceRecords },
+        {
+          attendanceDate: selectedDate,
+          serviceType: filterService,
+          churchScope: isChurchAdmin ? effectiveChurch : filterChurch === 'All' ? undefined : filterChurch,
+          filenamePrefix: isChurchAdmin ? 'CEKB_Branch_Attendance_Report' : 'CEKB_Group_Attendance_Report',
+        },
+      );
+      toast.showSuccess('Report Exported', `Aggregate attendance report for ${selectedDate} was downloaded without member names.`);
+    } catch (error) {
+      console.error('Aggregate attendance workbook export failed:', error);
+      toast.showError('Export failed', 'The aggregate workbook could not be created.');
+    }
   };
 
   // Finalize Service Day & Refresh Database

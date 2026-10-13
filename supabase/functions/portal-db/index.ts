@@ -563,6 +563,35 @@ async function handleLogin(body: any) {
       }
       await admin.from('login_otps').delete().eq('id', row.id);
     }
+    const [{ data: profile }, { data: account }] = await Promise.all([
+      admin.from('user_profiles')
+        .select('id, avatar_url, phone, zone, church_name, full_name, role')
+        .ilike('email', String(u.email || '').trim())
+        .maybeSingle(),
+      admin.from('church_admin_accounts')
+        .select('id, admin_name, admin_phone, admin_email, church_name, zone, photo_url, role')
+        .ilike('admin_email', String(u.email || '').trim())
+        .maybeSingle(),
+    ]);
+    if (profile) {
+      u.id = profile.id || u.id;
+      u.name = profile.full_name || u.name;
+      u.role = profile.role || u.role;
+      u.phone = profile.phone || u.phone || '';
+      u.church = profile.church_name || u.church || '';
+      u.zone = profile.zone || u.zone || '';
+      u.avatar = profile.avatar_url || '';
+    } else if (account) {
+      u.id = account.id || u.id;
+      u.name = account.admin_name || u.name;
+      u.role = account.role || u.role;
+      u.phone = account.admin_phone || u.phone || '';
+      u.church = account.church_name || u.church || '';
+      u.zone = account.zone || u.zone || '';
+      u.avatar = account.photo_url || '';
+    } else {
+      u.avatar = '';
+    }
     const token = await createSession({
       email: u.email,
       name: u.name,
@@ -581,6 +610,83 @@ async function handleLogin(body: any) {
 
   const message = (rpcData as any)?.error || 'Incorrect email or password.';
   return json({ success: false, error: message });
+}
+
+async function handleUpdateGroupProfile(body: any, session: Session | null, req: Request) {
+  if (session?.role !== 'Superadmin' || !session.user_email) {
+    return json({ success: false, error: 'Only the signed-in Group Pastor can update this profile.' }, 403);
+  }
+  const profile = body?.profile || {};
+  const email = String(profile.email || '').trim().toLowerCase();
+  const name = String(profile.name || '').trim();
+  if (!email || !name) {
+    return json({ success: false, error: 'Name and email are required.' }, 400);
+  }
+
+  const { data: existing, error: lookupError } = await admin.from('user_profiles')
+    .select('id, role')
+    .ilike('email', session.user_email)
+    .maybeSingle();
+  if (lookupError || !existing || existing.role !== 'Superadmin') {
+    console.error('Group Pastor profile lookup failed:', lookupError?.message || 'profile not found');
+    return json({ success: false, error: 'Could not find the signed-in Group Pastor account.' }, 404);
+  }
+
+  const { error } = await admin.from('user_profiles').update({
+    full_name: name,
+    email,
+    phone: String(profile.phone || '').trim() || null,
+    church_name: String(profile.churchName || '').trim() || null,
+    zone: String(profile.zone || '').trim() || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', existing.id);
+  if (error) {
+    console.error('Group Pastor profile update failed:', error.message);
+    return json({ success: false, error: 'The profile could not be saved. Check that the email is not already in use.' }, 400);
+  }
+
+  const token = req.headers.get('x-portal-session');
+  if (token) {
+    await admin.from('portal_sessions').update({
+      user_email: email,
+      user_name: name,
+      church_name: String(profile.churchName || '').trim() || null,
+    }).eq('token_hash', await sha256(token));
+  }
+  await admin.from('audit_logs').insert({
+    actor: name,
+    church_name: String(profile.churchName || '').trim() || null,
+    action: 'Updated the Group Pastor account profile',
+    category: 'System',
+    icon: 'admin_panel_settings',
+  });
+  return json({ success: true });
+}
+
+async function handleUpdateProfilePhoto(body: any, session: Session | null) {
+  if (!session?.user_email || !['Superadmin', 'Church Admin', 'Church Pastor'].includes(session.role)) {
+    return json({ success: false, error: 'Only signed-in administrator accounts can update a profile photo.' }, 403);
+  }
+  const path = String(body?.path || '');
+  const safeEmailFolder = `profile-${(await sha256(session.user_email)).slice(0, 32)}`;
+  const prefix = `${safeEmailFolder}/`;
+  const filename = path.startsWith(prefix) ? path.slice(prefix.length) : '';
+  if (!/^\d{10,16}\.(jpg|jpeg|png|webp|gif|heic)$/i.test(filename)) {
+    return json({ success: false, error: 'Invalid profile photo path.' }, 400);
+  }
+
+  const [profileResult, accountResult] = await Promise.all([
+    admin.from('user_profiles').update({ avatar_url: path, updated_at: new Date().toISOString() })
+      .ilike('email', session.user_email).select('id'),
+    admin.from('church_admin_accounts').update({ photo_url: path })
+      .ilike('admin_email', session.user_email).select('id'),
+  ]);
+  if ((profileResult.error || accountResult.error) ||
+      !(profileResult.data?.length || accountResult.data?.length)) {
+    console.error('Profile photo update failed:', profileResult.error?.message || accountResult.error?.message || 'account not found');
+    return json({ success: false, error: 'The profile photo could not be saved.' }, 500);
+  }
+  return json({ success: true });
 }
 
 // -------------------------------------------------------------- photo storage
@@ -2536,6 +2642,10 @@ Deno.serve(async (req) => {
         return await handleDevAnalytics(session);
       case 'devAction':
         return await handleDevAction(body, session, req);
+      case 'updateGroupProfile':
+        return await handleUpdateGroupProfile(body, session, req);
+      case 'updateProfilePhoto':
+        return await handleUpdateProfilePhoto(body, session);
       case 'mnotifyUser':
         return await handleMnotifyUserAction(body, session, req);
       case 'mergeLeaders':

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { AuthSessionUser } from '../types';
-import { Member, ViewType, AuditLogItem, ChurchBranch } from '../types';
+import { Member, ViewType, AuditLogItem, ChurchBranch, AttendanceRecord, Leader } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth, formatBirthdayDisplay } from '../utils/analyticsUtils';
 import { csvQ } from '../utils/csvSafe';
+import { isFirstTimer } from '../utils/memberStatus';
 
 interface AnalyticsViewProps {
   user?: {
@@ -12,6 +13,8 @@ interface AnalyticsViewProps {
   };
   members: Member[];
   churches?: ChurchBranch[];
+  attendanceRecords?: AttendanceRecord[];
+  leaders?: Leader[];
   onNavigate: (view: ViewType) => void;
   onAddAuditLog: (log: AuditLogItem) => void;
 }
@@ -20,6 +23,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   user,
   members,
   churches = [],
+  attendanceRecords = [],
+  leaders = [],
   onNavigate,
   onAddAuditLog
 }) => {
@@ -49,8 +54,68 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const maleCount = filteredMembers.filter(m => m && m.gender === 'Male').length;
   const femaleCount = filteredMembers.filter(m => m && m.gender === 'Female').length;
 
-  const firstTimersCount = filteredMembers.filter(m => m && (m.status === 'First Timer' || m.role === 'First Timer')).length;
+  const firstTimersCount = filteredMembers.filter(m => m && isFirstTimer(m, attendanceRecords)).length;
   const generalMembersCount = total - firstTimersCount;
+
+  const monthlyGrowth = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 12 }, (_, index) => {
+      const month = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
+      const key = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+      const end = new Date(month.getFullYear(), month.getMonth() + 1, 0).toISOString().slice(0, 10);
+      const count = filteredMembers.filter(member => member.joinDate && member.joinDate <= end).length;
+      const newMembers = filteredMembers.filter(member => member.joinDate?.slice(0, 7) === key).length;
+      return { key, label: month.toLocaleDateString(undefined, { month: 'short' }), count, newMembers };
+    });
+    return months;
+  }, [filteredMembers]);
+  const growthMax = Math.max(1, ...monthlyGrowth.map(point => point.count));
+  const growthPoints = monthlyGrowth.map((point, index) => ({
+    x: 8 + index * (284 / Math.max(monthlyGrowth.length - 1, 1)),
+    y: 112 - (point.count / growthMax) * 96,
+  }));
+  const growthPath = growthPoints.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x} ${point.y}`;
+    const previous = growthPoints[index - 1];
+    const midX = (previous.x + point.x) / 2;
+    const midY = (previous.y + point.y) / 2;
+    return `${path} Q ${previous.x} ${previous.y} ${midX} ${midY}`;
+  }, '') + ` T ${growthPoints[growthPoints.length - 1]?.x || 8} ${growthPoints[growthPoints.length - 1]?.y || 112}`;
+
+  const attendanceHours = useMemo(() => {
+    const scopedAttendance = attendanceRecords.filter(record =>
+      isSuperadmin
+        ? selectedBranch === 'All' || record.church === selectedBranch
+        : (record.church || '').toLowerCase() === targetChurchLower,
+    );
+    const hours = new Map<number, number>();
+    scopedAttendance.forEach(record => {
+      const match = (record.timestamp || '').match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+      if (!match) return;
+      let hour = Number(match[1]);
+      if (match[3]?.toUpperCase() === 'PM' && hour < 12) hour += 12;
+      if (match[3]?.toUpperCase() === 'AM' && hour === 12) hour = 0;
+      if (hour >= 0 && hour <= 23) hours.set(hour, (hours.get(hour) || 0) + 1);
+    });
+    return Array.from(hours.entries()).sort(([a], [b]) => a - b);
+  }, [attendanceRecords, isSuperadmin, selectedBranch, targetChurchLower]);
+  const peakHour = attendanceHours.reduce<[number, number] | null>(
+    (peak, current) => !peak || current[1] > peak[1] ? current : peak,
+    null,
+  );
+
+  const leaderTypeGrowth = useMemo(() => {
+    const countByType = new Map<string, number>();
+    filteredMembers.forEach(member => {
+      const leader = leaders.find(candidate =>
+        candidate.id === member.invitedByLeaderId ||
+        (!member.invitedByLeaderId && candidate.fullName.toLowerCase() === (member.invitedBy || '').toLowerCase()),
+      );
+      const type = leader?.leaderType || 'Unassigned';
+      countByType.set(type, (countByType.get(type) || 0) + 1);
+    });
+    return Array.from(countByType.entries()).sort((a, b) => b[1] - a[1]);
+  }, [filteredMembers, leaders]);
 
   // Occupations Map
   const occupationsMap: Record<string, number> = {};
@@ -101,11 +166,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   };
 
   const handleExportAnalyticsCSV = () => {
-    const headers = 'Member ID,Full Name,Phone,Gender,Education,Occupation,Location,Church,DOB,Status\n';
-    const rows = filteredMembers.map(m =>
-      `${csvQ(m.id)},${csvQ(m.fullName)},${csvQ(m.phone)},${csvQ(m.gender || 'N/A')},${csvQ(m.education || 'N/A')},${csvQ(m.occupation || 'N/A')},${csvQ(m.location || 'N/A')},${csvQ(m.church)},${csvQ(m.dob || 'N/A')},${csvQ(m.status)}`
-    ).join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
+    const rows = [
+      ['Metric', 'Count'],
+      ['Registered members', String(total)],
+      ['First timers (fewer than two attendances)', String(firstTimersCount)],
+      ['General members', String(generalMembersCount)],
+      ['Male', String(maleCount)],
+      ['Female', String(femaleCount)],
+      ...Object.entries(occupationsMap).map(([label, count]) => [`Occupation: ${label}`, String(count)]),
+      ...Object.entries(educationMap).map(([label, count]) => [`Education: ${label}`, String(count)]),
+    ];
+    const blob = new Blob([rows.map(row => row.map(csvQ).join(',')).join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -174,9 +245,54 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">download</span>
-            <span>Export Demographics CSV</span>
+            <span>Export Summary CSV</span>
           </button>
         </div>
+      </div>
+
+      {/* Top 4 Metric Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm lg:col-span-2">
+          <div className="flex flex-wrap justify-between gap-3">
+            <div>
+              <h2 className="font-headline font-bold text-sm text-slate-900">12-month membership growth</h2>
+              <p className="text-xs text-slate-500">Cumulative growth based on recorded member join dates.</p>
+            </div>
+            <div className="text-right"><strong className="text-xl text-blue-700">{total}</strong><p className="text-[11px] text-slate-500">current members</p></div>
+          </div>
+          <svg viewBox="0 0 300 130" role="img" aria-label="Cumulative member growth over the last 12 months" className="w-full h-40 mt-3 overflow-visible">
+            <path d="M 8 112 H 292" stroke="#e2e8f0" strokeWidth="1" />
+            <path d={growthPath} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" />
+            {growthPoints.map((point, index) => (
+              <circle key={monthlyGrowth[index].key} cx={point.x} cy={point.y} r="2.5" fill="#1d4ed8" />
+            ))}
+          </svg>
+          <div className="grid grid-cols-6 sm:grid-cols-12 gap-1 text-center">
+            {monthlyGrowth.map(point => (
+              <div key={point.key} className="min-w-0">
+                <span className="block text-[9px] text-slate-400">{point.label}</span>
+                <span className="block text-[10px] font-bold text-slate-700">{point.newMembers > 0 ? `+${point.newMembers}` : '—'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
+          <h2 className="font-headline font-bold text-sm text-slate-900">Member growth by leader type</h2>
+          <p className="text-xs text-slate-500 mt-1">Member count attributed to each leader category.</p>
+          <div className="space-y-2 mt-4">
+            {leaderTypeGrowth.map(([type, count]) => (
+              <div key={type} className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">{type}</span><strong className="text-blue-800">{count}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-100 mt-4 pt-3">
+            <p className="text-xs font-bold text-slate-800">Attendance peak time</p>
+            <p className="text-sm text-blue-700 font-bold mt-1">
+              {peakHour ? `${String(peakHour[0] % 12 || 12).padStart(2, '0')}:00 ${peakHour[0] >= 12 ? 'PM' : 'AM'} (${peakHour[1]} visits)` : 'No check-in times recorded'}
+            </p>
+          </div>
+        </section>
       </div>
 
       {/* Top 4 Metric Cards */}

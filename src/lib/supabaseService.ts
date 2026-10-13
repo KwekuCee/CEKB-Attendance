@@ -1,5 +1,6 @@
 import { getSupabase } from './supabase';
 import { getPortalToken, setPortalToken } from './portalDb';
+import { rawPortal } from './rawPortal';
 import {
   Member,
   Leader,
@@ -38,16 +39,14 @@ export function getStoredSession(): AuthSessionUser | null {
         return null;
       }
       return {
-        id: parsed.id || `usr-${Date.now()}`,
-        name: parsed.name || (parsed.role === 'Superadmin' ? 'Group Pastor' : 'Church Admin'),
+        id: parsed.id || '',
+        name: parsed.name || 'Administrator',
         role: parsed.role,
-        church: parsed.church !== undefined && parsed.church !== null ? parsed.church : (parsed.role === 'Superadmin' ? 'GCYC Group HQ' : ''),
-        zone: parsed.zone || 'Zone 1 (Korle Bu)',
-        avatar: parsed.avatar || (parsed.role === 'Superadmin'
-          ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'
-          : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'),
+        church: parsed.church || '',
+        zone: parsed.zone || '',
+        avatar: parsed.avatar || '',
         email: parsed.email || '',
-        phone: parsed.phone || '+233 24 123 4567'
+        phone: parsed.phone || ''
       };
     }
   } catch (err) {
@@ -109,7 +108,7 @@ export async function fetchMembersFromSupabase(): Promise<Member[] | null> {
       church: row.church_name || 'Unassigned',
       joinDate: row.join_date || row.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       initials: (row.full_name || 'MB').split(' ').filter(Boolean).map((n: string) => n ? n[0] : '').join('').toUpperCase().slice(0, 2) || 'MB',
-      serviceCount: row.service_count || 1,
+      serviceCount: Number(row.service_count ?? 0),
       foundationClass: row.foundation_class || 0,
       status: row.status || 'First Timer',
       invitedBy: row.invited_by_name || 'Self Check-In',
@@ -1040,8 +1039,11 @@ export interface AuthResult {
     church: string;
     zone: string;
     email: string;
+    phone?: string;
+    avatar: string;
   };
   error?: string;
+  otpEmail?: string;
 }
 
 export async function authenticateUserWithDatabase(
@@ -1062,56 +1064,36 @@ export async function authenticateUserWithDatabase(
     return { success: false, error: 'Please enter your password.' };
   }
 
-  const client = getSupabase();
+  const response = await rawPortal({
+    action: 'login',
+    identifier: trimmedId,
+    password: trimmedPassword,
+    role: selectedRole,
+    otp,
+  }, null);
 
-  // 1. Try real-time database validation via Supabase
-  if (client) {
-    try {
-      // Option A: Try stored RPC procedure if created in database
-      const { data: rpcData, error: rpcError } = await client.rpc('verify_user_login', {
-        p_identifier: trimmedId,
-        p_password: trimmedPassword,
-        p_role: selectedRole || null,
-        p_church_name: null,
-        p_otp: otp || undefined
-      } as any);
-
-      if (!rpcError && rpcData) {
-        if (rpcData.success && rpcData.user) {
-          const authenticatedUser: AuthSessionUser = {
-            id: rpcData.user.id || `usr-${Date.now()}`,
-            name: rpcData.user.name || (rpcData.user.role === 'Superadmin' ? 'Group Pastor' : 'Church Admin'),
-            role: rpcData.user.role as 'Superadmin' | 'Church Admin',
-            church: rpcData.user.church || (rpcData.user.role === 'Superadmin' ? 'GCYC Group HQ' : ''),
-            zone: rpcData.user.zone || 'Zone 1 (Korle Bu)',
-            avatar: rpcData.user.role === 'Superadmin'
-              ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'
-              : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-            email: rpcData.user.email || trimmedId,
-            phone: rpcData.user.phone || '+233 24 123 4567'
-          };
-          saveStoredSession(authenticatedUser);
-          return { success: true, user: authenticatedUser };
-        } else if (rpcData.error) {
-          return { success: false, error: rpcData.error, otpEmail: (rpcData as any).email } as any;
-        }
-      }
-
-      if (rpcError) {
-        console.warn('Sign-in check failed:', rpcError.message);
-      }
-    } catch (dbErr: any) {
-      console.warn('Sign-in check error:', dbErr?.message);
-      return { success: false, error: 'We could not reach the sign-in service. Please try again.' };
-    }
+  if (!response?.success || !response.user) {
+    return {
+      success: false,
+      error: response?.error || 'Incorrect email or password. Please check your details and try again.',
+      otpEmail: response?.email,
+    };
   }
 
-  // Passwords are stored scrambled and only checked on the server, so there is
-  // no offline fallback: a wrong email or password always ends here.
-  return {
-    success: false,
-    error: 'Incorrect email or password. Please check your details and try again.'
+  const account = response.user;
+  const authenticatedUser: AuthSessionUser = {
+    id: account.id,
+    name: account.name || '',
+    role: account.role,
+    church: account.church || '',
+    zone: account.zone || '',
+    avatar: account.avatar || '',
+    email: account.email || trimmedId,
+    phone: account.phone || '',
   };
+  if (response.token) setPortalToken(response.token);
+  saveStoredSession(authenticatedUser);
+  return { success: true, user: authenticatedUser };
 }
 
 
@@ -1385,205 +1367,85 @@ export async function deleteServiceTypeFromSupabase(name: string): Promise<boole
 // ============================================================================
 
 export interface SuperadminProfile {
+  id: string;
   name: string;
   email: string;
   phone?: string;
   churchName: string;
   zone?: string;
+  photoUrl?: string;
 }
 
-export async function fetchSuperadminProfileFromSupabase(): Promise<SuperadminProfile | null> {
+export async function fetchSuperadminProfileFromSupabase(email: string): Promise<SuperadminProfile | null> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return null;
   const client = getSupabase();
 
   if (client) {
     try {
-      // 1. Try to fetch from admin_settings table with key 'hq_profile'
-      const { data: settingData, error: settingErr } = await client
-        .from('admin_settings')
-        .select('setting_value')
-        .eq('setting_key', 'hq_profile')
-        .maybeSingle();
-
-      if (!settingErr && settingData?.setting_value) {
-        const val = settingData.setting_value as any;
-        const profile: SuperadminProfile = {
-          name: val.pastor_name || val.name || 'Group Pastor',
-          email: val.email || 'group.pastor@cekorlebu.org',
-          phone: val.phone || '+233 24 123 4567',
-          churchName: val.church_name || val.churchName || 'GCYC Group HQ',
-          zone: val.zone || 'Zone 1 (Korle Bu)'
-        };
-        try {
-          localStorage.setItem('cekbu_superadmin_profile', JSON.stringify(profile));
-        } catch (e) {}
-        return profile;
-      }
-
-      // 2. Try to fetch from user_profiles for Superadmin role
       const { data: userData, error: userErr } = await client
         .from('user_profiles')
         .select('*')
-        .or('role.eq.Superadmin,username.eq.group.pastor')
-        .order('updated_at', { ascending: false })
-        .limit(1)
+        .ilike('email', normalizedEmail)
+        .eq('role', 'Superadmin')
         .maybeSingle();
 
       if (!userErr && userData) {
         const profile: SuperadminProfile = {
-          name: userData.full_name || 'Group Pastor',
-          email: userData.email || 'group.pastor@cekorlebu.org',
-          phone: (userData as any).phone || '+233 24 123 4567',
-          churchName: userData.church_name || 'GCYC Group HQ',
-          zone: userData.zone || 'Zone 1 (Korle Bu)'
+          id: userData.id,
+          name: userData.full_name || '',
+          email: userData.email || normalizedEmail,
+          phone: userData.phone || '',
+          churchName: userData.church_name || '',
+          zone: userData.zone || '',
+          photoUrl: userData.avatar_url || ''
         };
-        try {
-          localStorage.setItem('cekbu_superadmin_profile', JSON.stringify(profile));
-        } catch (e) {}
         return profile;
       }
     } catch (err) {
       console.error('Error fetching Superadmin profile from Supabase:', err);
     }
   }
-
-  // Fallback to local cache
-  try {
-    const cached = localStorage.getItem('cekbu_superadmin_profile');
-    if (cached) return JSON.parse(cached);
-    const session = getStoredSession();
-    if (session && session.role === 'Superadmin') {
-      return {
-        name: session.name || 'Group Pastor',
-        email: session.email || 'group.pastor@cekorlebu.org',
-        phone: session.phone || '+233 24 123 4567',
-        churchName: session.church || 'GCYC Group HQ',
-        zone: session.zone || 'Zone 1 (Korle Bu)'
-      };
-    }
-  } catch (e) {}
-
   return null;
 }
 
 export async function saveSuperadminProfileToSupabase(profile: {
+  id?: string;
   name: string;
   email: string;
   phone?: string;
   churchName: string;
   zone?: string;
+  photoUrl?: string;
 }): Promise<boolean> {
-  const email = (profile.email || '').trim().toLowerCase();
-  const pastorName = (profile.name || '').trim();
-  const phone = (profile.phone || '').trim() || '+233 24 123 4567';
-  const churchName = (profile.churchName || '').trim() || 'GCYC Group HQ';
-  const zone = (profile.zone || '').trim() || 'Zone 1 (Korle Bu)';
-
-  // 1. Immediately persist to localStorage session & cache
-  try {
-    const currentSession = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || '{}');
-    const updatedSession = {
-      ...currentSession,
-      id: currentSession.id || 'usr-1',
-      name: pastorName,
-      email: email,
-      role: 'Superadmin',
-      church: churchName,
-      zone: zone,
-      phone: phone
-    };
-    saveStoredSession(updatedSession);
-    localStorage.setItem('cekbu_superadmin_profile', JSON.stringify({
-      name: pastorName,
-      email: email,
-      phone: phone,
-      churchName: churchName,
-      zone: zone
-    }));
-  } catch (e) {}
-
-  const client = getSupabase();
-  if (!client) return true;
-
-  try {
-    // 2. Persist to admin_settings table (key: 'hq_profile')
-    const { error: hqErr } = await client.from('admin_settings').upsert({
-      setting_key: 'hq_profile',
-      admin_id: 'global',
-      is_global: true,
-      setting_value: {
-        pastor_name: pastorName,
-        name: pastorName,
-        email: email,
-        phone: phone,
-        church_name: churchName,
-        churchName: churchName,
-        zone: zone,
-        updated_at: new Date().toISOString()
-      },
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'setting_key' });
-
-    if (hqErr) {
-      console.warn('Supabase admin_settings hq_profile warning:', hqErr.message);
-    }
-
-    // 3. Persist to global_system_config in admin_settings
-    try {
-      const { data: currConfig } = await client
-        .from('admin_settings')
-        .select('setting_value')
-        .eq('setting_key', 'global_system_config')
-        .maybeSingle();
-
-      const existingVal = currConfig?.setting_value || {};
-      await client.from('admin_settings').upsert({
-        setting_key: 'global_system_config',
-        admin_id: 'global',
-        is_global: true,
-        setting_value: {
-          ...existingVal,
-          pastorName: pastorName,
-          hqEmail: email,
-          pastorPhone: phone,
-          hqChurchName: churchName,
-          hqZone: zone,
-          updated_at: new Date().toISOString()
-        },
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'setting_key' });
-    } catch (cfgErr) {
-      console.warn('Error syncing to global_system_config:', cfgErr);
-    }
-
-    // 4. Update user_profiles in Supabase
-    const { error: userErr } = await client.from('user_profiles').upsert({
-      username: 'group.pastor',
-      email: email,
-      full_name: pastorName,
-      role: 'Superadmin',
-      church_name: churchName,
-      zone: zone,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'username' });
-
-    if (userErr) {
-      console.warn('Supabase saveSuperadmin user_profiles warning:', userErr.message);
-    }
-
-    // 5. Audit Log
-    await saveAuditLogToSupabase({
-      action: `Updated Superadmin HQ & Group Profile for ${pastorName} (${churchName})`,
-      icon: 'admin_panel_settings',
-      user: pastorName || 'Group Pastor',
-      category: 'System',
-      church: churchName
-    });
-
-    return true;
-  } catch (err) {
-    console.error('Error in saveSuperadminProfileToSupabase:', err);
+  const response = await rawPortal({
+    action: 'updateGroupProfile',
+    profile: {
+      name: profile.name.trim(),
+      email: profile.email.trim().toLowerCase(),
+      phone: profile.phone?.trim() || '',
+      churchName: profile.churchName.trim(),
+      zone: profile.zone?.trim() || '',
+      photoUrl: profile.photoUrl || '',
+    },
+  });
+  if (!response?.success) {
+    console.error('Could not update the signed-in Group Pastor profile:', response?.error?.message || response?.error);
     return false;
   }
+  const session = getStoredSession();
+  if (session) {
+    saveStoredSession({
+      ...session,
+      name: profile.name.trim(),
+      email: profile.email.trim().toLowerCase(),
+      phone: profile.phone?.trim(),
+      church: profile.churchName.trim(),
+      zone: profile.zone?.trim() || '',
+      avatar: profile.photoUrl || session.avatar,
+    });
+  }
+  return true;
 }
 
 export async function saveAllAdminSettingsToSupabase(settings: {
@@ -1902,6 +1764,22 @@ export async function uploadProfilePhoto(folder: string, file: File): Promise<st
     console.error('Error in uploadProfilePhoto:', err);
     return null;
   }
+}
+
+export async function getProfilePhotoFolder(email: string): Promise<string> {
+  const bytes = new TextEncoder().encode(email.trim().toLowerCase());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  return `profile-${hash.slice(0, 32)}`;
+}
+
+export async function updateProfilePhotoInSupabase(path: string): Promise<boolean> {
+  const response = await rawPortal({ action: 'updateProfilePhoto', path });
+  if (!response?.success) {
+    console.error('Could not update the signed-in account photo:', response?.error?.message || response?.error);
+    return false;
+  }
+  return true;
 }
 
 export async function uploadMemberPhoto(memberId: string, file: File): Promise<string | null> {

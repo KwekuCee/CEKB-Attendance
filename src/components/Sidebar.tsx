@@ -2,18 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { rawPortal } from '../lib/rawPortal';
 import { isFeatureOn, type FeatureMatrix } from '../lib/features';
 import type { AuthSessionUser } from '../types';
-import { ViewType, SettingsTab, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
+import { ViewType, SettingsTab, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount, Leader } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { SupportChat } from './SupportChat';
 import { Button } from './Button';
+import { MemberPhoto } from './MemberPhoto';
 
 interface SidebarProps {
   currentView: ViewType;
-  user?: { name: string; role: AuthSessionUser['role']; church: string };
+  user?: { name: string; role: AuthSessionUser['role']; church: string; avatar?: string };
   members?: Member[];
   attendanceRecords?: AttendanceRecord[];
   churches?: ChurchBranch[];
   churchAdmins?: ChurchAdminAccount[];
+  leaders?: Leader[];
   onNavigate: (view: ViewType) => void;
   settingsTab: SettingsTab;
   onNavigateSettingsTab: (tab: SettingsTab) => void;
@@ -24,7 +26,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  currentView, user, members = [], attendanceRecords = [], churches = [], churchAdmins = [],
+  currentView, user, members = [], attendanceRecords = [], churches = [], churchAdmins = [], leaders = [],
   onNavigate, settingsTab, onNavigateSettingsTab, onLogout, onStartWalkthrough, isMobileOpen = false, onCloseMobile,
 }) => {
   const [showSupportChat, setShowSupportChat] = useState(false);
@@ -37,8 +39,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isSuperadmin = user?.role === 'Superadmin';
   const navigate = (view: ViewType) => { onNavigate(view); onCloseMobile?.(); };
   const exportRecords = () => {
-    try { exportMultiSheetExcel(members, attendanceRecords, churches, churchAdmins); }
-    catch { exportMultiSectionCSV(members, attendanceRecords, churches, churchAdmins); }
+    const isGroup = user?.role === 'Superadmin';
+    const inScope = (church: string) => isGroup || (church || '').toLowerCase() === (user?.church || '').toLowerCase();
+    const data = {
+      members: members.filter(member => inScope(member.church)),
+      attendanceRecords: attendanceRecords.filter(record => inScope(record.church)),
+      churches: churches.filter(church => inScope(church.name)),
+      churchAdmins: churchAdmins.filter(admin => inScope(admin.churchName)),
+      leaders: leaders.filter(leader => inScope(leader.church)),
+    };
+    const filenamePrefix = isGroup ? 'CEKB_Group_Aggregate_Report' : 'CEKB_Church_Aggregate_Report';
+    try { exportMultiSheetExcel(data, filenamePrefix); }
+    catch { exportMultiSectionCSV(data, filenamePrefix); }
   };
   const allNavItems: { id: ViewType; label: string; icon: string }[] = isSuperadmin ? [
     { id: 'dashboard', label: 'Overview', icon: 'space_dashboard' },
@@ -168,7 +180,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           <p className="sidebar-caption">User account</p>
           <div className="sidebar-account-row">
-            <span className="sidebar-avatar" aria-hidden="true">{user?.name?.trim().charAt(0).toUpperCase() || 'C'}</span>
+            <MemberPhoto
+              photoUrl={user?.avatar}
+              initials={user?.name?.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'C'}
+              size={32}
+              className="sidebar-avatar"
+            />
             <div className="sidebar-account-details"><strong>{user?.name || 'Administrator'}</strong><span>{isSuperadmin ? 'Group pastor' : (user?.role as string) === 'Church Pastor' ? 'Church pastor' : 'Church administrator'}</span></div>
             <Button variant="ghost" className="sidebar-signout" onClick={onLogout} aria-label="Sign Out" title="Sign Out"><span className="material-symbols-outlined" aria-hidden="true">logout</span></Button>
           </div>

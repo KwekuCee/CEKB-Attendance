@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import type { AuthSessionUser } from '../types';
-import { Member, RoleType, ViewType, ChurchBranch, Leader } from '../types';
+import { Member, RoleType, ViewType, ChurchBranch, Leader, AttendanceRecord } from '../types';
 import { MemberPhoto } from './MemberPhoto';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
 import { csvQ } from '../utils/csvSafe';
+import { isFirstTimer } from '../utils/memberStatus';
 
 interface MemberDatabaseProps {
   members: Member[];
@@ -19,6 +20,7 @@ interface MemberDatabaseProps {
   onUpdateMember?: (member: Member) => void;
   churches?: ChurchBranch[];
   leaders?: Leader[];
+  attendanceRecords?: AttendanceRecord[];
 }
 
 export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
@@ -29,7 +31,8 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
   onDeleteMember,
   onUpdateMember,
   churches,
-  leaders = []
+  leaders = [],
+  attendanceRecords = []
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleType | 'All'>('All');
@@ -99,7 +102,8 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
       location.includes(cleanSearch) ||
       occupation.includes(cleanSearch);
 
-    const matchesRole = roleFilter === 'All' || m.role === roleFilter;
+    const matchesRole = roleFilter === 'All' ||
+      (roleFilter === 'First Timer' ? isFirstTimer(m, attendanceRecords) : m.role === roleFilter);
     const matchesChurch = isChurchAdmin ? true : (churchFilter === 'All' || m.church === churchFilter);
 
     const fClass = m.foundationClass || 0;
@@ -254,7 +258,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
                     <option value="All">All Roles</option>
                     <option value="Leader">Leader</option>
                     <option value="Member">Member</option>
-                    <option value="First Timer">First Timer</option>
+                    <option value="First Timer">First Timer (&lt;2 visits)</option>
 
                   </select>
                 </div>
@@ -474,12 +478,12 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
                                 Leader
                               </span>
                             )}
-                            {member.role === 'Member' && (
+                            {member.role === 'Member' && !isFirstTimer(member, attendanceRecords) && (
                               <span className="bg-emerald-50 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-md border border-emerald-200">
                                 Member
                               </span>
                             )}
-                            {member.role === 'First Timer' && (
+                            {isFirstTimer(member, attendanceRecords) && (
                               <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md border border-amber-200">
                                 First Timer
                               </span>

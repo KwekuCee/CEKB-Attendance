@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
-import { ChurchBranch, ChurchAdminAccount, Member, Leader, AttendanceRecord } from '../types';
-import { csvQ, safeRows } from './csvSafe';
+import type { AttendanceRecord, ChurchAdminAccount, ChurchBranch, Leader, Member } from '../types';
+import { csvQ, neutralizeCell } from './csvSafe';
+import { isFirstTimer } from './memberStatus';
 
 export interface ExportDataPayload {
   churches: ChurchBranch[];
@@ -10,390 +11,395 @@ export interface ExportDataPayload {
   attendanceRecords: AttendanceRecord[];
 }
 
+export interface AggregateReportOptions {
+  attendanceDate?: string;
+  serviceType?: string;
+  churchScope?: string;
+  filenamePrefix?: string;
+}
+
+interface ChurchAggregate {
+  church: ChurchBranch;
+  members: Member[];
+  attendance: AttendanceRecord[];
+  presentIds: Set<string>;
+  serviceSummary: Array<[string, string, number]>;
+  memberLeaderSummary: Array<[string, number]>;
+  leaderSummary: Array<[string, number]>;
+  leaderTypeGrowth: Array<[string, number]>;
+  leaderTypeMonthlyGrowth: Array<[string, string, number]>;
+  monthlyGrowth: Array<[string, number, number]>;
+  arrivalHours: Array<[number, number]>;
+  arrivalByLeader: Array<[string, string, number]>;
+  firstTimers: number;
+  leadersCount: number;
+}
+
 function normalizeExportPayload(
   arg1: ExportDataPayload | Member[],
   arg2?: AttendanceRecord[] | string,
   arg3?: ChurchBranch[],
   arg4?: ChurchAdminAccount[],
-  arg5?: string
-): { data: ExportDataPayload; filenamePrefix: string } {
-  if (Array.isArray(arg1)) {
-    const members = arg1 as Member[];
-    const attendanceRecords = (Array.isArray(arg2) ? arg2 : []) as AttendanceRecord[];
-    const churches = (arg3 || []) as ChurchBranch[];
-    const churchAdmins = (arg4 || []) as ChurchAdminAccount[];
-    const filenamePrefix = typeof arg2 === 'string' ? arg2 : (arg5 || 'CEKB_Church_Network_Report');
+  _arg5?: string,
+  arg6?: Leader[],
+): ExportDataPayload {
+  if (!Array.isArray(arg1)) {
     return {
-      data: {
-        members,
-        attendanceRecords,
-        churches: churches.length > 0 ? churches : Array.from(new Set(members.map(m => m.church).filter(Boolean))).map(name => ({
-          id: name,
-          name,
-          pastor: 'Branch Pastor',
-          zone: 'Zone 1 (Korle Bu)',
-          code: name.slice(0, 3).toUpperCase(),
-          established: '2024',
-          membersCount: members.filter(m => m.church === name).length,
-          status: 'Healthy' as const,
-          pcfCount: 1,
-          cellCount: 3,
-          bsctCount: 1
-        })),
-        churchAdmins,
-        leaders: []
-      },
-      filenamePrefix
-    };
-  } else {
-    const payload = arg1 as ExportDataPayload;
-    return {
-      data: {
-        churches: payload.churches || [],
-        churchAdmins: payload.churchAdmins || [],
-        members: payload.members || [],
-        leaders: payload.leaders || [],
-        attendanceRecords: payload.attendanceRecords || []
-      },
-      filenamePrefix: typeof arg2 === 'string' ? arg2 : 'CEKB_Church_Network_Report'
+      churches: arg1.churches || [],
+      churchAdmins: arg1.churchAdmins || [],
+      members: arg1.members || [],
+      leaders: arg1.leaders || [],
+      attendanceRecords: arg1.attendanceRecords || [],
     };
   }
+  return {
+    members: arg1,
+    attendanceRecords: Array.isArray(arg2) ? arg2 : [],
+    churches: arg3 || [],
+    churchAdmins: arg4 || [],
+    leaders: arg6 || [],
+  };
 }
 
-/**
- * Generates and downloads a multi-sheet Excel workbook (.xlsx) containing:
- * 1. Total Members per Church (Admin)
- * 2. Total Attendance per Service Date
- * 3. New Members per Service
- */
+const sameChurch = (left?: string, right?: string) =>
+  (left || '').trim().toLowerCase() === (right || '').trim().toLowerCase();
+
+function memberIdForAttendance(record: AttendanceRecord, members: Member[]): string | null {
+  if (record.memberId && members.some(member => member.id === record.memberId)) return record.memberId;
+  const name = (record.memberName || '').trim().toLowerCase();
+  return members.find(member => member.fullName.trim().toLowerCase() === name)?.id || null;
+}
+
+function attendanceHour(timestamp?: string): number | null {
+  const value = timestamp || '';
+  const isoTime = value.match(/T(\d{2}):(\d{2})/);
+  const time = isoTime || value.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+  if (!time) return null;
+  let hour = Number(time[1]);
+  const meridiem = time[3]?.toUpperCase();
+  if (meridiem === 'PM' && hour < 12) hour += 12;
+  if (meridiem === 'AM' && hour === 12) hour = 0;
+  return hour >= 0 && hour <= 23 ? hour : null;
+}
+
+function monthKey(value?: string): string {
+  return value && /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : '';
+}
+
+function getLeaderForMember(member: Member, leaders: Leader[]): Leader | undefined {
+  return leaders.find(leader =>
+    leader.id === member.invitedByLeaderId ||
+    (!member.invitedByLeaderId && leader.fullName.toLowerCase() === (member.invitedBy || '').toLowerCase()),
+  );
+}
+
+function filteredAttendance(
+  records: AttendanceRecord[],
+  churchName: string,
+  date?: string,
+  serviceType?: string,
+): AttendanceRecord[] {
+  return records.filter(record =>
+    sameChurch(record.church, churchName) &&
+    (!date || (record.date || '').slice(0, 10) === date) &&
+    (!serviceType || serviceType === 'All' || record.serviceType === serviceType),
+  );
+}
+
+function summarizeChurch(
+  church: ChurchBranch,
+  data: ExportDataPayload,
+  date: string,
+  serviceType?: string,
+): ChurchAggregate {
+  const members = data.members.filter(member => sameChurch(member.church, church.name));
+  const attendance = filteredAttendance(data.attendanceRecords, church.name, date, serviceType);
+  const presentIds = new Set(
+    attendance.map(record => memberIdForAttendance(record, members)).filter((id): id is string => !!id),
+  );
+  const allVisits = data.attendanceRecords.filter(record => sameChurch(record.church, church.name));
+
+  const services = new Map<string, number>();
+  allVisits.forEach(record => {
+    const key = `${(record.date || '').slice(0, 10)}|${record.serviceType || 'Unspecified service'}`;
+    services.set(key, (services.get(key) || 0) + 1);
+  });
+
+  const leaders = new Map<string, Set<string>>();
+  const membersByLeader = new Map<string, number>();
+  members.forEach(member => {
+    const leaderName = getLeaderForMember(member, data.leaders)?.fullName ||
+      (member.invitedBy || '').trim() ||
+      'Direct / Self';
+    membersByLeader.set(leaderName, (membersByLeader.get(leaderName) || 0) + 1);
+  });
+  attendance.forEach((record, index) => {
+    const leaderName = (record.leaderName || '').trim() || 'Direct / Self';
+    const leaderMembers = leaders.get(leaderName) || new Set<string>();
+    leaderMembers.add(memberIdForAttendance(record, members) || `record-${index}`);
+    leaders.set(leaderName, leaderMembers);
+  });
+
+  const leaderTypeGrowth = new Map<string, number>();
+  const leaderTypeByMonth = new Map<string, number>();
+  members.forEach(member => {
+    const leader = getLeaderForMember(member, data.leaders);
+    const type = leader?.leaderType || 'Unassigned';
+    leaderTypeGrowth.set(type, (leaderTypeGrowth.get(type) || 0) + 1);
+    const month = monthKey(member.joinDate);
+    if (month) {
+      const key = `${month}|${type}`;
+      leaderTypeByMonth.set(key, (leaderTypeByMonth.get(key) || 0) + 1);
+    }
+  });
+
+  const monthCounts = new Map<string, number>();
+  members.forEach(member => {
+    const key = monthKey(member.joinDate);
+    if (key) monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+  });
+  const monthKeys = Array.from(monthCounts.keys()).sort();
+  let cumulative = 0;
+  const monthlyGrowth = monthKeys.map(key => {
+    const joined = monthCounts.get(key) || 0;
+    cumulative += joined;
+    return [key, joined, cumulative] as [string, number, number];
+  });
+
+  const hours = new Map<number, number>();
+  const hoursByLeader = new Map<string, Map<number, number>>();
+  attendance.forEach(record => {
+    const hour = attendanceHour(record.timestamp);
+    if (hour !== null) {
+      hours.set(hour, (hours.get(hour) || 0) + 1);
+      const leaderName = (record.leaderName || '').trim() || 'Direct / Self';
+      const leaderHours = hoursByLeader.get(leaderName) || new Map<number, number>();
+      leaderHours.set(hour, (leaderHours.get(hour) || 0) + 1);
+      hoursByLeader.set(leaderName, leaderHours);
+    }
+  });
+
+  return {
+    church,
+    members,
+    attendance,
+    presentIds,
+    serviceSummary: Array.from(services.entries())
+      .map(([key, count]) => {
+        const [attendanceDate, service] = key.split('|');
+        return [attendanceDate, service, count] as [string, string, number];
+      })
+      .sort((a, b) => b[0].localeCompare(a[0]) || a[1].localeCompare(b[1])),
+    memberLeaderSummary: Array.from(membersByLeader.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+    leaderSummary: Array.from(leaders.entries())
+      .map(([name, visits]) => [name, visits.size] as [string, number])
+      .sort((a, b) => b[1] - a[1]),
+    leaderTypeGrowth: Array.from(leaderTypeGrowth.entries()).sort((a, b) => b[1] - a[1]),
+    leaderTypeMonthlyGrowth: Array.from(leaderTypeByMonth.entries())
+      .map(([key, count]) => {
+        const [month, type] = key.split('|');
+        return [month, type, count] as [string, string, number];
+      })
+      .sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1])),
+    monthlyGrowth,
+    arrivalHours: Array.from(hours.entries()).sort(([a], [b]) => a - b),
+    arrivalByLeader: Array.from(hoursByLeader.entries()).map(([name, byHour]) => {
+      const peak = Array.from(byHour.entries()).sort((a, b) => b[1] - a[1])[0];
+      return [
+        name,
+        `${String(peak[0] % 12 || 12).padStart(2, '0')}:00 ${peak[0] >= 12 ? 'PM' : 'AM'}`,
+        peak[1],
+      ] as [string, string, number];
+    }).sort((a, b) => b[2] - a[2]),
+    firstTimers: members.filter(member => isFirstTimer(member, data.attendanceRecords)).length,
+    leadersCount: data.leaders.filter(leader => sameChurch(leader.church, church.name)).length,
+  };
+}
+
+function resolveReportDate(records: AttendanceRecord[], configuredDate?: string): string {
+  if (configuredDate) return configuredDate;
+  const latest = records.map(record => (record.date || '').slice(0, 10)).filter(Boolean).sort().pop();
+  return latest || new Date().toISOString().slice(0, 10);
+}
+
+function makeGroupRows(reports: ChurchAggregate[], date: string, serviceType?: string): unknown[][] {
+  const attended = reports.reduce((sum, report) => sum + report.presentIds.size, 0);
+  const members = reports.reduce((sum, report) => sum + report.members.length, 0);
+  const firstTimers = reports.reduce((sum, report) => sum + report.firstTimers, 0);
+  return [
+    ['Group attendance and growth summary'],
+    ['Reference service date', date],
+    ['Service filter', serviceType || 'All services'],
+    [],
+    ['Registered church', 'Registered members', 'First timers (<2 visits)', 'General members', 'Present members', 'Absentees', 'Registered leaders'],
+    ...reports.map(report => [
+      report.church.name,
+      report.members.length,
+      report.firstTimers,
+      report.members.length - report.firstTimers,
+      report.presentIds.size,
+      Math.max(0, report.members.length - report.presentIds.size),
+      report.leadersCount,
+    ]),
+    ['GROUP TOTAL', members, firstTimers, members - firstTimers, attended, Math.max(0, members - attended), reports.reduce((sum, report) => sum + report.leadersCount, 0)],
+    [],
+    ['Monthly member growth', 'New members', 'Cumulative total'],
+    ...combineMonthlyGrowth(reports),
+  ];
+}
+
+function combineMonthlyGrowth(reports: ChurchAggregate[]): Array<[string, number, number]> {
+  const counts = new Map<string, number>();
+  reports.forEach(report => report.monthlyGrowth.forEach(([month, count]) => counts.set(month, (counts.get(month) || 0) + count)));
+  let cumulative = 0;
+  return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([month, count]) => {
+    cumulative += count;
+    return [month, count, cumulative];
+  });
+}
+
+function makeChurchRows(
+  report: ChurchAggregate,
+  data: ExportDataPayload,
+  date: string,
+  serviceType?: string,
+): unknown[][] {
+  const serviceLabel = serviceType && serviceType !== 'All' ? serviceType : 'All services';
+  const absenteeCount = Math.max(0, report.members.length - report.presentIds.size);
+  const leaderCount = data.leaders.filter(leader => sameChurch(leader.church, report.church.name)).length;
+  return [
+    [`${report.church.name} — aggregate report`],
+    ['Reference service date', date],
+    ['Service filter', serviceLabel],
+    [],
+    ['Church totals', 'Count'],
+    ['Registered members', report.members.length],
+    ['First timers (<2 recorded attendances)', report.firstTimers],
+    ['General members', report.members.length - report.firstTimers],
+    ['Present members for reference date', report.presentIds.size],
+    ['Absentees for reference date', absenteeCount],
+    ['Registered leaders', leaderCount],
+    ['Raw check-ins for reference date', report.attendance.length],
+    [],
+    ['Registered members by assigned leader', 'Members'],
+    ...report.memberLeaderSummary,
+    [],
+    ['Attendance history by date and service', 'Service', 'Check-ins'],
+    ...report.serviceSummary,
+    [],
+    ['Attendance by leader for reference date', 'Present members'],
+    ...report.leaderSummary,
+    [],
+    ['Member counts by leader type', 'Members'],
+    ...report.leaderTypeGrowth,
+    [],
+    ['Monthly new members by leader type', 'Leader type', 'New members'],
+    ...report.leaderTypeMonthlyGrowth,
+    [],
+    ['Monthly church growth', 'New members', 'Cumulative members'],
+    ...report.monthlyGrowth,
+    [],
+    ['Arrival time activity for reference date', 'Check-ins'],
+    ...report.arrivalHours.map(([hour, count]) => [`${String(hour % 12 || 12).padStart(2, '0')}:00 ${hour >= 12 ? 'PM' : 'AM'}`, count]),
+    [],
+    ['Peak arrival time by leader for reference date', 'Peak check-in time', 'Check-ins'],
+    ...report.arrivalByLeader,
+  ];
+}
+
+function formulaSafeRows(rows: unknown[][]): unknown[][] {
+  return rows.map(row => row.map(value => typeof value === 'string' ? neutralizeCell(value) : value));
+}
+
+function sheetName(name: string, used: Set<string>): string {
+  const base = (name || 'Church').replace(/[\\/?*:[\]]/g, ' ').trim().slice(0, 25) || 'Church';
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${base.slice(0, 27 - String(suffix).length)} ${suffix++}`;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+export function exportAggregateAnalyticsExcel(
+  data: ExportDataPayload,
+  options: AggregateReportOptions = {},
+): void {
+  const workbook = createAggregateAnalyticsWorkbook(data, options);
+  const date = resolveReportDate(data.attendanceRecords, options.attendanceDate);
+  const filename = options.filenamePrefix || 'CEKB_Aggregate_Attendance_Report';
+  XLSX.writeFile(workbook, `${filename}_${date}.xlsx`);
+}
+
+export function createAggregateAnalyticsWorkbook(
+  data: ExportDataPayload,
+  options: AggregateReportOptions = {},
+): XLSX.WorkBook {
+  const date = resolveReportDate(data.attendanceRecords, options.attendanceDate);
+  const churches = data.churches.filter(church =>
+    !options.churchScope || sameChurch(church.name, options.churchScope),
+  );
+  const reports = churches.map(church => summarizeChurch(church, data, date, options.serviceType));
+  const workbook = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(formulaSafeRows(makeGroupRows(reports, date, options.serviceType))),
+    sheetName('Group Overview', usedNames),
+  );
+  reports.forEach(report => {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet(formulaSafeRows(makeChurchRows(report, data, date, options.serviceType))),
+      sheetName(report.church.name, usedNames),
+    );
+  });
+  return workbook;
+}
+
+function downloadAggregateCsv(data: ExportDataPayload, filenamePrefix = 'CEKB_Aggregate_Report'): void {
+  const date = resolveReportDate(data.attendanceRecords);
+  const reports = data.churches.map(church => summarizeChurch(church, data, date));
+  const rows = makeGroupRows(reports, date);
+  const csv = rows.map(row => row.map(csvQ).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filenamePrefix}_${date}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/** Creates an aggregate workbook: one group overview, then one sheet per church. */
 export function exportMultiSheetExcel(
   arg1: ExportDataPayload | Member[],
   arg2?: AttendanceRecord[] | string,
   arg3?: ChurchBranch[],
   arg4?: ChurchAdminAccount[],
-  arg5?: string
+  arg5?: string,
+  arg6?: Leader[],
 ): void {
-  const { data, filenamePrefix } = normalizeExportPayload(arg1, arg2, arg3, arg4, arg5);
-  const wb = XLSX.utils.book_new();
-
-  // =========================================================================
-  // SHEET 1: Total Members per Church (Admin)
-  // =========================================================================
-  const churchSummaryRows: any[] = [];
-
-  // Summary Table Header & Rows
-  churchSummaryRows.push({
-    'Church Branch Name': '=== SUMMARY OF MEMBERS PER CHURCH ===',
-    'Head Pastor / Admin': '',
-    'Admin Contact Email': '',
-    'Admin Phone': '',
-    'Total Registered Members': '',
-    'First Timers Count': '',
-    'General Members Count': '',
-    'Foundation School Enrolled': '',
-    'Foundation School Graduated': ''
+  exportAggregateAnalyticsExcel(normalizeExportPayload(arg1, arg2, arg3, arg4, arg5, arg6), {
+    filenamePrefix: typeof arg2 === 'string' ? arg2 : (arg5 || 'CEKB_Aggregate_Attendance_Report'),
   });
-
-  data.churches.forEach(church => {
-    const matchingAdmin = data.churchAdmins.find(
-      a => (a?.churchName || '').toLowerCase() === (church?.name || '').toLowerCase()
-    );
-    const churchMembers = data.members.filter(
-      m => (m?.church || '').toLowerCase() === (church?.name || '').toLowerCase()
-    );
-
-    const firstTimers = churchMembers.filter(m => m.status === 'First Timer' || (m.serviceCount || 0) <= 1).length;
-    const generalMembers = churchMembers.filter(m => m.status === 'General Member' || (m.serviceCount || 0) > 1).length;
-    const enrolledFs = churchMembers.filter(m => (m.foundationClass || 0) > 0 && (m.foundationClass || 0) < 7).length;
-    const graduatedFs = churchMembers.filter(m => (m.foundationClass || 0) >= 7).length;
-
-    churchSummaryRows.push({
-      'Church Branch Name': church.name,
-      'Head Pastor / Admin': church.pastor || matchingAdmin?.adminName || 'Branch Pastor',
-      'Admin Contact Email': matchingAdmin?.adminEmail || `${church.name.toLowerCase().replace(/\s+/g, '')}@cekorlebu.org`,
-      'Admin Phone': matchingAdmin?.adminPhone || '+233 24 000 0000',
-      'Total Registered Members': churchMembers.length,
-      'First Timers Count': firstTimers,
-      'General Members Count': generalMembers,
-      'Foundation School Enrolled': enrolledFs,
-      'Foundation School Graduated': graduatedFs
-    });
-  });
-
-  // Empty separator row
-  churchSummaryRows.push({});
-  churchSummaryRows.push({
-    'Church Branch Name': '=== DETAILED MEMBER ROSTER ===',
-    'Head Pastor / Admin': '',
-    'Admin Contact Email': '',
-    'Admin Phone': '',
-    'Total Registered Members': '',
-    'First Timers Count': '',
-    'General Members Count': '',
-    'Foundation School Enrolled': '',
-    'Foundation School Graduated': ''
-  });
-
-  // Detailed Member Roster
-  data.members.forEach(m => {
-    churchSummaryRows.push({
-      'Church Branch Name': m.church || 'Unassigned',
-      'Head Pastor / Admin': m.fullName,
-      'Admin Contact Email': m.email || 'N/A',
-      'Admin Phone': m.phone || 'N/A',
-      'Total Registered Members': m.id,
-      'First Timers Count': m.role || 'Member',
-      'General Members Count': m.status || 'General Member',
-      'Foundation School Enrolled': `Class ${m.foundationClass || 0}`,
-      'Foundation School Graduated': m.joinDate || new Date().toISOString().slice(0, 10)
-    });
-  });
-
-  const ws1 = XLSX.utils.json_to_sheet(safeRows(churchSummaryRows as any[]));
-  // Auto column widths
-  ws1['!cols'] = [
-    { wch: 28 },
-    { wch: 24 },
-    { wch: 28 },
-    { wch: 18 },
-    { wch: 22 },
-    { wch: 25 },
-    { wch: 18 },
-    { wch: 20 },
-    { wch: 24 },
-    { wch: 24 }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws1, 'Members Per Church');
-
-  // =========================================================================
-  // SHEET 2: Total Attendance per Service Date
-  // =========================================================================
-  // Aggregate attendance grouped by (Date + Church + ServiceType)
-  const attendanceAggMap = new Map<string, {
-    date: string;
-    church: string;
-    serviceType: string;
-    totalAttendees: number;
-    firstTimers: number;
-    regularMembers: number;
-    verifiedBy: Set<string>;
-  }>();
-
-  data.attendanceRecords.forEach(att => {
-    const dateStr = att.date || new Date().toISOString().slice(0, 10);
-    const churchStr = att.church || 'Unassigned';
-    const srvStr = att.serviceType || 'Sunday Service';
-    const key = `${dateStr}__${churchStr}__${srvStr}`;
-
-    const existing = attendanceAggMap.get(key) || {
-      date: dateStr,
-      church: churchStr,
-      serviceType: srvStr,
-      totalAttendees: 0,
-      firstTimers: 0,
-      regularMembers: 0,
-      verifiedBy: new Set<string>()
-    };
-
-    existing.totalAttendees += 1;
-    if (att.memberRole === 'First Timer') {
-      existing.firstTimers += 1;
-    } else {
-      existing.regularMembers += 1;
-    }
-    if (att.verifiedBy) existing.verifiedBy.add(att.verifiedBy);
-
-    attendanceAggMap.set(key, existing);
-  });
-
-  const attendanceSummaryRows: any[] = [];
-  attendanceSummaryRows.push({
-    'Attendance Date': '=== SERVICE ATTENDANCE SUMMARY PER DATE ===',
-    'Church Branch': '',
-    'Service Program': '',
-    'Total Attendees': '',
-    'First Timers Checked-In': '',
-    'Regular Members Checked-In': '',
-    'Verification Officer(s)': ''
-  });
-
-  Array.from(attendanceAggMap.values())
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .forEach(item => {
-      attendanceSummaryRows.push({
-        'Attendance Date': item.date,
-        'Church Branch': item.church,
-        'Service Program': item.serviceType,
-        'Total Attendees': item.totalAttendees,
-        'First Timers Checked-In': item.firstTimers,
-        'Regular Members Checked-In': item.regularMembers,
-        'Verification Officer(s)': Array.from(item.verifiedBy).join(', ') || 'QR / Self Check-In'
-      });
-    });
-
-  // Empty separator and raw logs
-  attendanceSummaryRows.push({});
-  attendanceSummaryRows.push({
-    'Attendance Date': '=== DETAILED ATTENDANCE LOG RECORDS ===',
-    'Church Branch': '',
-    'Service Program': '',
-    'Total Attendees': '',
-    'First Timers Checked-In': '',
-    'Regular Members Checked-In': '',
-    'Verification Officer(s)': ''
-  });
-
-  data.attendanceRecords.forEach(att => {
-    attendanceSummaryRows.push({
-      'Attendance Date': att.date || new Date().toISOString().slice(0, 10),
-      'Church Branch': att.church || 'Unassigned',
-      'Service Program': att.serviceType || 'Sunday Service',
-      'Total Attendees': att.memberName || 'Attendee',
-      'First Timers Checked-In': att.memberId || 'N/A',
-      'Regular Members Checked-In': att.memberRole || 'Member',
-      'Verification Officer(s)': `${att.verifiedBy || 'QR Station'} (${att.timestamp || '09:00 AM'})`
-    });
-  });
-
-  const ws2 = XLSX.utils.json_to_sheet(safeRows(attendanceSummaryRows as any[]));
-  ws2['!cols'] = [
-    { wch: 18 },
-    { wch: 24 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 24 },
-    { wch: 30 }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws2, 'Attendance Per Date');
-
-  // =========================================================================
-  // SHEET 3: New Members per Service
-  // =========================================================================
-  // Extract all members with status 'First Timer' or serviceCount <= 1 or matching check-in
-  const newMembersRows: any[] = [];
-  newMembersRows.push({
-    'Service / Join Date': '=== FIRST TIMERS & NEW MEMBERS DIRECTORY ===',
-    'Member ID': '',
-    'Full Name': '',
-    'Phone Contact': '',
-    'Email Address': '',
-    'Church Branch': '',
-    'Service Type Attended': '',
-    'Occupation': '',
-    'Educational Level': '',
-    'Foundation Class': '',
-    'Invited By / Leader': '',
-    'Status': ''
-  });
-
-  const firstTimerList = data.members.filter(
-    m => m.status === 'First Timer' || (m.serviceCount || 0) <= 1
-  );
-
-  firstTimerList.forEach(m => {
-    // Find matching attendance record if any to get service type
-    const attMatch = data.attendanceRecords.find(
-      a => a.memberId === m.id || (a.memberName || '').toLowerCase() === (m.fullName || '').toLowerCase()
-    );
-
-    newMembersRows.push({
-      'Service / Join Date': m.joinDate || attMatch?.date || new Date().toISOString().slice(0, 10),
-      'Member ID': m.id,
-      'Full Name': m.fullName,
-      'Phone Contact': m.phone || 'N/A',
-      'Email Address': m.email || 'N/A',
-      'Church Branch': m.church || 'Unassigned',
-      'Service Type Attended': attMatch?.serviceType || 'Sunday Service',
-      'Occupation': m.occupation || 'General',
-      'Educational Level': m.education || 'Tertiary',
-      'Foundation Class': `Class ${m.foundationClass || 0}`,
-      'Invited By / Leader': m.invitedBy || 'Self Walk-In',
-      'Status': m.status || 'First Timer'
-    });
-  });
-
-  const ws3 = XLSX.utils.json_to_sheet(safeRows(newMembersRows as any[]));
-  ws3['!cols'] = [
-    { wch: 18 },
-    { wch: 16 },
-    { wch: 24 },
-    { wch: 18 },
-    { wch: 25 },
-    { wch: 22 },
-    { wch: 20 },
-    { wch: 20 },
-    { wch: 20 },
-    { wch: 18 },
-    { wch: 24 },
-    { wch: 16 }
-  ];
-  XLSX.utils.book_append_sheet(wb, ws3, 'New Members Per Service');
-
-  // Generate binary and trigger download
-  const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `${filenamePrefix}_${today}.xlsx`);
 }
 
-/**
- * Multi-section structured CSV export fallback
- */
+/** Privacy-preserving summary CSV used only if Excel generation is unavailable. */
 export function exportMultiSectionCSV(
   arg1: ExportDataPayload | Member[],
   arg2?: AttendanceRecord[] | string,
   arg3?: ChurchBranch[],
   arg4?: ChurchAdminAccount[],
-  arg5?: string
+  arg5?: string,
+  arg6?: Leader[],
 ): void {
-  const { data, filenamePrefix } = normalizeExportPayload(arg1, arg2, arg3, arg4, arg5);
-  const lines: string[] = [];
-
-  // SECTION 1
-  lines.push('=== SHEET 1: TOTAL MEMBERS PER CHURCH (ADMIN) ===');
-  lines.push('Church Name,Head Pastor / Admin,Admin Email,Admin Phone,Total Members,First Timers,General Members');
-  data.churches.forEach(church => {
-    const matchingAdmin = data.churchAdmins.find(
-      a => (a?.churchName || '').toLowerCase() === (church?.name || '').toLowerCase()
-    );
-    const churchMembers = data.members.filter(
-      m => (m?.church || '').toLowerCase() === (church?.name || '').toLowerCase()
-    );
-    const firstTimers = churchMembers.filter(m => m.status === 'First Timer' || (m.serviceCount || 0) <= 1).length;
-    const generalMembers = churchMembers.filter(m => m.status === 'General Member' || (m.serviceCount || 0) > 1).length;
-
-    lines.push(
-      `${csvQ(church.name)},${csvQ(church.pastor || matchingAdmin?.adminName || '')},${csvQ(matchingAdmin?.adminEmail || '')},${csvQ(matchingAdmin?.adminPhone || '')},${churchMembers.length},${firstTimers},${generalMembers}`
-    );
-  });
-
-  lines.push('');
-  lines.push('=== SHEET 2: TOTAL ATTENDANCE PER SERVICE DATE ===');
-  lines.push('Attendance Date,Church Branch,Service Program,Attendee Name,Member ID,Member Role,Verified By');
-  data.attendanceRecords.forEach(att => {
-    lines.push(
-      `${csvQ(att.date || '')},${csvQ(att.church || '')},${csvQ(att.serviceType || '')},${csvQ(att.memberName || '')},${csvQ(att.memberId || '')},${csvQ(att.memberRole || '')},${csvQ(att.verifiedBy || '')}`
-    );
-  });
-
-  lines.push('');
-  lines.push('=== SHEET 3: NEW MEMBERS PER SERVICE ===');
-  lines.push('Join Date,Member ID,Full Name,Phone,Email,Church,Occupation,Education,Foundation Class,Invited By,Status');
-  const firstTimerList = data.members.filter(
-    m => m.status === 'First Timer' || (m.serviceCount || 0) <= 1
+  downloadAggregateCsv(
+    normalizeExportPayload(arg1, arg2, arg3, arg4, arg5, arg6),
+    typeof arg2 === 'string' ? arg2 : (arg5 || 'CEKB_Aggregate_Report'),
   );
-  firstTimerList.forEach(m => {
-    lines.push(
-      `${csvQ(m.joinDate || '')},${csvQ(m.id)},${csvQ(m.fullName)},${csvQ(m.phone || '')},${csvQ(m.email || '')},${csvQ(m.church || '')},${csvQ(m.occupation || '')},${csvQ(m.education || '')},"Class ${m.foundationClass || 0}",${csvQ(m.invitedBy || '')},${csvQ(m.status || '')}`
-    );
-  });
-
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

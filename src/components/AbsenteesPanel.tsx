@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AttendanceRecord, Leader, Member } from '../types';
 import { AbsenceRecord, fetchAbsenceRecords, saveAbsenceFollowUp } from '../lib/supabaseService';
 import { useToast } from '../context/ToastContext';
+import { getMemberAttendanceCount, isFirstTimer } from '../utils/memberStatus';
 
 interface AbsenteesPanelProps {
   members: Member[];
@@ -194,7 +195,7 @@ export const AbsenteesPanel: React.FC<AbsenteesPanelProps> = ({
             const leader = leaderFor(member);
             const leaderMsg = waLink(leader?.contact || '', `Hello ${leader?.fullName || ''}, ${member.fullName} (${member.phone || 'no phone'}) missed ${serviceType} on ${serviceDate}. Please follow up and let the admin know the reason. — CE Korle Bu`);
             const memberMsg = waLink(member.phone || '', `Hello ${member.fullName}, we missed you at ${serviceType} on ${serviceDate}. We hope all is well! — CE Korle Bu`);
-            const isFirstTimer = member.status === 'First Timer';
+            const firstTimer = isFirstTimer(member, attendanceRecords);
             const saved = savedFor(member.id);
             const draft = drafts[member.id] || { reason: saved?.reason || '', note: saved?.note || '' };
             return (
@@ -204,10 +205,10 @@ export const AbsenteesPanel: React.FC<AbsenteesPanelProps> = ({
                   <div className="text-xs text-slate-500 truncate">
                     {member.church} · {member.invitedBy || 'No leader yet'}
                   </div>
-                  {isFirstTimer && (
+                  {firstTimer && (
                     <div className="flex flex-wrap gap-1 mt-1 text-[11px] font-semibold">
                       <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800">First timer</span>
-                      <span className={`px-2 py-0.5 rounded-full ${(member.serviceCount || 0) >= 2 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>Services {Math.min(member.serviceCount || 0, 2)}/2</span>
+                      <span className={`px-2 py-0.5 rounded-full ${getMemberAttendanceCount(member, attendanceRecords) >= 2 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>Services {Math.min(getMemberAttendanceCount(member, attendanceRecords), 2)}/2</span>
                       <span className={`px-2 py-0.5 rounded-full ${(member.foundationClass || 0) >= 7 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>Foundation {member.foundationClass || 0}/7</span>
                     </div>
                   )}

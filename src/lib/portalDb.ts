@@ -105,20 +105,6 @@ function getDefaultLocalStore(): LocalDbStore {
       ],
       user_profiles: [
         {
-          id: 'usr-super-1',
-          username: 'group.pastor',
-          email: 'group.pastor@cekorlebu.org',
-          full_name: 'Group Pastor',
-          role: 'Superadmin',
-          church_name: 'GCYC Group HQ',
-          zone: 'Zone 1 (Korle Bu)',
-          phone: '+233 24 123 4567',
-          password_hash: 'admin123',
-          admin_verified: true,
-          created_at: now,
-          updated_at: now,
-        },
-        {
           id: 'usr-makarios-1',
           username: 'pastor.michael@makarios.org',
           email: 'pastor.michael@makarios.org',

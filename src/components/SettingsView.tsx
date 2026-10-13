@@ -13,7 +13,11 @@ import {
   saveServiceTypeToSupabase,
   deleteServiceTypeFromSupabase,
   fetchServiceTypesFromSupabase,
-  saveStoredSession
+  getStoredSession,
+  saveStoredSession,
+  uploadProfilePhoto,
+  getProfilePhotoFolder,
+  updateProfilePhotoInSupabase
 } from '../lib/supabaseService';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { ReportCodesPanel } from './ReportCodesPanel';
@@ -21,6 +25,7 @@ import { UshersPanel } from './UshersPanel';
 import { Button } from './Button';
 import { rawPortal } from '../lib/rawPortal';
 import { estimateSmsCost } from '../lib/smsPricing';
+import { MemberPhoto } from './MemberPhoto';
 
 interface SettingsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -111,12 +116,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
 
   // Superadmin Profile states
-  const [pastorName, setPastorName] = useState(user.name || 'Group Pastor');
-  const [hqEmail, setHqEmail] = useState(user.email || 'group.pastor@cekorlebu.org');
-  const [pastorPhone, setPastorPhone] = useState((user as any).phone || '+233 24 123 4567');
-  const [hqChurchName, setHqChurchName] = useState(user.church || 'GCYC Group HQ');
-  const [hqZone, setHqZone] = useState(user.zone || 'Zone 1 (Korle Bu)');
+  const [pastorName, setPastorName] = useState(user.name || '');
+  const [hqEmail, setHqEmail] = useState(user.email || '');
+  const [pastorPhone, setPastorPhone] = useState(user.phone || '');
+  const [hqChurchName, setHqChurchName] = useState(user.church || '');
+  const [hqZone, setHqZone] = useState(user.zone || '');
   const [isSavingSuperadminProfile, setIsSavingSuperadminProfile] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(
+    (user as AuthSessionUser).avatar || (user as UserProfile).avatarUrl || '',
+  );
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
+  const profilePhotoInput = useRef<HTMLInputElement>(null);
 
   // Other Superadmin states
   const [securityCode, setSecurityCode] = useState('YOM26');
@@ -130,11 +140,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Church Admin profile states (initialized with details entered at signup)
   const [branchName, setBranchName] = useState(matchingChurch?.name || user.church || '');
-  const [pastorInCharge, setPastorInCharge] = useState(matchingChurch?.pastor || 'Pastor Emmanuel');
-  const [adminFullName, setAdminFullName] = useState(matchingAdmin?.adminName || user.name || 'Branch Admin');
-  const [adminEmail, setAdminEmail] = useState(matchingAdmin?.adminEmail || user.email || 'admin@cekorlebu.org');
-  const [adminPhone, setAdminPhone] = useState(matchingAdmin?.adminPhone || '+233 24 555 0000');
-  const [adminZone, setAdminZone] = useState(matchingChurch?.zone || matchingAdmin?.zone || 'Zone 1 (Korle Bu)');
+  const [pastorInCharge, setPastorInCharge] = useState(matchingChurch?.pastor || '');
+  const [adminFullName, setAdminFullName] = useState(matchingAdmin?.adminName || user.name || '');
+  const [adminEmail, setAdminEmail] = useState(matchingAdmin?.adminEmail || user.email || '');
+  const [adminPhone, setAdminPhone] = useState(matchingAdmin?.adminPhone || user.phone || '');
+  const [adminZone, setAdminZone] = useState(matchingChurch?.zone || matchingAdmin?.zone || user.zone || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const [scannerSound, setScannerSound] = useState(true);
@@ -146,17 +156,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Load Superadmin Profile from Supabase on mount
   useEffect(() => {
     if (isSuperadmin) {
-      fetchSuperadminProfileFromSupabase().then(prof => {
+      fetchSuperadminProfileFromSupabase(user.email).then(prof => {
         if (prof) {
           if (prof.name) setPastorName(prof.name);
           if (prof.email) setHqEmail(prof.email);
           if (prof.phone) setPastorPhone(prof.phone);
           if (prof.churchName) setHqChurchName(prof.churchName);
           if (prof.zone) setHqZone(prof.zone);
+          if (prof.photoUrl) setProfilePhotoUrl(prof.photoUrl);
         }
       }).catch(() => {});
     }
-  }, [isSuperadmin]);
+  }, [isSuperadmin, user.email]);
 
   // Load service types on mount
   useEffect(() => {
@@ -184,11 +195,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [toastMessage, setToastMessage] = useState('');
   const canSendAdminSms = isSuperadmin || user.role === 'Church Admin' || (user.role as string) === 'Church Pastor';
+  const canChangeProfilePhoto = isSuperadmin || user.role === 'Church Admin' || (user.role as string) === 'Church Pastor';
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3500);
   };
+
+  const handleProfilePhotoSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      triggerToast('Choose an image smaller than 5 MB.');
+      return;
+    }
+    if (!user.email) {
+      triggerToast('This account has no email address for photo authorization.');
+      return;
+    }
+
+    setIsUploadingProfilePhoto(true);
+    try {
+      const folder = await getProfilePhotoFolder(user.email);
+      const path = await uploadProfilePhoto(folder, file);
+      if (!path) {
+        triggerToast('Profile photo upload failed. Please try again.');
+        return;
+      }
+      const saved = await updateProfilePhotoInSupabase(path);
+      if (!saved) {
+        triggerToast('Photo uploaded but could not be linked to your account. Please retry.');
+        return;
+      }
+      setProfilePhotoUrl(path);
+      onUpdateUser?.({ avatar: path });
+      const session = getStoredSession();
+      if (session) saveStoredSession({ ...session, avatar: path });
+      triggerToast('Profile photo updated.');
+    } catch (error) {
+      console.error('Profile photo update failed:', error);
+      triggerToast('Profile photo could not be updated.');
+    } finally {
+      setIsUploadingProfilePhoto(false);
+    }
+  };
+
+  const profilePhotoControl = (
+    <div className="flex items-center gap-4">
+      <MemberPhoto
+        photoUrl={profilePhotoUrl}
+        initials={user.name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'A'}
+        size={56}
+        className="rounded-full"
+      />
+      <div className="space-y-1.5">
+        <input
+          ref={profilePhotoInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic"
+          className="hidden"
+          onChange={handleProfilePhotoSelection}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={isUploadingProfilePhoto}
+          onClick={() => profilePhotoInput.current?.click()}
+        >
+          {isUploadingProfilePhoto ? 'Uploading…' : 'Change profile photo'}
+        </Button>
+        <p className="text-[11px] text-slate-500">Image files up to 5 MB.</p>
+      </div>
+    </div>
+  );
 
   const handleSaveSuperadminProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,33 +280,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const cleanZone = hqZone.trim();
 
     try {
-      await saveSuperadminProfileToSupabase({
+      const saved = await saveSuperadminProfileToSupabase({
+        id: user.id,
         name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
         churchName: cleanChurchName,
-        zone: cleanZone
+        zone: cleanZone,
+        photoUrl: profilePhotoUrl,
       });
+      if (!saved) {
+        triggerToast('Could not save the Group Pastor profile. Please retry.');
+        return;
+      }
 
-      // Update state in App.tsx
       onUpdateUser?.({
         name: cleanName,
         email: cleanEmail,
         church: cleanChurchName,
         zone: cleanZone,
-        phone: cleanPhone
-      });
-
-      // Update local storage session so it persists on reload
-      saveStoredSession({
-        id: 'usr-1',
-        name: cleanName,
-        role: 'Superadmin',
-        church: cleanChurchName,
-        zone: cleanZone,
-        avatar: (user as any).avatar || (user as any).avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-        email: cleanEmail,
-        phone: cleanPhone
+        phone: cleanPhone,
+        avatar: profilePhotoUrl,
       });
 
       onAddAuditLog?.({
@@ -242,7 +316,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       triggerToast('HQ & Group Profile saved and updated in Supabase!');
     } catch (err: any) {
       console.error('Error saving Superadmin profile:', err);
-      triggerToast('Saved profile locally!');
+      triggerToast('Could not save the Group Pastor profile. Please retry.');
     } finally {
       setIsSavingSuperadminProfile(false);
     }
@@ -332,20 +406,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const cleanChurchName = hqChurchName.trim();
       const cleanZone = hqZone.trim();
 
-      await saveSuperadminProfileToSupabase({
+      const saved = await saveSuperadminProfileToSupabase({
+        id: user.id,
         name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
         churchName: cleanChurchName,
-        zone: cleanZone
+        zone: cleanZone,
+        photoUrl: profilePhotoUrl,
       });
+      if (!saved) {
+        triggerToast('Could not save the Group Pastor profile. Please retry.');
+        return;
+      }
 
       onUpdateUser?.({
         name: cleanName,
         email: cleanEmail,
         church: cleanChurchName,
         zone: cleanZone,
-        phone: cleanPhone
+        phone: cleanPhone,
+        avatar: profilePhotoUrl,
       });
 
       await saveAllAdminSettingsToSupabase({
@@ -459,6 +540,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
+                <div className="pb-4 border-b border-slate-100">
+                  {canChangeProfilePhoto && profilePhotoControl}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">Group Pastor Full Name *</label>
@@ -479,7 +564,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       required
                       value={hqEmail}
                       onChange={(e) => setHqEmail(e.target.value)}
-                      placeholder="group.pastor@cekorlebu.org"
+                      placeholder="name@example.com"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-semibold text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
                     />
                   </div>
@@ -560,6 +645,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   <div className="space-y-3 text-xs">
+                    <div className="pb-3 border-b border-slate-100">
+                      {canChangeProfilePhoto && profilePhotoControl}
+                    </div>
                     <div>
                       <label className="block text-slate-700 font-semibold mb-1">Admin Full Name</label>
                       <input
@@ -1131,7 +1219,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   System Data Persistence, Backups & Comprehensive Exports
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Export multi-sheet Excel workbooks and multi-section CSVs containing member statistics, service attendance logs, and new member conversions.
+                  Export one group summary sheet and one aggregate analytics sheet per church. Exports contain totals only, not member-level records.
                 </p>
               </div>
               <span className="material-symbols-outlined text-blue-600 text-[24px]">database</span>
@@ -1145,17 +1233,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>Multi-Sheet System Export (Excel .xlsx)</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Generates an integrated spreadsheet workbook featuring 3 dedicated sheets:
+                  Generates an aggregate workbook with a group overview followed by one detailed worksheet per registered church:
                 </p>
                 <ul className="text-xs text-slate-700 list-disc list-inside space-y-1 font-medium">
-                  <li><strong>Sheet 1:</strong> Total members per church (admin)</li>
-                  <li><strong>Sheet 2:</strong> Total attendance per service date</li>
-                  <li><strong>Sheet 3:</strong> New members / First timers per service</li>
+                  <li>Attendance, absentee, first-timer, and leader totals</li>
+                  <li>Church growth by month and leader type</li>
+                  <li>Attendance history and peak check-in times</li>
+                  <li>No member names or contact details</li>
                 </ul>
                 <div className="pt-2 flex gap-2 flex-wrap">
                   <button
                     onClick={() => {
-                      exportMultiSheetExcel(members, attendanceRecords, churches);
+                      const inScope = (church: string) => isSuperadmin || church.toLowerCase() === user.church.toLowerCase();
+                      const reportData = {
+                        members: members.filter(member => inScope(member.church)),
+                        attendanceRecords: attendanceRecords.filter(record => inScope(record.church)),
+                        churches: churches.filter(church => inScope(church.name)),
+                        churchAdmins: churchAdmins.filter(admin => inScope(admin.churchName)),
+                        leaders: leaders.filter(leader => inScope(leader.church)),
+                      };
+                      exportMultiSheetExcel(reportData, isSuperadmin ? 'CEKB_Group_Aggregate_Report' : 'CEKB_Church_Aggregate_Report');
                       triggerToast('Exported multi-sheet Excel workbook!');
                     }}
                     className="bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-sm active:scale-98"
@@ -1166,8 +1263,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <button
                     onClick={() => {
-                      exportMultiSectionCSV(members, attendanceRecords, churches);
-                      triggerToast('Exported multi-section CSV report!');
+                      const inScope = (church: string) => isSuperadmin || church.toLowerCase() === user.church.toLowerCase();
+                      exportMultiSectionCSV({
+                        members: members.filter(member => inScope(member.church)),
+                        attendanceRecords: attendanceRecords.filter(record => inScope(record.church)),
+                        churches: churches.filter(church => inScope(church.name)),
+                        churchAdmins: churchAdmins.filter(admin => inScope(admin.churchName)),
+                        leaders: leaders.filter(leader => inScope(leader.church)),
+                      });
+                      triggerToast('Exported aggregate CSV report!');
                     }}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer border border-slate-200 active:scale-98"
                   >

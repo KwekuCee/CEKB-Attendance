@@ -401,7 +401,6 @@ INSERT INTO public.churches (id, name, pastor_name, members_count, status, zone)
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO public.user_profiles (username, email, password_hash, full_name, role, church_id, church_name, zone, avatar_url) VALUES
-  ('group.pastor','group.pastor@cekorlebu.org', extensions.crypt('CEKBU@2026', extensions.gen_salt('bf')),'Pastor Joseph (Group Pastor)','Superadmin','a1b2c3d4-0000-0000-0000-000000000001','GCYC Group HQ','Zone 1 (Korle Bu)','https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'),
   ('admin.korlebu1','admin.korlebu1@cekorlebu.org', extensions.crypt('CEKBU@2026', extensions.gen_salt('bf')),'Brother Michael (Admin)','Church Admin','a1b2c3d4-0000-0000-0000-000000000001','GCYC 1','Zone 1 (Korle Bu)','https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'),
   ('admin.korlebu2','admin.korlebu2@cekorlebu.org', extensions.crypt('CEKBU@2026', extensions.gen_salt('bf')),'Sister Debra (Admin)','Church Admin','a1b2c3d4-0000-0000-0000-000000000002','GCYC 2','Zone 1 (Korle Bu)','https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200')
 ON CONFLICT (email) DO NOTHING;

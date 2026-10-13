@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getSupabase } from '../lib/supabase';
 import { AttendanceRecord, Leader, Member } from '../types';
+import { isFirstTimer } from '../utils/memberStatus';
 
 interface Props {
   members: Member[];
@@ -28,7 +29,7 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
       if (!map.has(k)) map.set(k, { members: 0, checkins: 0, firstTimers: 0, leaders: 0 });
       return map.get(k)!;
     };
-    members.forEach(m => { const v = get(m.church); v.members++; if (m.status === 'First Timer') v.firstTimers++; });
+    members.forEach(m => { const v = get(m.church); v.members++; if (isFirstTimer(m, attendanceRecords)) v.firstTimers++; });
     leaders.forEach(l => get(l.church).leaders++);
     attendanceRecords.forEach(r => { if ((r.date || '') >= since) get(r.church).checkins++; });
     return Array.from(map.entries()).sort((a, b) => b[1].checkins - a[1].checkins);
@@ -68,7 +69,7 @@ export const InsightsPanel: React.FC<Props> = ({ members, leaders, attendanceRec
   const monthStart = new Date().toISOString().slice(0, 8) + '01';
   const progress = {
     checkins: attendanceRecords.filter(r => (r.date || '') >= monthStart).length,
-    firstTimers: members.filter(m => m.status === 'First Timer' && (m.joinDate || '') >= monthStart).length,
+    firstTimers: members.filter(m => isFirstTimer(m, attendanceRecords) && (m.joinDate || '') >= monthStart).length,
     members: members.length,
   };
 

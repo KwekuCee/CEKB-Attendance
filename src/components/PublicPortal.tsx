@@ -22,7 +22,7 @@ interface PublicPortalProps {
   onConfirmAttendance: (record: AttendanceRecord) => void;
   onAddLeader: (leader: Leader) => void;
   onAddChurchAdmin: (admin: ChurchAdminAccount, branch: ChurchBranch) => void;
-  onLoginSuccess: (userRole?: AuthSessionUser['role'], userChurch?: string, adminName?: string, userEmail?: string) => void;
+  onLoginSuccess: (user: AuthSessionUser) => void;
   onAddMember: (member: Member) => void;
 }
 
@@ -630,7 +630,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         if (result.error === 'otp_required') {
           setOtpStep(true); setOtpCode('');
           setLoginError('');
-          setOtpInfo(`We emailed a 6-digit sign-in code to ${(result as any).otpEmail || 'your email'}. Enter it below.`);
+          setOtpInfo(`We emailed a 6-digit sign-in code to ${result.otpEmail || 'your email'}. Enter it below.`);
         } else if (result.error === 'otp_invalid') {
           setLoginError('That code is not right. Check the email and try again.');
         } else if ((result.error || '') === 'email_unverified') {
@@ -644,12 +644,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       }
 
       // The account's role (returned by the server) decides where the user lands.
-      onLoginSuccess(
-        result.user.role,
-        result.user.church,
-        result.user.name,
-        result.user.email
-      );
+      onLoginSuccess(result.user);
     } catch (err: any) {
       setLoginError(err?.message || 'Database connection error during authentication. Please retry.');
     } finally {

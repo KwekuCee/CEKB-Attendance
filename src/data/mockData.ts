@@ -5,20 +5,10 @@ import {
   TopLeader,
   AuditLogItem,
   AttendanceRecord,
-  UserProfile,
   Leader,
   ServiceTypeItem,
   PromotionQueueItem
 } from '../types';
-
-export const INITIAL_USER: UserProfile = {
-  name: 'Group Pastor',
-  email: 'pastor@cekorlebu.org',
-  role: 'Superadmin',
-  church: '',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-  isSuperadmin: true
-};
 
 export const INITIAL_LEADERS: Leader[] = [];
 

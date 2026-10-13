@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import type { AuthSessionUser, UserProfile, CellReport, ViewType } from '../types';
+import type { AuthSessionUser, UserProfile, CellReport, ViewType, ChurchBranch } from '../types';
 import { fetchCellReports, GRID_ROWS, EVANGELISM_FIELDS } from '../lib/cellReports';
 import { neutralizeCell, escHtml } from '../utils/csvSafe';
 
 interface CellReportsViewProps {
   user: UserProfile | AuthSessionUser;
+  churches: ChurchBranch[];
   onNavigate: (view: ViewType) => void;
 }
 
@@ -85,7 +86,7 @@ function printReport(report: CellReport) {
  * Branch admins only ever receive their own branch's reports (enforced server
  * side); the group account sees every branch and can filter.
  */
-export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNavigate }) => {
+export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches: registeredChurches, onNavigate }) => {
   const isSuperadmin = user.role === 'Superadmin';
   const [reports, setReports] = useState<CellReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,8 +109,8 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
   }, []);
 
   const churches = useMemo(
-    () => Array.from(new Set(reports.map(r => r.church).filter(Boolean))).sort(),
-    [reports],
+    () => registeredChurches.map(church => church.name).filter(Boolean).sort(),
+    [registeredChurches],
   );
 
   const filtered = useMemo(

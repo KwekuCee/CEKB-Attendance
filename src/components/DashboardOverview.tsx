@@ -10,6 +10,7 @@ import { Button } from './Button';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { ImportDataPanel } from './ImportDataPanel';
 import { csvQ } from '../utils/csvSafe';
+import { isFirstTimer } from '../utils/memberStatus';
 
 
 interface DashboardOverviewProps {
@@ -50,7 +51,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const isSuperadmin = user.role === 'Superadmin';
   const resolvedChurch = (() => {
     if (!user.church || user.church.toLowerCase().includes('calabar')) {
-      return churches[0]?.name || 'MAKARIOS CHURCH';
+      return churches[0]?.name || '';
     }
     const exists = churches.some(c => c && c.name && c.name.toLowerCase() === user.church.toLowerCase());
     if (!exists && !isSuperadmin && churches.length > 0) {
@@ -58,7 +59,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     }
     return user.church;
   })();
-  const currentChurchName = resolvedChurch || churches[0]?.name || 'MAKARIOS CHURCH';
+  const currentChurchName = resolvedChurch || churches[0]?.name || '';
   const matchingBranch = churches.find(c => c && c.name && c.name.toLowerCase() === currentChurchName.toLowerCase());
   const matchingAdmin = churchAdmins.find(a => a && a.churchName && a.churchName.toLowerCase() === currentChurchName.toLowerCase());
   const currentBranchPastor = matchingBranch?.pastor || matchingAdmin?.adminName || (user.role !== 'Superadmin' ? user.name : 'Branch Pastor');
@@ -104,11 +105,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
 
   // This Week's Members: members who recorded attendance for the first time or registered as first timers
-  const thisWeekNewMembers = branchMembers.filter(m =>
-    m.status === 'First Timer' ||
-    m.role === 'First Timer' ||
-    (m.serviceCount !== undefined && m.serviceCount <= 1)
-  );
+  const thisWeekNewMembers = branchMembers.filter(m => isFirstTimer(m, branchAttendance));
 
   // --- Dynamic Database Analytics (Zero Demo Data) ---
   const totalBranchMembers = branchMembers.length;
@@ -145,7 +142,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const peakPercent = totalAttendance > 0 ? Math.round((peakArrivalCount / totalAttendance) * 100) : 0;
   const latePercent = totalAttendance > 0 ? Math.max(0, 100 - earlyPercent - peakPercent) : 0;
 
-  const regularMembersCount = branchMembers.filter(m => (m.serviceCount || 0) > 1 || m.status === 'General Member').length;
+  const regularMembersCount = branchMembers.filter(m => !isFirstTimer(m, branchAttendance)).length;
   const foundationEnrolledCount = branchMembers.filter(m => (m.foundationClass || 0) > 0).length;
   const foundationGraduatedCount = branchMembers.filter(m => (m.foundationClass || 0) >= 7).length;
   const retentionPercent = totalBranchMembers > 0 ? Math.round((regularMembersCount / totalBranchMembers) * 100) : 0;
