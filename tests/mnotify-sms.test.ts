@@ -34,14 +34,14 @@ test('attendance code texts identify the code and explain how to keep it safe', 
   assert.match(buildAttendanceCodeSms('Kwame', 'LDR-001', 'leader'), /your leader code: LDR-001/);
 });
 
-test('SMS dispatch does not require an estimate rate but still rejects an empty balance', async () => {
+test('SMS dispatch requires the Developer-configured estimate rate and checks live balance', async () => {
   const edgeFunction = await readFile(
     new URL('../supabase/functions/portal-db/index.ts', import.meta.url),
     'utf8',
   );
-  assert.match(edgeFunction, /const unitRate = cfg\.unitRate !== null && cfg\.unitRate > 0 \? cfg\.unitRate : null/);
-  assert.match(edgeFunction, /if \(balance <= 0\) return json\(\{ error: \{ message: 'Your mNotify account has no SMS credits available\.'/);
-  assert.match(edgeFunction, /unit_rate: unitRate \?\? 0/);
+  assert.match(edgeFunction, /if \(cfg\.unitRate === null \|\| cfg\.unitRate <= 0\) \{\s*return json\(\{ error: \{ message: 'SMS sending is not configured yet\./);
+  assert.match(edgeFunction, /const unitRate = cfg\.unitRate;\s*const estimate = estimateSmsCost\(message, recipients\.length, unitRate\)/);
+  assert.match(edgeFunction, /if \(balance < estimate\.estimatedCost\)/);
 });
 
 test('copyable schemas include private mNotify request and SMS tables', () => {

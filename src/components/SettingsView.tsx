@@ -1802,9 +1802,8 @@ function SenderSmsWorkspace() {
   const sendSms = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedSenderId || !message.trim() || !validRecipients.length) return;
-    const confirmMessage = dashboard?.unitRate
-      ? `${validRecipients.length} recipient(s), ${estimate.pagesPerMessage} page(s) each, ${estimate.totalPages} total pages, estimated ${estimate.estimatedCost} credits. Continue?`
-      : `${validRecipients.length} recipient(s). A cost estimate is unavailable because the Developer has not set a credits-per-page rate. mNotify will apply the account tariff; actual credits will be shown after sending. Continue?`;
+    const confirmMessage =
+      `${validRecipients.length} recipient(s), ${estimate.pagesPerMessage} page(s) each, ${estimate.totalPages} total pages, estimated ${estimate.estimatedCost} credits. Continue?`;
     if (!window.confirm(confirmMessage)) return;
     setBusy(true);
     setError('');
@@ -1976,20 +1975,15 @@ function SenderSmsWorkspace() {
               <span className="text-sm font-semibold">Message</span>
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} maxLength={1000} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
               <span className="text-xs text-muted-foreground">
-                {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · {dashboard?.unitRate ? `estimated ${estimate.estimatedCost} credits` : 'cost estimate unavailable'}
+                {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · estimated {dashboard?.unitRate ? estimate.estimatedCost : 'rate not configured'} credits
               </span>
             </label>
-            {!dashboard?.unitRate && (
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-                The Developer has not configured the estimated credits-per-page rate. You can still send; mNotify will use the account tariff and report actual credits afterward.
-              </p>
-            )}
             {validRecipients.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 Select a recipient audience or choose members/leaders from the church directory before sending.
               </p>
             )}
-            <Button type="submit" disabled={busy || !selectedSenderId || !message.trim() || !validRecipients.length || (audience === 'custom' && recipientResult.invalid.length > 0) || validRecipients.length > 3000}>
+            <Button type="submit" disabled={busy || !selectedSenderId || !message.trim() || !validRecipients.length || (audience === 'custom' && recipientResult.invalid.length > 0) || validRecipients.length > 3000 || !dashboard?.unitRate}>
               {busy ? 'Sending…' : 'Review cost & send'}
             </Button>
           </form>

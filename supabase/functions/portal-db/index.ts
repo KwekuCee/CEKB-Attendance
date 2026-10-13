@@ -1421,8 +1421,11 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').maybeSingle();
     if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
     const cfg = await getMnotifyManagementConfig();
-    const unitRate = cfg.unitRate !== null && cfg.unitRate > 0 ? cfg.unitRate : null;
-    const estimate = estimateSmsCost(message, recipients.length, unitRate ?? 0);
+    if (cfg.unitRate === null || cfg.unitRate <= 0) {
+      return json({ error: { message: 'SMS sending is not configured yet. Ask the Developer to set the cost per SMS page.' } }, 503);
+    }
+    const unitRate = cfg.unitRate;
+    const estimate = estimateSmsCost(message, recipients.length, unitRate);
     const balanceResult = await getMnotifySmsBalance();
     const balance = Number(balanceResult.payload?.balance) + Number(balanceResult.payload?.bonus || 0);
     if (!balanceResult.ok || !Number.isFinite(balance)) {
@@ -1432,7 +1435,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     await saveMnotifyBalance(balance);
     await checkMnotifyLowBalance(balance);
     if (balance <= 0) return json({ error: { message: 'Your mNotify account has no SMS credits available.' } }, 402);
-    if (unitRate !== null && balance < estimate.estimatedCost) {
+    if (balance < estimate.estimatedCost) {
       return json({ error: { message: 'mNotify balance is too low for this estimated send.' }, estimate }, 402);
     }
 
@@ -1486,7 +1489,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       metadata: {
         channel: 'sms', provider: 'mNotify', campaign_id: campaignId,
         sender_id: sender.sender_name, recipient_count: recipients.length,
-        accepted: sent.accepted, failed: sent.failed, estimated_cost: unitRate === null ? null : estimate.estimatedCost,
+        accepted: sent.accepted, failed: sent.failed, estimated_cost: estimate.estimatedCost,
         actual_credits: sent.creditsUsed,
       },
     });

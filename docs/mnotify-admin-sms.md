@@ -12,7 +12,7 @@ The integration uses the current [BMS/mNotify OpenAPI documentation](https://dev
 | SMS balance | `GET https://api.mnotify.com/api/balance/sms?key=...`; response includes `balance` and `bonus`. |
 | Delivery report | `GET https://api.mnotify.com/api/campaign/{campaign_id}?key=...`; response contains `report[]` with `_id`, `recipient`, `status`, `campaign_id` and other report fields. |
 
-The current docs do **not** define a cost-quote endpoint or specify an SMS unit tariff. The Developer Console can be configured with a **mNotify credits per SMS page** rate for indicative estimates. If no rate is configured, authorized users can still send; the UI clearly warns that no estimate is available, the server checks that the live balance is positive, and the actual provider charge is recorded after dispatch. Campaigns without a configured estimate rate show `n/a` for the estimate. Actual provider charging can differ from an estimate. Delivery reasons are displayed only when mNotify includes them in a report.
+The current docs do **not** define a cost-quote endpoint or specify an SMS unit tariff. The Developer Console requires a manually configured **mNotify credits per SMS page** rate. The user-facing estimate is local and uses GSM-7/Unicode page rules; before dispatch the server checks the live SMS balance and after dispatch records mNotify's actual `credit_used`. Actual provider charging can differ from the estimate. Delivery reasons are displayed only when mNotify includes them in a report.
 
 ## Secrets and initial setup
 
