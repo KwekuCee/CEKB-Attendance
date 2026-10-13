@@ -1,5 +1,11 @@
 # Roadmap
 
+## Dashboard navigation (Oct 13, 2026)
+- [x] Remove the duplicate sidebar scanner shortcut
+- [x] Reserve space for the phone navigation outside the scrolling page
+- [x] Match the homepage navigation with rounded icon controls
+- [ ] Verify phone navigation, scrolling and desktop sidebar
+
 ## Mobile opening screen (Oct 9, 2026)
 - [x] Branded circular loader for three seconds on mobile page entry, followed by a smooth website reveal
 - [x] Verify logo rendering, opening transition and immediate desktop entry
