@@ -2550,7 +2550,7 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
                 campaign.sender_name,
                 fmt(campaign.recipient_count),
                 fmt(campaign.total_pages),
-                `${campaign.estimated_cost} / ${campaign.actual_credits ?? 'pending'}`,
+                `${Number(campaign.unit_rate) > 0 ? campaign.estimated_cost : 'n/a'} / ${campaign.actual_credits ?? 'pending'}`,
                 `${campaign.delivery?.delivered || 0} delivered / ${campaign.delivery?.failed || 0} failed / ${campaign.delivery?.pending || 0} pending`,
                 <Badge ok={campaign.status === 'sent'}>{campaign.status}</Badge>,
                 campaign.provider_campaign_id && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'refreshCampaign', id: campaign.id }, 'Delivery status refreshed')}>Refresh report</Button>,

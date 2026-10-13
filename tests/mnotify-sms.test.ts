@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { estimateSmsCost } from '../src/lib/smsPricing';
+import { buildAttendanceCodeSms } from '../supabase/functions/_shared/attendance-code-sms';
 import { readFile } from 'node:fs/promises';
 import { SUPABASE_SQL_SCHEMA, SUPABASE_UPDATE_SQL } from '../src/data/supabase_schema';
 
@@ -23,6 +24,24 @@ test('Unicode messages use 70/67 character page boundaries', () => {
   assert.equal(multi.pagesPerMessage, 2);
   assert.equal(multi.totalPages, 4);
   assert.equal(multi.estimatedCost, 5);
+});
+
+test('attendance code texts identify the code and explain how to keep it safe', () => {
+  const memberMessage = buildAttendanceCodeSms('Ama Mensah', 'CE-2901', 'member');
+  assert.match(memberMessage, /^Hello Ama Mensah, kindly find below your member code: CE-2901\./);
+  assert.match(memberMessage, /Keep this code safe and only mention it to your Church admin or the Usher in charge of attendance/);
+  assert.match(memberMessage, /Thank you and God bless you\.$/);
+  assert.match(buildAttendanceCodeSms('Kwame', 'LDR-001', 'leader'), /your leader code: LDR-001/);
+});
+
+test('SMS dispatch does not require an estimate rate but still rejects an empty balance', async () => {
+  const edgeFunction = await readFile(
+    new URL('../supabase/functions/portal-db/index.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(edgeFunction, /const unitRate = cfg\.unitRate !== null && cfg\.unitRate > 0 \? cfg\.unitRate : null/);
+  assert.match(edgeFunction, /if \(balance <= 0\) return json\(\{ error: \{ message: 'Your mNotify account has no SMS credits available\.'/);
+  assert.match(edgeFunction, /unit_rate: unitRate \?\? 0/);
 });
 
 test('copyable schemas include private mNotify request and SMS tables', () => {

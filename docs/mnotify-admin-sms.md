@@ -12,7 +12,7 @@ The integration uses the current [BMS/mNotify OpenAPI documentation](https://dev
 | SMS balance | `GET https://api.mnotify.com/api/balance/sms?key=...`; response includes `balance` and `bonus`. |
 | Delivery report | `GET https://api.mnotify.com/api/campaign/{campaign_id}?key=...`; response contains `report[]` with `_id`, `recipient`, `status`, `campaign_id` and other report fields. |
 
-The current docs do **not** define a cost-quote endpoint or specify an SMS unit tariff. The Developer Console therefore requires a manually configured **mNotify credits per SMS page** rate. The user-facing estimate is local and uses GSM-7/Unicode page rules; before dispatch the server checks the live SMS balance and after dispatch records mNotify's actual `credit_used`. Actual provider charging can differ from the estimate. Delivery reasons are displayed only when mNotify includes them in a report.
+The current docs do **not** define a cost-quote endpoint or specify an SMS unit tariff. The Developer Console can be configured with a **mNotify credits per SMS page** rate for indicative estimates. If no rate is configured, authorized users can still send; the UI clearly warns that no estimate is available, the server checks that the live balance is positive, and the actual provider charge is recorded after dispatch. Campaigns without a configured estimate rate show `n/a` for the estimate. Actual provider charging can differ from an estimate. Delivery reasons are displayed only when mNotify includes them in a report.
 
 ## Secrets and initial setup
 
@@ -111,6 +111,7 @@ The Developer **SMS Gateway & Templates** page shows sender requests/purpose/sta
 
 - API keys are sent in the provider's query-string `key` parameter because that is how mNotify documents authentication. The key is only added in the Edge Function and never returned or logged.
 - Provider success means accepted/queued, not delivered to a handset. Delivery status comes later from the documented campaign report.
+- The published BMS/mNotify OpenAPI spec documents Sender ID registration and status lookup, but does not document Sender ID deletion. The portal must not claim to remove an ID from mNotify or issue a guessed destructive API request. Remove a Sender ID through the mNotify dashboard/support first; an API-based delete action can be added once mNotify provides its supported endpoint and request format.
 - `CEKBU DEV` must be an approved sender ID in the mNotify dashboard for the alert to arrive. If it is not approved, the request still saves and Developer oversight flags the failed alert.
 - SMS pricing is an estimate in provider credits, not a currency quote. Configure the rate based on the account's current mNotify tariff.
 - Approval status refresh and report polling require the database migration, deployed Edge Function, the secrets above, and (for automatic refresh) the optional cron schedule.

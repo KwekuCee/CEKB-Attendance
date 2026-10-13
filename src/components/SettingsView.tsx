@@ -1747,7 +1747,10 @@ function SenderSmsWorkspace() {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await rawPortal({ action: 'mnotifyUser', op: 'sendCodes', kind: codeKind, ids: ids.length ? ids : undefined, senderIdRequestId: selectedSenderId });
-      if (result?.success) { setNotice(`Codes sent: ${result.accepted} accepted, ${result.failed} failed. Credits used: ${result.creditsUsed}.`); setCodePicked(new Set()); }
+      if (result?.success) {
+        setNotice(`Codes sent: ${result.accepted} accepted, ${result.failed} failed. Credits used: ${result.creditsUsed}.${result.error ? ` ${result.error.message || result.error}` : ''}`);
+        setCodePicked(new Set());
+      }
       else setError(result?.error?.message || 'Codes were not sent.');
     } catch { setError('Could not reach the SMS service.'); } finally { setBusy(false); }
   };
@@ -1799,8 +1802,9 @@ function SenderSmsWorkspace() {
   const sendSms = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedSenderId || !message.trim() || !validRecipients.length) return;
-    const confirmMessage =
-      `${validRecipients.length} recipient(s), ${estimate.pagesPerMessage} page(s) each, ${estimate.totalPages} total pages, estimated ${estimate.estimatedCost} credits. Continue?`;
+    const confirmMessage = dashboard?.unitRate
+      ? `${validRecipients.length} recipient(s), ${estimate.pagesPerMessage} page(s) each, ${estimate.totalPages} total pages, estimated ${estimate.estimatedCost} credits. Continue?`
+      : `${validRecipients.length} recipient(s). A cost estimate is unavailable because the Developer has not set a credits-per-page rate. mNotify will apply the account tariff; actual credits will be shown after sending. Continue?`;
     if (!window.confirm(confirmMessage)) return;
     setBusy(true);
     setError('');
@@ -1972,10 +1976,20 @@ function SenderSmsWorkspace() {
               <span className="text-sm font-semibold">Message</span>
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} maxLength={1000} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" />
               <span className="text-xs text-muted-foreground">
-                {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · estimated {dashboard?.unitRate ? estimate.estimatedCost : 'rate not configured'} credits
+                {estimate.characters} {estimate.encoding} units · {estimate.pagesPerMessage} page(s) per recipient · {estimate.totalPages} total pages · {dashboard?.unitRate ? `estimated ${estimate.estimatedCost} credits` : 'cost estimate unavailable'}
               </span>
             </label>
-            <Button type="submit" disabled={busy || !message.trim() || !validRecipients.length || (audience === 'custom' && recipientResult.invalid.length > 0) || validRecipients.length > 3000 || !dashboard?.unitRate}>
+            {!dashboard?.unitRate && (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+                The Developer has not configured the estimated credits-per-page rate. You can still send; mNotify will use the account tariff and report actual credits afterward.
+              </p>
+            )}
+            {validRecipients.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Select a recipient audience or choose members/leaders from the church directory before sending.
+              </p>
+            )}
+            <Button type="submit" disabled={busy || !selectedSenderId || !message.trim() || !validRecipients.length || (audience === 'custom' && recipientResult.invalid.length > 0) || validRecipients.length > 3000}>
               {busy ? 'Sending…' : 'Review cost & send'}
             </Button>
           </form>
@@ -2018,7 +2032,7 @@ function SenderSmsWorkspace() {
             <details key={campaign.id} className="rounded-xl border border-border p-3">
               <summary className="cursor-pointer flex flex-wrap justify-between gap-2 text-sm">
                 <span>{campaign.sender_name} · {new Date(campaign.created_at).toLocaleString()}</span>
-                <span>{campaign.status} · {campaign.recipient_count} recipient(s) · {(campaign.recipients || []).filter((r: any) => r.status === 'delivered').length} delivered / {(campaign.recipients || []).filter((r: any) => r.status === 'failed').length} failed / {(campaign.recipients || []).filter((r: any) => r.status === 'pending').length} pending · estimate {campaign.estimated_cost}, actual {campaign.actual_credits ?? 'pending'} credits</span>
+                <span>{campaign.status} · {campaign.recipient_count} recipient(s) · {(campaign.recipients || []).filter((r: any) => r.status === 'delivered').length} delivered / {(campaign.recipients || []).filter((r: any) => r.status === 'failed').length} failed / {(campaign.recipients || []).filter((r: any) => r.status === 'pending').length} pending · estimate {Number(campaign.unit_rate) > 0 ? `${campaign.estimated_cost} credits` : 'unavailable'} · actual {campaign.actual_credits ?? 'pending'} credits</span>
               </summary>
               <p className="my-2 whitespace-pre-wrap text-sm">{campaign.message}</p>
               <div className="flex flex-wrap gap-2">

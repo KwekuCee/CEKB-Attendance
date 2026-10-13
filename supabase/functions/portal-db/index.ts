@@ -11,6 +11,7 @@ import {
 import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
 import { estimateSmsCost } from '../_shared/smsPricing.ts';
+import { buildAttendanceCodeSms } from '../_shared/attendance-code-sms.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -1230,7 +1231,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     const [{ data: senderIds, error: senderError }, { data: campaigns, error: campaignError }, cfg] = await Promise.all([
       admin.from('sender_id_requests').select('id, sender_name, purpose, status, submission_status, submission_error, rejection_reason, review_required, created_at, submitted_to_mnotify_at')
         .ilike('user_email', email).order('created_at', { ascending: false }).limit(50),
-      admin.from('sms_campaigns').select('id, sender_name, message, recipient_count, pages_per_message, total_pages, estimated_cost, actual_credits, status, created_at, provider_campaign_id')
+      admin.from('sms_campaigns').select('id, sender_name, message, recipient_count, pages_per_message, total_pages, unit_rate, estimated_cost, actual_credits, status, created_at, provider_campaign_id')
         .ilike('user_email', email).order('created_at', { ascending: false }).limit(30),
       getMnotifyManagementConfig(),
     ]);
@@ -1352,24 +1353,33 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     const targets = directory.filter((c) => c.kind === kind && c.code && (!ids || ids.has(c.id))).slice(0, 1000);
     if (!targets.length) return json({ error: { message: `No ${kind}s with a phone number and code were found.` } }, 400);
     let accepted = 0; let failed = 0; let credits = 0;
+    const providerErrors = new Set<string>();
     for (const t of targets) {
-      const first = t.name.split(' ')[0] || 'Beloved';
-      const text = kind === 'leader'
-        ? `Hello ${first}, your ${session.church_name} leader code is ${t.code}. Use it with your registered phone to sign in and submit cell reports.`
-        : `Hello ${first}, your ${session.church_name} member code is ${t.code}. Keep it for check-in at church services.`;
+      const text = buildAttendanceCodeSms(t.name, t.code, kind);
       const r = await sendMnotifySms([t.phone], sender.sender_name, text);
       if (r.accepted) { accepted++; credits += r.creditsUsed; } else failed++;
+      if (r.error) providerErrors.add(r.error.slice(0, 200));
     }
+    const failureMessage = providerErrors.values().next().value as string | undefined;
+    const errorMessage = failed
+      ? `${failed} code message(s) were not accepted.${failureMessage ? ` mNotify: ${failureMessage}` : ''}`
+      : null;
     await admin.from('email_send_log').insert({
       template_name: `${kind}_code_sms`, recipient_email: 'campaign', channel: 'sms',
-      status: accepted ? 'sent' : 'failed', error_message: failed ? `${failed} code SMS not accepted.` : null,
+      status: accepted ? 'sent' : 'failed', error_message: errorMessage,
       metadata: { church: session.church_name, accepted, failed, credits },
     });
     await admin.from('audit_logs').insert({
       actor: session.role, action: `Sent ${kind} codes by SMS (${accepted} accepted, ${failed} failed)`,
       category: 'Messaging', church_name: session.church_name, icon: 'sms',
     });
-    return json({ success: accepted > 0, accepted, failed, creditsUsed: credits, error: accepted ? null : { message: 'mNotify did not accept the code messages.' } });
+    return json({
+      success: accepted > 0,
+      accepted,
+      failed,
+      creditsUsed: credits,
+      error: errorMessage ? { message: errorMessage } : accepted ? null : { message: 'mNotify did not accept the code messages.' },
+    });
   }
 
   if (op === 'sendSms') {
@@ -1411,8 +1421,8 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       .eq('id', senderIdRequestId).ilike('user_email', email).eq('status', 'verified').maybeSingle();
     if (!sender) return json({ error: { message: 'Choose one of your verified Sender IDs.' } }, 400);
     const cfg = await getMnotifyManagementConfig();
-    if (cfg.unitRate === null || cfg.unitRate <= 0) return json({ error: { message: 'SMS sending is not configured yet. Ask the Developer to set the cost per SMS page.' } }, 503);
-    const estimate = estimateSmsCost(message, recipients.length, cfg.unitRate);
+    const unitRate = cfg.unitRate !== null && cfg.unitRate > 0 ? cfg.unitRate : null;
+    const estimate = estimateSmsCost(message, recipients.length, unitRate ?? 0);
     const balanceResult = await getMnotifySmsBalance();
     const balance = Number(balanceResult.payload?.balance) + Number(balanceResult.payload?.bonus || 0);
     if (!balanceResult.ok || !Number.isFinite(balance)) {
@@ -1421,7 +1431,10 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
     }
     await saveMnotifyBalance(balance);
     await checkMnotifyLowBalance(balance);
-    if (balance < estimate.estimatedCost) return json({ error: { message: 'mNotify balance is too low for this estimated send.' }, estimate }, 402);
+    if (balance <= 0) return json({ error: { message: 'Your mNotify account has no SMS credits available.' } }, 402);
+    if (unitRate !== null && balance < estimate.estimatedCost) {
+      return json({ error: { message: 'mNotify balance is too low for this estimated send.' }, estimate }, 402);
+    }
 
     const { data: prior } = await admin.from('sms_campaigns').select('id, status, provider_campaign_id')
       .ilike('user_email', email).eq('idempotency_key', idempotencyKey).maybeSingle();
@@ -1430,7 +1443,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       user_email: email, user_name: session.user_name, church_name: session.church_name,
       sender_id_request_id: sender.id, sender_name: sender.sender_name, message,
       recipient_count: recipients.length, pages_per_message: estimate.pagesPerMessage,
-      total_pages: estimate.totalPages, unit_rate: cfg.unitRate, estimated_cost: estimate.estimatedCost,
+      total_pages: estimate.totalPages, unit_rate: unitRate ?? 0, estimated_cost: estimate.estimatedCost,
       status: 'pending', idempotency_key: idempotencyKey,
     }).select('*').single();
     if (campaignError || !campaign) {
@@ -1473,7 +1486,7 @@ async function handleMnotifyUserAction(body: any, session: Session | null, req: 
       metadata: {
         channel: 'sms', provider: 'mNotify', campaign_id: campaignId,
         sender_id: sender.sender_name, recipient_count: recipients.length,
-        accepted: sent.accepted, failed: sent.failed, estimated_cost: estimate.estimatedCost,
+        accepted: sent.accepted, failed: sent.failed, estimated_cost: unitRate === null ? null : estimate.estimatedCost,
         actual_credits: sent.creditsUsed,
       },
     });
