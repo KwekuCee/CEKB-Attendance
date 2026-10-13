@@ -32,6 +32,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, u
   ];
   const actions: { id: ViewType; label: string; icon: string }[] = [
     { id: 'attendance', label: 'Attendance Log', icon: 'fact_check' },
+    { id: 'evangelism', label: 'Evangelism & Souls', icon: 'campaign' },
+    { id: 'cell_reports', label: 'Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Analytics', icon: 'analytics' },
     { id: 'register', label: 'New Registration', icon: 'person_add' },
     { id: 'leader_registration', label: 'Appoint Leader', icon: 'military_tech' },

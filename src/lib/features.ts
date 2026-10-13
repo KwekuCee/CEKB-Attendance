@@ -8,6 +8,7 @@ export const FEATURES: { id: string; label: string }[] = [
   { id: 'members', label: 'Members database' },
   { id: 'attendance', label: 'Attendance records' },
   { id: 'cell_reports', label: 'Weekly cell reports' },
+  { id: 'evangelism', label: 'Evangelism & Soulwinning' },
   { id: 'analytics', label: 'Insights & analytics' },
   { id: 'scanner', label: 'QR scanner' },
   { id: 'export', label: 'Export records' },

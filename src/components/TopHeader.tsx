@@ -56,6 +56,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     register: 'Member Check-In',
     church_admins_directory: 'Church admins',
     cell_reports: 'Weekly Cell Reports',
+    evangelism: 'Evangelism & Soulwinning',
     settings: 'Settings'
   };
 

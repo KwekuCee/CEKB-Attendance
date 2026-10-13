@@ -163,6 +163,7 @@ function getDefaultLocalStore(): LocalDbStore {
       report_codes: [],
       email_send_log: [],
       portal_sessions: [],
+      evangelism_records: [],
     },
     photos: {},
   };

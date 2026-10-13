@@ -49,19 +49,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const effectiveChurches = useMemo(() => {
     const map = new Map<string, ChurchBranch>();
 
-    // 1. Add database churches that are NOT Suspended
+    // 1. Add database churches that are NOT Suspended and NOT marked as group
     (churches || []).forEach(c => {
-      if (c && c.name && c.status !== 'Suspended') {
+      if (c && c.name && c.status !== 'Suspended' && !c.isGroup && c.createdWithAuthCode !== 'GROUP26' && c.createdWithAuthCode !== 'CEKB-GROUP') {
         map.set(c.name.toLowerCase(), c);
       }
     });
 
-    // 2. Add registered Church Admin accounts' churches only if not suspended and not deleted
+    // 2. Add registered Church Admin accounts' churches only if real church branch (not group pastor / superadmin)
     (churchAdmins || []).forEach(a => {
-      if (a && a.churchName) {
+      if (a && a.churchName && a.accountRole !== 'Superadmin' && (a.accountRole as string) !== 'Group Pastor') {
         const key = a.churchName.toLowerCase();
         const existingCh = (churches || []).find(c => c && c.name && c.name.toLowerCase() === key);
-        if (existingCh && existingCh.status === 'Suspended') return;
+        if (existingCh && (existingCh.status === 'Suspended' || existingCh.isGroup)) return;
         if (churches && churches.length > 0 && !existingCh) return; // Do not recreate deleted churches
         if (!map.has(key)) {
           map.set(key, {
@@ -73,16 +73,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             zone: a.zone || existingCh?.zone || 'Zone 1 (Korle Bu)',
             pcfCount: 0,
             cellCount: 0,
-            bsctCount: 0
+            bsctCount: 0,
+            createdWithAuthCode: 'YOM26'
           });
         }
       }
     });
 
-    return Array.from(map.values()).filter(c => c && c.name && c.status !== 'Suspended');
+    return Array.from(map.values()).filter(c => c && c.name && c.status !== 'Suspended' && !c.isGroup);
   }, [churches, churchAdmins]);
 
-  // Leader self-registration offers active church branches registered on the platform
+  // Leader self-registration offers active church branches registered with YOM26 on the platform
   const adminRegisteredChurches = useMemo(() => {
     return effectiveChurches;
   }, [effectiveChurches]);
@@ -549,7 +550,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
     setIsSubmittingAdmin(true);
     try {
-    const newBranch: ChurchBranch = {
+    const newBranch: ChurchBranch | undefined = isGroupPastorCode ? undefined : {
       id: `CH-${Date.now().toString().slice(-4)}`,
       name: admChurchName.trim(),
       pastor: admFullName.trim(),
@@ -559,6 +560,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       pcfCount: 0,
       cellCount: 0,
       bsctCount: 0,
+      createdWithAuthCode: 'YOM26',
+      isGroup: false,
     };
 
     let adminPhotoPath: string | undefined;
@@ -577,7 +580,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       joinedDate: new Date().toISOString().slice(0, 10),
       status: 'Active',
       password: admPassword.trim(),
-      accountRole: 'Church Pastor'
+      accountRole: isGroupPastorCode ? 'Superadmin' : 'Church Pastor'
     };
 
     await onAddChurchAdmin(newAdmin, newBranch);
@@ -589,10 +592,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         if (!claimed) await new Promise((res) => setTimeout(res, 1200));
       }
       if (!claimed) {
-        setAdmError('Your church was created, but the group pastor appointment did not complete. Please contact support.');
+        setAdmError('Your account was created, but the group pastor appointment did not complete. Please contact support.');
       }
     }
-    setAdmSuccessMsg(`Church "${newBranch.name}" and the pastor account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`);
+    setAdmSuccessMsg(
+      isGroupPastorCode
+        ? `Group Pastor account for "${newAdmin.adminName}" was created. We are sending a confirmation link to ${newAdmin.adminEmail}…`
+        : `Church "${newBranch?.name}" and the pastor account for "${newAdmin.adminName}" were created. We are sending a confirmation link to ${newAdmin.adminEmail}…`
+    );
 
     const res = await sendAdminVerificationEmail(newAdmin.adminEmail, newAdmin.adminName, true);
     setAdmSuccessMsg(

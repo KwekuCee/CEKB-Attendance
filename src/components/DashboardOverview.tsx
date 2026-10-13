@@ -472,6 +472,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {(user.role as string) === 'Church Pastor'
                 ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
                 : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
+              <Button variant="secondary" onClick={() => onNavigate('evangelism')} title="View Soul Winning & Evangelism">
+                <span className="material-symbols-outlined">campaign</span> Evangelism data
+              </Button>
               <Button variant="secondary" onClick={() => onNavigate('settings')} title="Appoint Ushers & Scanners">
                 <span className="material-symbols-outlined">badge</span> Appoint Ushers
               </Button>

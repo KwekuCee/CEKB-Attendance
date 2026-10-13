@@ -784,4 +784,29 @@ CREATE INDEX IF NOT EXISTS idx_members_church_id ON public.members(church_id);
 CREATE INDEX IF NOT EXISTS idx_leaders_church_id ON public.leaders(church_id);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_church_id ON public.user_profiles(church_id);
 CREATE INDEX IF NOT EXISTS idx_church_admin_accounts_church_id ON public.church_admin_accounts(church_id);
+
+-- 16. EVANGELISM & SOULWINNING RECORDS TABLE
+CREATE TABLE IF NOT EXISTS public.evangelism_records (
+    id TEXT PRIMARY KEY,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    gender TEXT,
+    location TEXT,
+    date_won TEXT NOT NULL,
+    leader_id TEXT,
+    leader_name TEXT NOT NULL,
+    cell_or_pcf_name TEXT,
+    church TEXT NOT NULL,
+    church_id UUID REFERENCES public.churches(id) ON DELETE CASCADE,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'Soul Won',
+    member_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_evangelism_records_church ON public.evangelism_records(church);
+CREATE INDEX IF NOT EXISTS idx_evangelism_records_leader_id ON public.evangelism_records(leader_id);
+CREATE INDEX IF NOT EXISTS idx_evangelism_records_status ON public.evangelism_records(status);
+CREATE INDEX IF NOT EXISTS idx_evangelism_records_date_won ON public.evangelism_records(date_won);
 ` + MNOTIFY_MANAGEMENT_SCHEMA_SQL + SERVICE_ROLE_LOCKDOWN_SQL;

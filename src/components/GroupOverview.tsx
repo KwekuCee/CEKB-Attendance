@@ -1,9 +1,10 @@
 import { setServiceStartTime } from '../lib/supabaseService';
-import React, { useState } from 'react';
-import { ChurchBranch, AuditLogItem, ViewType, ChurchAdminAccount, Member, Leader, AttendanceRecord } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChurchBranch, AuditLogItem, ViewType, ChurchAdminAccount, Member, Leader, AttendanceRecord, EvangelismRecord } from '../types';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { ImportDataPanel } from './ImportDataPanel';
+import { fetchEvangelismRecords } from '../lib/evangelism';
 
 interface GroupOverviewProps {
   churches: ChurchBranch[];
@@ -38,11 +39,44 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
   onDeleteChurchAdmin,
   onImported
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'admins'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'evangelism_totals'>('branches');
   const [editingChurch, setEditingChurch] = useState<ChurchBranch | null>(null);
   const [deletingChurch, setDeletingChurch] = useState<ChurchBranch | null>(null);
   const [editingAdmin, setEditingAdmin] = useState<ChurchAdminAccount | null>(null);
   const [deletingAdmin, setDeletingAdmin] = useState<ChurchAdminAccount | null>(null);
+  const [evangelismRecords, setEvangelismRecords] = useState<EvangelismRecord[]>([]);
+
+  useEffect(() => {
+    fetchEvangelismRecords('All').then(setEvangelismRecords).catch(() => {});
+  }, []);
+
+  const evangelismTotals = useMemo(() => {
+    const totalWon = evangelismRecords.length;
+    const totalAttended = evangelismRecords.filter(r => r.status === 'Attended Church').length;
+    const totalFollowUps = evangelismRecords.filter(r => r.status !== 'Attended Church').length;
+    const conversionRate = totalWon > 0 ? Math.round((totalAttended / totalWon) * 100) : 0;
+
+    const branchMap = new Map<string, { churchName: string; totalWon: number; attended: number }>();
+    churches.forEach(c => {
+      branchMap.set(c.name.toLowerCase(), { churchName: c.name, totalWon: 0, attended: 0 });
+    });
+
+    evangelismRecords.forEach(r => {
+      const key = (r.church || '').toLowerCase();
+      const existing = branchMap.get(key) || { churchName: r.church || 'Unassigned', totalWon: 0, attended: 0 };
+      existing.totalWon += 1;
+      if (r.status === 'Attended Church') existing.attended += 1;
+      branchMap.set(key, existing);
+    });
+
+    return {
+      totalWon,
+      totalAttended,
+      totalFollowUps,
+      conversionRate,
+      branches: Array.from(branchMap.values()).sort((a, b) => b.totalWon - a.totalWon),
+    };
+  }, [evangelismRecords, churches]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([
     'Sunday Service', 'Midweek Service', 'Special Service'
   ]);
@@ -180,8 +214,8 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
         showChurchLabel
       />
 
-      {/* 3 Stat Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Stat Cards Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
           <p className="text-xs font-bold text-slate-400 mb-2">
             Total members
@@ -214,6 +248,18 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
           </div>
           <p className="mt-2 text-xs text-slate-500">Combined weekly attendance</p>
         </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+          <p className="text-xs font-bold text-slate-400 mb-2">
+            Group souls won
+          </p>
+          <div className="font-display text-3xl font-extrabold text-blue-700">
+            {evangelismTotals.totalWon.toLocaleString()}
+          </div>
+          <p className="mt-2 text-xs text-emerald-600 font-semibold">
+            {evangelismTotals.totalAttended} joined church ({evangelismTotals.conversionRate}%)
+          </p>
+        </div>
       </div>
 
       {/* Main Content Grid */}
@@ -223,7 +269,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
           <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <button
                   onClick={() => setActiveTab('branches')}
                   className={`text-xs font-bold px-3 py-1 rounded-xl transition-all cursor-pointer ${activeTab === 'branches'
@@ -242,11 +288,22 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
                 >
                   Registered Church Admins ({churchAdmins.length})
                 </button>
+                <button
+                  onClick={() => setActiveTab('evangelism_totals')}
+                  className={`text-xs font-bold px-3 py-1 rounded-xl transition-all cursor-pointer ${activeTab === 'evangelism_totals'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-200/60 text-slate-600 hover:bg-slate-200'
+                    }`}
+                >
+                  Evangelism Totals ({evangelismTotals.totalWon})
+                </button>
               </div>
               <p className="text-xs text-slate-500">
                 {activeTab === 'branches'
                   ? 'Active church branches under CEKB Group'
-                  : 'Details of registered church admins across the platform'}
+                  : activeTab === 'admins'
+                  ? 'Details of registered church admins across the platform'
+                  : 'Aggregate soulwinning numbers across all churches (Group totals only)'}
               </p>
             </div>
             <button
@@ -348,7 +405,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
                 </tbody>
               </table>
             </div>
-          ) : (
+          ) : activeTab === 'admins' ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -419,7 +476,73 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
                 </tbody>
               </table>
             </div>
-          )}
+          ) : activeTab === 'evangelism_totals' ? (
+            <div className="overflow-x-auto">
+              <div className="p-4 bg-blue-50/60 border-b border-blue-100 flex items-center justify-between text-xs">
+                <span className="text-blue-900 font-semibold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">visibility</span>
+                  Group Pastor View: Aggregated numerical totals only (no personal contact records)
+                </span>
+                <span className="font-bold text-blue-800">
+                  {evangelismTotals.totalWon} Total Group Souls Won • {evangelismTotals.totalAttended} Joined Church
+                </span>
+              </div>
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="py-3 px-4 text-xs font-bold text-slate-400 border-b border-slate-200">
+                      Church Branch
+                    </th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-400 border-b border-slate-200">
+                      Pastor in Charge
+                    </th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-400 border-b border-slate-200 text-center">
+                      Total Souls Won
+                    </th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-400 border-b border-slate-200 text-center">
+                      Joined Church
+                    </th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-400 border-b border-slate-200 text-right">
+                      Conversion Rate
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="font-body text-xs divide-y divide-slate-100">
+                  {evangelismTotals.branches.length > 0 ? (
+                    evangelismTotals.branches.map((b) => {
+                      const ch = churches.find(c => c.name.toLowerCase() === b.churchName.toLowerCase());
+                      const rate = b.totalWon > 0 ? Math.round((b.attended / b.totalWon) * 100) : 0;
+                      return (
+                        <tr key={b.churchName} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900">
+                            {b.churchName}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 font-medium">
+                            {ch?.pastor || 'Pastor in Charge'}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-blue-700 text-center">
+                            {b.totalWon.toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-emerald-700 text-center">
+                            {b.attended.toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-semibold text-slate-800">
+                            {rate}%
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-xs text-slate-400">
+                        No evangelism data recorded across churches yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
 
         {/* Audit Log & Service Types */}

@@ -60,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'leader_registration', label: 'Register a leader', icon: 'person_add' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
+    { id: 'evangelism', label: 'Evangelism & Souls', icon: 'campaign' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
   ] : [
@@ -68,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'hierarchy', label: 'Leader Hierarchy', icon: 'account_tree' },
     { id: 'members', label: 'Members', icon: 'group' },
     { id: 'attendance', label: 'Attendance', icon: 'fact_check' },
+    { id: 'evangelism', label: 'Evangelism & Souls', icon: 'campaign' },
     { id: 'cell_reports', label: 'Weekly Cell Reports', icon: 'assignment' },
     { id: 'analytics', label: 'Insights', icon: 'analytics' },
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },

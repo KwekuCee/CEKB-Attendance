@@ -76,6 +76,7 @@ const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => 
 const DatabaseSchemaView = lazy(() => import('./components/DatabaseSchemaView').then(m => ({ default: m.DatabaseSchemaView })));
 const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const CellReportsView = lazy(() => import('./components/CellReportsView').then(m => ({ default: m.CellReportsView })));
+const EvangelismView = lazy(() => import('./components/EvangelismView').then(m => ({ default: m.EvangelismView })));
 import { useToast } from './context/ToastContext';
 const LeaderHierarchyManager = lazy(() => import('./components/LeaderHierarchyManager').then(m => ({ default: m.LeaderHierarchyManager })));
 const LeaderHome = lazy(() => import('./components/LeaderHome').then(m => ({ default: m.LeaderHome })));
@@ -485,31 +486,22 @@ export default function App() {
       localStorage.removeItem(getWalkthroughStorageKey({ email: newAdmin.adminEmail, name: newAdmin.adminName, role: 'Church Admin' }));
     } catch {}
 
-    // 2. Update and persist branch
-    const targetBranch: ChurchBranch = branch || {
-      id: `CH-${Date.now().toString().slice(-4)}`,
-      name: newAdmin.churchName || 'New Branch',
-      pastor: newAdmin.adminName || 'Branch Pastor',
-      membersCount: 0,
-      status: 'Healthy',
-      zone: newAdmin.zone || 'Zone 1 (Korle Bu)',
-      pcfCount: 0,
-      cellCount: 0,
-      bsctCount: 0
-    };
-
-    const targetBranchNameLower = (targetBranch.name || '').toLowerCase();
-    setChurches(prev => {
-      const exists = prev.some(c => c && (c.name || '').toLowerCase() === targetBranchNameLower);
-      if (exists) {
-        return prev.map(c => c && (c.name || '').toLowerCase() === targetBranchNameLower
-          ? { ...c, pastor: targetBranch.pastor || c.pastor }
-          : c
-        );
-      }
-      return [...prev, targetBranch];
-    });
-    await saveChurchToSupabase(targetBranch);
+    // 2. Update and persist branch only if a valid church branch was provided (not a Group Pastor account)
+    if (branch && newAdmin.accountRole !== 'Superadmin' && !branch.isGroup) {
+      const targetBranch: ChurchBranch = branch;
+      const targetBranchNameLower = (targetBranch.name || '').toLowerCase();
+      setChurches(prev => {
+        const exists = prev.some(c => c && (c.name || '').toLowerCase() === targetBranchNameLower);
+        if (exists) {
+          return prev.map(c => c && (c.name || '').toLowerCase() === targetBranchNameLower
+            ? { ...c, pastor: targetBranch.pastor || c.pastor }
+            : c
+          );
+        }
+        return [...prev, targetBranch];
+      });
+      await saveChurchToSupabase(targetBranch);
+    }
 
     const newLog: AuditLogItem = {
       id: `log-${Date.now()}`,
@@ -798,7 +790,14 @@ export default function App() {
   if (user?.role === 'Leader') {
     return (
       <Suspense fallback={<ViewLoader />}>
-        <LeaderHome user={user} leaders={leaders} members={members} attendance={attendanceRecords} onLogout={handleLogout} />
+        <LeaderHome
+          user={user}
+          leaders={leaders}
+          members={members}
+          attendance={attendanceRecords}
+          onLogout={handleLogout}
+          onAddMember={handleAddMember}
+        />
       </Suspense>
     );
   }
@@ -1047,6 +1046,16 @@ export default function App() {
 
               {currentView === 'cell_reports' && (
                 <CellReportsView user={user} churches={churches} onNavigate={setCurrentView} />
+              )}
+
+              {currentView === 'evangelism' && (
+                <EvangelismView
+                  user={user}
+                  leaders={leaders}
+                  members={members}
+                  churches={churches}
+                  onAddMember={handleAddMember}
+                />
               )}
 
               {currentView === 'analytics' && (

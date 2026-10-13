@@ -18,9 +18,27 @@ export type ViewType =
   | 'settings'
   | 'cell_reports'
   | 'church_admins_directory'
-  | 'hierarchy';
+  | 'hierarchy'
+  | 'evangelism';
 
 export type SettingsTab = 'profile' | 'accountability' | 'services' | 'scanner' | 'security' | 'ushers' | 'backup' | 'messaging';
+
+export interface EvangelismRecord {
+  id: string;
+  fullName: string;
+  phone: string;
+  gender?: 'Male' | 'Female';
+  location?: string;
+  dateWon: string;
+  leaderId: string;
+  leaderName: string;
+  cellOrPcfName?: string;
+  church: string;
+  notes?: string;
+  status: 'Soul Won' | 'Follow-up' | 'Attended Church';
+  memberId?: string;
+  createdAt: string;
+}
 
 export interface CellReportGridCell {
   cell: string;
@@ -59,7 +77,7 @@ export interface ChurchAdminAccount {
   password?: string;
   photoUrl?: string;
   /** Church pastors register the church; church admins are appointed by them. */
-  accountRole?: 'Church Pastor' | 'Church Admin';
+  accountRole?: 'Church Pastor' | 'Church Admin' | 'Superadmin';
 }
 
 export type RoleType = 'Leader' | 'Member' | 'First Timer';
@@ -148,6 +166,8 @@ export interface ChurchBranch {
   pcfCount: number;
   cellCount: number;
   bsctCount: number;
+  createdWithAuthCode?: string;
+  isGroup?: boolean;
 }
 
 export interface TopLeader {

@@ -99,6 +99,7 @@ const ALLOWED_TABLES = new Set([
   'service_types',
   'admin_settings',
   'cell_reports',
+  'evangelism_records',
   'email_send_log',
   'request_rate_limits',
 ]);
@@ -122,6 +123,7 @@ const BRANCH_SCOPED = new Set([
   'promotion_queue',
   'audit_logs',
   'cell_reports',
+  'evangelism_records',
   'user_profiles',
 ]);
 
