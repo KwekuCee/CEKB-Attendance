@@ -688,104 +688,31 @@ export async function saveChurchToSupabase(church: ChurchBranch): Promise<boolea
   }
 }
 
-export async function deleteChurchFromSupabase(churchIdOrName: string): Promise<boolean> {
+export async function deleteChurchFromSupabase(churchIdOrName: string, token?: string | null): Promise<boolean> {
   const target = (churchIdOrName || '').trim();
   if (!target) return false;
 
-  // Purge local caches
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
   try {
-    const stored: ChurchBranch[] = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
-    localStorage.setItem(
-      'cekbu_churches',
-      JSON.stringify(stored.filter(c => c && c.id !== target && (c.name || '').toLowerCase() !== target.toLowerCase()))
+    const response = await rawPortal(
+      isUuid ? { action: 'deleteChurch', id: target } : { action: 'deleteChurch', name: target },
+      token,
     );
-  } catch (e) { }
-
-  const client = getSupabase();
-  if (!client) return true;
-
-  try {
-    // 1. Identify church ID and Name
-    let targetId: string | null = null;
-    let targetName: string = target;
-
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
-    let chQuery = client.from('churches').select('id, name');
-    if (isUuid) chQuery = chQuery.eq('id', target);
-    else chQuery = chQuery.ilike('name', target);
-    const { data: foundCh } = await chQuery.maybeSingle();
-
-    if (foundCh) {
-      targetId = foundCh.id;
-      targetName = foundCh.name;
-    } else if (isUuid) {
-      targetId = target;
-    }
-
-    // 2. Break circular FKs and unlink audit logs before deletion
-    if (targetId) {
-      await client.from('audit_logs').update({ church_id: null }).eq('church_id', targetId);
-      await client.from('leaders').update({ parent_leader_id: null }).eq('church_id', targetId);
-      await client.from('members').update({ invited_by_leader_id: null }).eq('church_id', targetId);
-    }
-    if (targetName) {
-      await client.from('leaders').update({ parent_leader_id: null }).ilike('church_name', targetName);
-      await client.from('members').update({ invited_by_leader_id: null }).ilike('church_name', targetName);
-    }
-
-    // 3. Delete dependent child records
-    // Clear QR passes for members of this church to prevent foreign key errors
-    try {
-      let mIds: string[] = [];
-      if (targetId) {
-        const { data: mems } = await client.from('members').select('id').eq('church_id', targetId);
-        if (mems) mIds = mems.map((m: any) => m.id);
-      }
-      if (targetName) {
-        const { data: mems } = await client.from('members').select('id').ilike('church_name', targetName);
-        if (mems) mIds = Array.from(new Set([...mIds, ...mems.map((m: any) => m.id)]));
-      }
-      if (mIds.length > 0) {
-        await client.from('qr_tokens').delete().in('member_id', mIds);
-      }
-    } catch {}
-
-    if (targetId) {
-      await client.from('attendance_records').delete().eq('church_id', targetId);
-      await client.from('absence_records').delete().eq('church_id', targetId);
-      await client.from('cell_reports').delete().eq('church_id', targetId);
-      await client.from('church_report_codes').delete().eq('church_id', targetId);
-      await client.from('promotion_queue').delete().eq('church_id', targetId);
-      await client.from('announcements').delete().eq('church_id', targetId);
-      await client.from('members').delete().eq('church_id', targetId);
-      await client.from('leaders').delete().eq('church_id', targetId);
-      await client.from('church_admin_accounts').delete().eq('church_id', targetId);
-      await client.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').eq('church_id', targetId);
-      await client.from('service_types').delete().eq('is_global', false).eq('church_id', targetId);
-    }
-
-    if (targetName) {
-      await client.from('attendance_records').delete().ilike('church_name', targetName);
-      await client.from('absence_records').delete().ilike('church_name', targetName);
-      await client.from('cell_reports').delete().ilike('church_name', targetName);
-      await client.from('church_report_codes').delete().ilike('church_name', targetName);
-      await client.from('promotion_queue').delete().ilike('church_name', targetName);
-      await client.from('members').delete().ilike('church_name', targetName);
-      await client.from('leaders').delete().ilike('church_name', targetName);
-      await client.from('church_admin_accounts').delete().ilike('church_name', targetName);
-      await client.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').ilike('church_name', targetName);
-      await client.from('portal_sessions').delete().ilike('church_name', targetName);
-    }
-
-    // 4. Delete the church itself
-    let deleteQuery = client.from('churches').delete();
-    if (targetId) deleteQuery = deleteQuery.eq('id', targetId);
-    else deleteQuery = deleteQuery.ilike('name', targetName);
-    const { error } = await deleteQuery;
-
-    if (error) {
-      console.warn('Supabase deleteChurch error:', error.message);
+    if (!response?.success) {
+      const message = response?.error?.message || response?.error || 'Unknown server error.';
+      console.error('Church deletion was rejected:', message);
       return false;
+    }
+
+    try {
+      const stored: ChurchBranch[] = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
+      const deletedName = String(response.deletedChurch || target).toLowerCase();
+      localStorage.setItem(
+        'cekbu_churches',
+        JSON.stringify(stored.filter(c => c && c.id !== target && (c.name || '').toLowerCase() !== deletedName)),
+      );
+    } catch (cacheError) {
+      console.warn('Could not clear the local church cache after deletion:', cacheError);
     }
     return true;
   } catch (err) {

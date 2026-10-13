@@ -71,7 +71,7 @@ BEGIN
 
     -- 14. Delete non-global service types tied specifically to this church
     DELETE FROM public.service_types
-    WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
+    WHERE is_global = FALSE AND church_id = OLD.id;
 
     DELETE FROM public.portal_sessions
     WHERE church_id = OLD.id OR church_name ILIKE OLD.name;

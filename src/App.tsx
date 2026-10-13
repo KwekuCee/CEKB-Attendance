@@ -663,12 +663,18 @@ export default function App() {
     toast.showSuccess('Branch Updated', `${updated.name} details were saved.`);
   };
 
-  const handleDeleteChurch = (churchId: string) => {
+  const handleDeleteChurch = async (churchId: string): Promise<boolean> => {
     const target = churches.find(c => c.id === churchId);
+    const deleted = await deleteChurchFromSupabase(churchId);
+    if (!deleted) {
+      toast.showError('Church deletion failed', 'The church and its records were not deleted. Please retry or contact support.');
+      return false;
+    }
+
     setChurches(prev => prev.filter(c => c.id !== churchId));
-    deleteChurchFromSupabase(churchId);
     pushLog(`Deleted church branch: ${target?.name || churchId}`, 'domain_disabled', 'System', target?.name);
-    toast.showWarning('Branch Deleted', `${target?.name || churchId} was removed.`);
+    toast.showSuccess('Branch deleted', `${target?.name || churchId} and its associated records were removed.`);
+    return true;
   };
 
   const handleUpdateChurchAdmin = (updated: ChurchAdminAccount) => {

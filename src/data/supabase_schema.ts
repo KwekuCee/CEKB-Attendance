@@ -633,7 +633,7 @@ BEGIN
     DELETE FROM public.leaders WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
-    DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.service_types WHERE is_global = FALSE AND church_id = OLD.id;
     DELETE FROM public.portal_sessions WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     RETURN OLD;
 END;
@@ -671,7 +671,7 @@ BEGIN
     DELETE FROM public.leaders WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.church_admin_accounts WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     DELETE FROM public.user_profiles WHERE (church_id = OLD.id OR church_name ILIKE OLD.name) AND role NOT IN ('Superadmin', 'Developer');
-    DELETE FROM public.service_types WHERE is_global = FALSE AND (church_id = OLD.id OR church_name ILIKE OLD.name);
+    DELETE FROM public.service_types WHERE is_global = FALSE AND church_id = OLD.id;
     DELETE FROM public.portal_sessions WHERE church_id = OLD.id OR church_name ILIKE OLD.name;
     RETURN OLD;
 END;

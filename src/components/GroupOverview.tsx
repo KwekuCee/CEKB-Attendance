@@ -16,7 +16,7 @@ interface GroupOverviewProps {
   onOpenAnnouncement: () => void;
   onAddChurch: (church: ChurchBranch, admin?: ChurchAdminAccount) => void;
   onUpdateChurch?: (church: ChurchBranch) => void;
-  onDeleteChurch?: (churchId: string) => void;
+  onDeleteChurch?: (churchId: string) => Promise<boolean>;
   onUpdateChurchAdmin?: (admin: ChurchAdminAccount) => void;
   onDeleteChurchAdmin?: (adminId: string) => void;
   onImported?: (newMembers: Member[], newLeaders: Leader[]) => void;
@@ -685,9 +685,10 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
           title="Delete Church Branch"
           message={`This permanently removes ${deletingChurch.name} and unlinks its records.`}
           onCancel={() => setDeletingChurch(null)}
-          onConfirm={() => {
-            onDeleteChurch?.(deletingChurch.id);
-            setDeletingChurch(null);
+          onConfirm={async () => {
+            if (await onDeleteChurch?.(deletingChurch.id)) {
+              setDeletingChurch(null);
+            }
           }}
         />
       )}

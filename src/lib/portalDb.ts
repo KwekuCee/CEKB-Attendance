@@ -625,6 +625,16 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     };
   }
 
+  if (action === 'deleteChurch') {
+    if (!session || !['Developer', 'Superadmin'].includes(session.role)) {
+      return { success: false, error: { message: 'Only the Developer or Group Pastor can delete a church.' } };
+    }
+    return runLocalPortal(
+      { action: 'devAction', op: 'deleteChurch', id: payload.id, name: payload.name },
+      explicitToken,
+    );
+  }
+
   if (action === 'devAction') {
     const op = String(payload.op || '');
     if (op === 'setChurchStatus') {

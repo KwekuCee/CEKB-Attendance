@@ -295,7 +295,7 @@ export default function DeveloperPortal() {
         ) : (
           <>
             {tab === 'overview' && <Overview s={stats} a={a} setTab={setTab} />}
-            {tab === 'churches' && <Churches a={a} act={act} />}
+            {tab === 'churches' && <Churches a={a} act={act} token={token} load={load} setNotice={setNotice} />}
             {tab === 'registrations' && <Registrations a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
             {tab === 'messaging' && <Messaging a={a} act={act} />}
@@ -810,7 +810,7 @@ function Overview({ s, a, setTab }: any) {
 /*                     2. CHURCHES & BRANCHES (FULL CRUD)                     */
 /* ========================================================================== */
 
-function Churches({ a, act }: any) {
+function Churches({ a, act, token, load, setNotice }: any) {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [showCreate, setShowCreate] = useState(false);
@@ -897,26 +897,20 @@ function Churches({ a, act }: any) {
     setBusy(true);
     const targetName = deleteTarget.name;
     const targetId = deleteTarget.id;
-
-    await act(
-      { op: 'deleteChurch', id: targetId, name: targetName },
-      `Completely deleted church "${targetName}" and all associated data from the database`,
-    );
     try {
-      await deleteChurchFromSupabase(targetId || targetName);
-    } catch (e) {
-      console.warn('Direct deleteChurchFromSupabase error:', e);
+      const deleted = await deleteChurchFromSupabase(targetId || targetName, token);
+      if (!deleted) {
+        setNotice(`Could not delete "${targetName}". Please verify the church-deletion migration is applied and retry.`);
+        setTimeout(() => setNotice(''), 5000);
+        return;
+      }
+      setNotice(`Church "${targetName}" and its associated records were deleted.`);
+      setTimeout(() => setNotice(''), 3500);
+      await load(token);
+      setDeleteTarget(null);
+    } finally {
+      setBusy(false);
     }
-    try {
-      const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
-      localStorage.setItem('cekbu_churches', JSON.stringify(stored.filter((c: any) => c.name !== targetName && c.id !== targetId)));
-    } catch {}
-    try {
-      const admins = JSON.parse(localStorage.getItem('cekbu_church_admins') || '[]');
-      localStorage.setItem('cekbu_church_admins', JSON.stringify(admins.filter((adm: any) => adm.churchName?.toLowerCase() !== targetName.toLowerCase() && adm.churchId !== targetId)));
-    } catch {}
-    setBusy(false);
-    setDeleteTarget(null);
   };
 
   const handleAssignAdmin = async (e: React.FormEvent) => {

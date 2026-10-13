@@ -1737,6 +1737,64 @@ async function handleDevAnalytics(session: Session | null) {
   } });
 }
 
+async function handleChurchDeletion(body: any, session: Session | null) {
+  if (!session || !['Developer', 'Superadmin'].includes(session.role)) {
+    return json({ success: false, error: { message: 'Only the Developer or Group Pastor can delete a church.' } }, 403);
+  }
+
+  const id = String(body?.id || '').trim();
+  const name = String(body?.name || '').trim();
+  if (!id && !name) {
+    return json({ success: false, error: { message: 'Choose a church to delete.' } }, 400);
+  }
+
+  let lookup = admin.from('churches').select('id, name');
+  if (id) lookup = lookup.eq('id', id);
+  else lookup = lookup.ilike('name', name);
+  let { data: church, error } = await lookup.maybeSingle();
+  if (error) {
+    console.error('Church deletion lookup failed:', error.message);
+    return json({ success: false, error: { message: 'Could not find the church to delete.' } }, 500);
+  }
+  if (!church && id && name) {
+    const fallback = await admin.from('churches').select('id, name').ilike('name', name).maybeSingle();
+    church = fallback.data;
+    error = fallback.error;
+  }
+  if (error) {
+    console.error('Church deletion fallback lookup failed:', error.message);
+    return json({ success: false, error: { message: 'Could not find the church to delete.' } }, 500);
+  }
+  if (!church) {
+    return json({ success: false, error: { message: 'Church not found.' } }, 404);
+  }
+
+  const { data: deleted, error: deleteError } = await admin
+    .from('churches')
+    .delete()
+    .eq('id', church.id)
+    .select('id')
+    .maybeSingle();
+  if (deleteError) {
+    console.error(`Church deletion failed for ${church.name}:`, deleteError.message);
+    return json({
+      success: false,
+      error: { message: `Could not delete ${church.name}. ${deleteError.message}` },
+    }, 500);
+  }
+  if (!deleted) {
+    return json({ success: false, error: { message: `Church ${church.name} was not deleted.` } }, 409);
+  }
+
+  await admin.from('audit_logs').insert({
+    actor: session.user_email || session.role,
+    action: `Deleted church branch "${church.name}" and its associated records`,
+    category: 'Church',
+    icon: 'domain_disabled',
+  });
+  return json({ success: true, deletedChurch: church.name });
+}
+
 async function handleDevAction(body: any, session: Session | null, req: Request) {
   if (session?.role !== 'Developer') return json({ error: { message: 'Developer sign-in required.' } }, 403);
   const op = String(body?.op || '');
@@ -2052,105 +2110,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     return json({ success: true });
   }
 
-  if (op === 'deleteChurch') {
-    const name = String(body.name || '').trim();
-    const id = body.id;
-    let foundCh: any = null;
-    if (id) {
-      const { data } = await admin.from('churches').select('id, name').eq('id', id).maybeSingle();
-      foundCh = data;
-    }
-    if (!foundCh && name) {
-      const { data } = await admin.from('churches').select('id, name').ilike('name', name).maybeSingle();
-      foundCh = data;
-    }
-    const targetName = foundCh?.name || name;
-    const targetId = foundCh?.id || (id && id !== 'undefined' ? id : null);
-
-    if (!targetName && !targetId) {
-      return json({ error: 'Church not found.' }, 404);
-    }
-
-    // 1. Break circular FKs before deletion
-    if (targetId) {
-      await admin.from('leaders').update({ parent_leader_id: null }).eq('church_id', targetId);
-      await admin.from('members').update({ invited_by_leader_id: null }).eq('church_id', targetId);
-    }
-    if (targetName) {
-      await admin.from('leaders').update({ parent_leader_id: null }).ilike('church_name', targetName);
-      await admin.from('members').update({ invited_by_leader_id: null }).ilike('church_name', targetName);
-    }
-
-    // 2. Unlink audit logs referencing this church to prevent foreign key errors
-    if (targetId) {
-      await admin.from('audit_logs').update({ church_id: null }).eq('church_id', targetId);
-    }
-
-    // 3. Delete dependent child records
-    // Delete QR passes for members of this church to prevent foreign key constraint failures
-    try {
-      let mIds: string[] = [];
-      if (targetId) {
-        const { data: mems } = await admin.from('members').select('id').eq('church_id', targetId);
-        if (mems) mIds = mems.map((m: any) => m.id);
-      }
-      if (targetName) {
-        const { data: mems } = await admin.from('members').select('id').ilike('church_name', targetName);
-        if (mems) mIds = Array.from(new Set([...mIds, ...mems.map((m: any) => m.id)]));
-      }
-      if (mIds.length > 0) {
-        await admin.from('qr_tokens').delete().in('member_id', mIds);
-      }
-    } catch (e) {
-      console.warn('qr_tokens cleanup notice:', e);
-    }
-
-    if (targetId) {
-      await admin.from('attendance_records').delete().eq('church_id', targetId);
-      await admin.from('absence_records').delete().eq('church_id', targetId);
-      await admin.from('cell_reports').delete().eq('church_id', targetId);
-      await admin.from('church_report_codes').delete().eq('church_id', targetId);
-      await admin.from('promotion_queue').delete().eq('church_id', targetId);
-      await admin.from('announcements').delete().eq('church_id', targetId);
-      await admin.from('members').delete().eq('church_id', targetId);
-      await admin.from('leaders').delete().eq('church_id', targetId);
-      await admin.from('church_admin_accounts').delete().eq('church_id', targetId);
-      await admin.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').eq('church_id', targetId);
-      await admin.from('service_types').delete().eq('is_global', false).eq('church_id', targetId);
-    }
-
-    if (targetName) {
-      await admin.from('attendance_records').delete().ilike('church_name', targetName);
-      await admin.from('absence_records').delete().ilike('church_name', targetName);
-      await admin.from('cell_reports').delete().ilike('church_name', targetName);
-      await admin.from('church_report_codes').delete().ilike('church_name', targetName);
-      await admin.from('promotion_queue').delete().ilike('church_name', targetName);
-      await admin.from('members').delete().ilike('church_name', targetName);
-      await admin.from('leaders').delete().ilike('church_name', targetName);
-      await admin.from('church_admin_accounts').delete().ilike('church_name', targetName);
-      await admin.from('user_profiles').delete().neq('role', 'Superadmin').neq('role', 'Developer').ilike('church_name', targetName);
-      await admin.from('portal_sessions').delete().ilike('church_name', targetName);
-    }
-
-    // 4. Delete the church itself
-    let deleteErr: any = null;
-    if (targetId) {
-      const { error: e1 } = await admin.from('churches').delete().eq('id', targetId);
-      if (e1) deleteErr = e1;
-    }
-    if (targetName) {
-      const { error: e2 } = await admin.from('churches').delete().ilike('name', targetName);
-      if (e2 && !deleteErr) deleteErr = e2;
-    }
-
-    if (deleteErr) {
-      console.error('Database error deleting church:', deleteErr);
-      return json({ error: deleteErr.message }, 400);
-    }
-
-    await log(`Completely deleted church branch "${targetName}" and all associated data`, 'Church');
-    return json({ success: true, deletedChurch: targetName });
-  }
+  if (op === 'deleteChurch') return await handleChurchDeletion(body, session);
 
   if (op === 'approveRegistration') {
     const id = body.id;
@@ -2642,6 +2602,8 @@ Deno.serve(async (req) => {
         return await handleDevAnalytics(session);
       case 'devAction':
         return await handleDevAction(body, session, req);
+      case 'deleteChurch':
+        return await handleChurchDeletion(body, session);
       case 'updateGroupProfile':
         return await handleUpdateGroupProfile(body, session, req);
       case 'updateProfilePhoto':
