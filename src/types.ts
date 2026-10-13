@@ -20,6 +20,8 @@ export type ViewType =
   | 'church_admins_directory'
   | 'hierarchy';
 
+export type SettingsTab = 'profile' | 'accountability' | 'services' | 'scanner' | 'security' | 'ushers' | 'backup' | 'messaging';
+
 export interface CellReportGridCell {
   cell: string;
   outreach: string;

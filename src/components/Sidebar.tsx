@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { rawPortal } from '../lib/rawPortal';
 import { isFeatureOn, type FeatureMatrix } from '../lib/features';
 import type { AuthSessionUser } from '../types';
-import { ViewType, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
+import { ViewType, SettingsTab, Member, AttendanceRecord, ChurchBranch, ChurchAdminAccount } from '../types';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
 import { SupportChat } from './SupportChat';
 import { Button } from './Button';
@@ -15,6 +15,8 @@ interface SidebarProps {
   churches?: ChurchBranch[];
   churchAdmins?: ChurchAdminAccount[];
   onNavigate: (view: ViewType) => void;
+  settingsTab: SettingsTab;
+  onNavigateSettingsTab: (tab: SettingsTab) => void;
   onLogout: () => void;
   onStartWalkthrough?: () => void;
   isMobileOpen?: boolean;
@@ -23,11 +25,15 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView, user, members = [], attendanceRecords = [], churches = [], churchAdmins = [],
-  onNavigate, onLogout, onStartWalkthrough, isMobileOpen = false, onCloseMobile,
+  onNavigate, settingsTab, onNavigateSettingsTab, onLogout, onStartWalkthrough, isMobileOpen = false, onCloseMobile,
 }) => {
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [matrix, setMatrix] = useState<FeatureMatrix | null>(null);
   useEffect(() => { rawPortal({ action: 'featureMatrix' }, null).then((r: any) => setMatrix(r?.data || null)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (currentView !== 'settings' && currentView !== 'database_schema') setSettingsExpanded(false);
+  }, [currentView]);
   const isSuperadmin = user?.role === 'Superadmin';
   const navigate = (view: ViewType) => { onNavigate(view); onCloseMobile?.(); };
   const exportRecords = () => {
@@ -55,12 +61,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'leader_registration', label: 'Register New Leader', icon: 'person_add' },
   ];
   const navItems = allNavItems.filter(item => isFeatureOn(matrix, user?.role, item.id));
+  const canManageMessaging = user?.role === 'Superadmin' || user?.role === 'Church Admin' || user?.role === 'Church Pastor';
   const menuItem = (id: ViewType, label: string, icon: string) => (
     <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
       <span className="sidebar-menu-label">{label}</span>
     </Button>
   );
+  const settingsItems: { id: SettingsTab; label: string; icon: string }[] = [
+    { id: 'profile', label: isSuperadmin ? 'HQ & Group Profile' : 'Branch Profile', icon: 'account_box' },
+    ...(canManageMessaging ? [{ id: 'messaging' as const, label: 'SMS and Messaging', icon: 'sms' }] : []),
+    { id: 'accountability', label: 'Admin Accountability', icon: 'fact_check' },
+    ...(!isSuperadmin ? [{ id: 'ushers' as const, label: 'Appoint Ushers & Scanners', icon: 'badge' }] : []),
+    { id: 'scanner', label: 'Scanner & Pass Defaults', icon: 'qr_code_scanner' },
+    { id: 'security', label: 'Security & Auth Gate', icon: 'security' },
+    ...(isSuperadmin ? [{ id: 'services' as const, label: 'Global Service Programs', icon: 'tune' }] : []),
+    { id: 'backup', label: 'Data & Backups', icon: 'backup' },
+  ];
+  const settingsIsActive = currentView === 'settings' || currentView === 'database_schema';
+  const navigateSettingsTab = (tab: SettingsTab) => {
+    onNavigateSettingsTab(tab);
+    setSettingsExpanded(true);
+    onCloseMobile?.();
+  };
   return (
     <>
       {isMobileOpen && <div className="sidebar-backdrop fixed inset-0 z-40 md:hidden" onClick={onCloseMobile} />}
@@ -77,11 +100,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="sidebar-navigation" aria-label="Main menu">
           <p className="sidebar-caption sidebar-section-label">Navigation</p>
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
+          <Button
+            variant="ghost"
+            className="sidebar-menu-item"
+            aria-current={settingsIsActive ? 'page' : undefined}
+            aria-expanded={settingsExpanded}
+            aria-controls="sidebar-settings-submenu"
+            onClick={() => {
+              if (currentView !== 'settings') {
+                onNavigate('settings');
+                setSettingsExpanded(true);
+              } else {
+                setSettingsExpanded((expanded) => !expanded);
+              }
+            }}
+          >
+            <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">settings</span></span>
+            <span className="sidebar-menu-label">Settings</span>
+            <span className="material-symbols-outlined sidebar-settings-chevron" aria-hidden="true">
+              {settingsExpanded ? 'expand_less' : 'expand_more'}
+            </span>
+          </Button>
+          {settingsExpanded && (
+            <div id="sidebar-settings-submenu" className="sidebar-settings-submenu" aria-label="Settings tabs">
+              {settingsItems.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  className="sidebar-menu-item"
+                  aria-current={settingsIsActive && settingsTab === item.id ? 'page' : undefined}
+                  onClick={() => navigateSettingsTab(item.id)}
+                >
+                  <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span></span>
+                  <span className="sidebar-menu-label">{item.label}</span>
+                </Button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidebar-utilities">
           {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
           {isFeatureOn(matrix, user?.role, 'support') && <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>}
-          {menuItem('settings', 'Settings', 'settings')}
         </div>
         <div className="sidebar-account">
           {onStartWalkthrough && (

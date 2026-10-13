@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ViewType,
+  SettingsTab,
   Member,
   ChurchBranch,
   AuditLogItem,
@@ -104,6 +105,7 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('profile');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -896,6 +898,11 @@ export default function App() {
         churches={churches}
         churchAdmins={churchAdmins}
         onNavigate={setCurrentView}
+        settingsTab={settingsTab}
+        onNavigateSettingsTab={(tab) => {
+          setSettingsTab(tab);
+          setCurrentView('settings');
+        }}
         onLogout={handleLogout}
         onStartWalkthrough={() => setShowWalkthrough(true)}
         isMobileOpen={isMobileSidebarOpen}
@@ -1104,7 +1111,8 @@ export default function App() {
                   auditLogs={auditLogs}
                   serviceTypes={serviceTypes}
                   onUpdateServiceTypes={setServiceTypes}
-                  onNavigate={setCurrentView}
+                  settingsTab={settingsTab}
+                  onSettingsTabChange={setSettingsTab}
                   onAddAuditLog={(log) => setAuditLogs(prev => [log, ...prev])}
                   onUpdateUser={(updated) => setUser(prev => ({ ...prev, ...updated }))}
                 />

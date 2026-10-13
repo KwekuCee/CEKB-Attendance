@@ -499,6 +499,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
 .sidebar-menu-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: var(--sidebar-glass); flex-shrink: 0; }
 .dashboard-sidebar .sidebar-menu-icon .material-symbols-outlined { font-size: 16px; color: inherit; }
 .sidebar-menu-item[aria-current=page] .sidebar-menu-icon { color: hsl(var(--palette-ice)); background: var(--sidebar-glass-active); }
+.sidebar-settings-chevron { margin-left: auto; font-size: 18px; }
+.sidebar-settings-submenu { padding-left: 10px; }
+.dashboard-sidebar .sidebar-settings-submenu .sidebar-menu-item { min-height: 38px; padding-top: 6px; padding-bottom: 6px; font-size: 11px; }
 .sidebar-menu-label { min-width: 0; line-height: 1.45; }
 .sidebar-utilities { padding-top: 18px; flex-shrink: 0; }
 .dashboard-sidebar .sidebar-scanner-action { width: 100%; background: hsl(var(--palette-midnight)); color: hsl(var(--navigation-foreground)); margin-bottom: 10px; border: 0; font-size: 12px; }

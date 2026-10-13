@@ -2,17 +2,8 @@ import { csvQ } from '../utils/csvSafe';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { motion } from 'motion/react';
-import { UserProfile, AuthSessionUser, ChurchBranch, ViewType, AuditLogItem, Member, Leader, AttendanceRecord, ChurchAdminAccount } from '../types';
+import { UserProfile, AuthSessionUser, ChurchBranch, SettingsTab, AuditLogItem, Member, Leader, AttendanceRecord, ChurchAdminAccount } from '../types';
 import {
-  isSupabaseConfigured,
-  saveSupabaseCredentials,
-  getSupabase,
-  testSupabaseConnection,
-  SUPABASE_DEFAULT_URL,
-  SUPABASE_DEFAULT_ANON_KEY
-} from '../lib/supabase';
-import {
-  pushAllLocalDataToSupabase,
   saveChurchToSupabase,
   saveChurchAdminToSupabase,
   fetchAuditLogsFromSupabase,
@@ -25,7 +16,6 @@ import {
   saveStoredSession
 } from '../lib/supabaseService';
 import { exportMultiSheetExcel, exportMultiSectionCSV } from '../utils/exportUtils';
-import { SUPABASE_SQL_SCHEMA } from '../data/supabase_schema';
 import { ReportCodesPanel } from './ReportCodesPanel';
 import { UshersPanel } from './UshersPanel';
 import { Button } from './Button';
@@ -42,7 +32,8 @@ interface SettingsViewProps {
   auditLogs?: AuditLogItem[];
   serviceTypes?: Array<{ id: string; name: string; active?: boolean }> | string[];
   onUpdateServiceTypes?: (types: any) => void;
-  onNavigate: (view: ViewType) => void;
+  settingsTab: SettingsTab;
+  onSettingsTabChange: (tab: SettingsTab) => void;
   onAddAuditLog?: (log: AuditLogItem) => void;
   onUpdateUser?: (updated: Partial<AuthSessionUser>) => void;
 }
@@ -57,12 +48,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   auditLogs = [],
   serviceTypes = [],
   onUpdateServiceTypes,
-  onNavigate,
+  settingsTab,
+  onSettingsTabChange,
   onAddAuditLog,
   onUpdateUser
 }) => {
   const isSuperadmin = user.role === 'Superadmin';
-  const [activeTab, setActiveTab] = useState<'supabase' | 'profile' | 'ushers' | 'accountability' | 'services' | 'scanner' | 'security' | 'backup'>('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab);
+  useEffect(() => setActiveTab(settingsTab), [settingsTab]);
+  const selectTab = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    onSettingsTabChange(tab);
+  };
 
   // Audit Logs & Accountability State (capped to 10 and deduplicated)
   const [currentLogs, setCurrentLogs] = useState<AuditLogItem[]>(() => {
@@ -110,20 +107,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setIsLoadingLogs(false);
     }
   };
-
-  // Supabase Credentials State
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(
-    localStorage.getItem('cekbu_supabase_url') || import.meta.env.VITE_SUPABASE_URL || SUPABASE_DEFAULT_URL
-  );
-  const [supabaseKeyInput, setSupabaseKeyInput] = useState(
-    localStorage.getItem('cekbu_supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_DEFAULT_ANON_KEY
-  );
-  const [connStatus, setConnStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [connLatency, setConnLatency] = useState<number | null>(null);
-  const [connMessage, setConnMessage] = useState('');
-  const [isPushingData, setIsPushingData] = useState(false);
-  const [pushResult, setPushResult] = useState<string | null>(null);
-  const [showSqlSchema, setShowSqlSchema] = useState(false);
 
   // Find matching Church Branch and Admin records
   const matchingChurch = churches.find(
@@ -317,85 +300,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Test connection on mount
-  useEffect(() => {
-    runConnectionTest();
-  }, []);
-
-  const runConnectionTest = async () => {
-    setConnStatus('testing');
-    setConnMessage('Testing connection to Supabase...');
-    const result = await testSupabaseConnection();
-    setConnLatency(result.latencyMs);
-    setConnMessage(result.message);
-    setConnStatus(result.success ? 'success' : 'error');
-  };
-
-  const handleTestAndSaveSupabase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setConnStatus('testing');
-    setConnMessage('');
-
-    if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
-      setConnStatus('error');
-      setConnMessage('Please fill in both Supabase URL and Anon Key.');
-      return;
-    }
-
-    try {
-      saveSupabaseCredentials(supabaseUrlInput.trim(), supabaseKeyInput.trim());
-      const result = await testSupabaseConnection();
-      setConnLatency(result.latencyMs);
-      setConnMessage(result.message);
-      setConnStatus(result.success ? 'success' : 'error');
-
-      if (result.success) {
-        triggerToast('Saved & connected to Supabase!');
-        onAddAuditLog?.({
-          id: `LOG-${Date.now()}`,
-          action: 'Connected and synchronized with live database',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          icon: 'database',
-          user: user.name,
-          category: 'System'
-        });
-      }
-    } catch (err: any) {
-      setConnStatus('error');
-      setConnMessage(err?.message || 'Failed to connect to Supabase project.');
-    }
-  };
-
-  const handlePushAllData = async () => {
-    setIsPushingData(true);
-    setPushResult(null);
-
-    const res = await pushAllLocalDataToSupabase(
-      churches,
-      churchAdmins,
-      leaders,
-      members,
-      attendanceRecords
-    );
-
-    setIsPushingData(false);
-    if (res.success) {
-      const summary = `Successfully pushed ${res.pushedCount.members} members, ${res.pushedCount.leaders} leaders, ${res.pushedCount.churches} churches, ${res.pushedCount.attendance} attendance records to Supabase!`;
-      setPushResult(summary);
-      triggerToast(summary);
-      onAddAuditLog?.({
-        id: `LOG-${Date.now()}`,
-        action: 'Pushed and synchronized full dataset to live database',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        icon: 'cloud_upload',
-        user: user.name,
-        category: 'System'
-      });
-    } else {
-      setPushResult(`Push error: ${res.error || 'Failed to sync with Supabase tables'}`);
-    }
-  };
-
   const handleAddGlobalService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newServiceName.trim()) return;
@@ -504,10 +408,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>{isSuperadmin ? 'SUPERADMIN HQ CONTROL CENTER' : 'LOCAL BRANCH CONTROL CENTER'}</span>
             </div>
             <h1 className="font-display text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              {isSuperadmin ? 'Superadmin System & Supabase Hub' : `${branchName} Branch Settings`}
+              {isSuperadmin ? 'Superadmin System Settings' : `${branchName} Branch Settings`}
             </h1>
             <p className="text-slate-300 text-xs md:text-sm font-body">
-              Configure live database connection, cloud synchronizations, service schedules, and access credentials.
+              Manage account profiles, messaging, security, and church administration preferences.
             </p>
           </div>
 
@@ -526,21 +430,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
-          onClick={() => setActiveTab('supabase')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'supabase'
-              ? 'bg-emerald-800 text-emerald-100 shadow-sm ring-2 ring-emerald-500/40'
-              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/80'
-            }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">database</span>
-          <span>Live Database</span>
-          {connStatus === 'success' && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('profile')}
+          onClick={() => selectTab('profile')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'profile'
               ? 'bg-slate-900 text-blue-300 shadow-sm'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -551,7 +441,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('accountability')}
+          onClick={() => selectTab('accountability')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'accountability'
               ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/40'
               : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
@@ -568,7 +458,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {isSuperadmin && (
           <button
-            onClick={() => setActiveTab('services')}
+            onClick={() => selectTab('services')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'services'
                 ? 'bg-slate-900 text-blue-300 shadow-sm'
                 : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -580,7 +470,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         <button
-          onClick={() => setActiveTab('scanner')}
+          onClick={() => selectTab('scanner')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'scanner'
               ? 'bg-slate-900 text-blue-300 shadow-sm'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -591,7 +481,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('security')}
+          onClick={() => selectTab('security')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'security'
               ? 'bg-slate-900 text-blue-300 shadow-sm'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -603,7 +493,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {!isSuperadmin && (
           <button
-            onClick={() => setActiveTab('ushers')}
+            onClick={() => selectTab('ushers')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'ushers'
                 ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/40'
                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
@@ -615,7 +505,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         <button
-          onClick={() => setActiveTab('backup')}
+          onClick={() => selectTab('backup')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'backup'
               ? 'bg-slate-900 text-blue-300 shadow-sm'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -624,14 +514,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="material-symbols-outlined text-[18px]">backup</span>
           <span>Data & Backups</span>
         </button>
+
+        {canSendAdminSms && <button
+          onClick={() => selectTab('messaging')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'messaging'
+              ? 'bg-slate-900 text-blue-300 shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">sms</span>
+          <span>SMS and Messaging</span>
+        </button>}
       </div>
 
       {/* Tab Content Cards */}
       <div className="space-y-6">
-        {(['Superadmin', 'Church Admin', 'Church Pastor'] as string[]).includes(user.role) && activeTab === 'profile' && (
+        {activeTab === 'messaging' && (['Superadmin', 'Church Admin', 'Church Pastor'] as string[]).includes(user.role) && (
           <SenderSmsWorkspace />
         )}
-        {canSendAdminSms && activeTab === 'profile' && <AdminSmsUpdates user={user} />}
+        {activeTab === 'messaging' && canSendAdminSms && <AdminSmsUpdates user={user} />}
         {activeTab === 'profile' && (
           <ReportCodesPanel
             isSuperadmin={isSuperadmin}
@@ -643,189 +544,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {activeTab === 'ushers' && (
           <UshersPanel church={user.church || churches[0]?.name || ''} canAppointAdmins={(user.role as string) === 'Church Pastor'} />
-        )}
-
-        {/* TAB 0: Live Database Configuration */}
-        {activeTab === 'supabase' && (
-          <div className="space-y-6">
-            <div className="bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-6 space-y-6 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold border border-emerald-200">
-                    <span className="material-symbols-outlined text-[28px]">database</span>
-                  </div>
-                  <div>
-                    <h3 className="font-headline font-bold text-lg text-slate-900">
-                      Cloud Database Connection
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Direct connection credentials for real-time PostgreSQL database synchronization
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border ${connStatus === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : connStatus === 'error'
-                        ? 'bg-rose-50 text-rose-800 border-rose-200'
-                        : connStatus === 'testing'
-                          ? 'bg-blue-50 text-blue-800 border-blue-100'
-                          : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}>
-                    <span className={`w-2 h-2 rounded-full ${connStatus === 'success'
-                        ? 'bg-emerald-500 animate-pulse'
-                        : connStatus === 'error'
-                          ? 'bg-rose-500'
-                          : connStatus === 'testing'
-                            ? 'bg-blue-600 animate-ping'
-                            : 'bg-slate-400'
-                      }`} />
-                    <span>
-                      {connStatus === 'success'
-                        ? `Connected (${connLatency ? `${connLatency}ms` : 'Active'})`
-                        : connStatus === 'error'
-                          ? 'Connection Failed'
-                          : connStatus === 'testing'
-                            ? 'Testing...'
-                            : 'Not Connected'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {connMessage && (
-                <div className={`p-4 rounded-xl text-xs border ${connStatus === 'success'
-                    ? 'bg-emerald-50/70 text-emerald-900 border-emerald-200'
-                    : 'bg-rose-50/70 text-rose-900 border-rose-200'
-                  }`}>
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]">
-                      {connStatus === 'success' ? 'check_circle' : 'error'}
-                    </span>
-                    <span>{connMessage}</span>
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleTestAndSaveSupabase} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Supabase Project URL (HTTPS)
-                  </label>
-                  <input
-                    type="url"
-                    value={supabaseUrlInput}
-                    onChange={(e) => setSupabaseUrlInput(e.target.value)}
-                    placeholder="https://your-project.supabase.co"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Supabase Anon Public API Key
-                  </label>
-                  <PasswordInput
-                    
-                    value={supabaseKeyInput}
-                    onChange={(e) => setSupabaseKeyInput(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="submit"
-                      disabled={connStatus === 'testing'}
-                      className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        {connStatus === 'testing' ? 'sync' : 'save'}
-                      </span>
-                      <span>{connStatus === 'testing' ? 'Testing Connection...' : 'Save & Test Connection'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={runConnectionTest}
-                      disabled={connStatus === 'testing'}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-200 transition-all cursor-pointer"
-                    >
-                      Re-Test
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowSqlSchema(!showSqlSchema)}
-                    className="text-xs font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">code</span>
-                    <span>{showSqlSchema ? 'Hide Database SQL Schema' : 'View Complete PostgreSQL Schema'}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Manual One-Click Data Sync Button */}
-            <div className="bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900">Push Full Dataset to Supabase</h4>
-                  <p className="text-xs text-slate-500">
-                    Synchronizes all current local records (members, leaders, churches, attendance) into your live live database tables.
-                  </p>
-                </div>
-                <button
-                  onClick={handlePushAllData}
-                  disabled={isPushingData || connStatus !== 'success'}
-                  className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer shrink-0"
-                >
-                  <span className={`material-symbols-outlined text-[18px] ${isPushingData ? 'animate-spin' : ''}`}>
-                    {isPushingData ? 'sync' : 'cloud_upload'}
-                  </span>
-                  <span>{isPushingData ? 'Pushing Data...' : 'Push All Data to Supabase'}</span>
-                </button>
-              </div>
-
-              {pushResult && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
-                  {pushResult}
-                </div>
-              )}
-            </div>
-
-            {/* SQL Schema Viewer */}
-            {showSqlSchema && (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between text-white border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-blue-500 text-[20px]">database</span>
-                    <h4 className="text-xs font-bold text-blue-500">CEKB live database Schema (DDL)</h4>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
-                      triggerToast('SQL Schema copied to clipboard!');
-                    }}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                    <span>Copy All SQL</span>
-                  </button>
-                </div>
-                <textarea
-                  readOnly
-                  rows={12}
-                  value={SUPABASE_SQL_SCHEMA}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 outline-none resize-y"
-                />
-              </div>
-            )}
-          </div>
         )}
 
         {/* TAB 1: Profile (Superadmin Group Pastor Form or Church Admin Branch Form) */}
@@ -912,9 +630,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="p-3 bg-emerald-50 border border-emerald-200/70 rounded-xl text-xs flex items-center justify-between">
                   <div className="flex items-center gap-2 text-emerald-900 font-medium">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Database Status: Connected to live database • {churches.length} Registered Churches</span>
+                    <span>{churches.length} Registered Churches</span>
                   </div>
-                  <span className="font-bold text-emerald-800 text-xs">Direct Sync Active</span>
+                  <span className="font-bold text-emerald-800 text-xs">Group profile</span>
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -1032,10 +750,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
 
                     <div>
-                      <label className="block text-slate-700 font-semibold mb-1">Live Database Status</label>
+                      <label className="block text-slate-700 font-semibold mb-1">Member Records</label>
                       <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200/60 text-xs font-bold px-3 py-2 rounded-xl">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Connected to live database • {members.filter(m => m.church?.toLowerCase() === (user.church || '').toLowerCase()).length} Members</span>
+                        <span>{members.filter(m => m.church?.toLowerCase() === (user.church || '').toLowerCase()).length} members registered</span>
                       </div>
                     </div>
                   </div>
@@ -1394,11 +1111,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                   <div className="flex items-center justify-between text-slate-500 mb-1">
-                    <span className="text-xs uppercase font-bold">Database Sync</span>
+                    <span className="text-xs uppercase font-bold">Data Sync</span>
                     <span className="material-symbols-outlined text-[18px] text-emerald-600">cloud_done</span>
                   </div>
-                  <div className="font-display text-2xl font-black text-emerald-700">Live</div>
-                  <div className="text-xs text-slate-500 mt-0.5">live database</div>
+                  <div className="font-display text-2xl font-black text-emerald-700">Active</div>
+                  <div className="text-xs text-slate-500 mt-0.5">Application records</div>
                 </div>
               </div>
 
