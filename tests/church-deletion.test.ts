@@ -21,7 +21,10 @@ test('both admin dashboards use the role-checked server-side delete action', asy
   const backend = await readFile(new URL('../supabase/functions/portal-db/index.ts', import.meta.url), 'utf8');
 
   assert.match(service, /rawPortal\([\s\S]{0,120}action: 'deleteChurch'/);
+  assert.match(service, /portal-db Edge Function is outdated/);
+  assert.match(service, /Apply migration 20261013133000_fix_church_deletion_service_types\.sql/);
   assert.match(developer, /deleteChurchFromSupabase\(targetId \|\| targetName, token\)/);
+  assert.match(developer, /result\.error/);
   assert.match(backend, /case 'deleteChurch':\s+return await handleChurchDeletion\(body, session\)/);
   assert.match(backend, /Only the Developer or Group Pastor can delete a church/);
   assert.match(backend, /Could not delete \$\{church\.name\}/);

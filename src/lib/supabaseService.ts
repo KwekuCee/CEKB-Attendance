@@ -688,9 +688,12 @@ export async function saveChurchToSupabase(church: ChurchBranch): Promise<boolea
   }
 }
 
-export async function deleteChurchFromSupabase(churchIdOrName: string, token?: string | null): Promise<boolean> {
+export async function deleteChurchFromSupabase(
+  churchIdOrName: string,
+  token?: string | null,
+): Promise<{ success: boolean; error?: string }> {
   const target = (churchIdOrName || '').trim();
-  if (!target) return false;
+  if (!target) return { success: false, error: 'No church was selected.' };
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
   try {
@@ -699,9 +702,19 @@ export async function deleteChurchFromSupabase(churchIdOrName: string, token?: s
       token,
     );
     if (!response?.success) {
-      const message = response?.error?.message || response?.error || 'Unknown server error.';
-      console.error('Church deletion was rejected:', message);
-      return false;
+      const serverError = typeof response?.error === 'string'
+        ? response.error
+        : response?.error?.message || response?.message || '';
+      const normalizedError = String(serverError);
+      const lowerError = normalizedError.toLowerCase();
+      let message = normalizedError || 'The server rejected the delete request.';
+      if (lowerError.includes('unknown request') || lowerError.includes('unknown action')) {
+        message = 'The portal-db Edge Function is outdated. Deploy the latest Supabase function, then retry.';
+      } else if (lowerError.includes('service_types') && lowerError.includes('church_name')) {
+        message = 'The database still has the old church-deletion trigger. Apply migration 20261013133000_fix_church_deletion_service_types.sql in the Supabase SQL Editor, then retry.';
+      }
+      console.error('Church deletion was rejected:', normalizedError || message);
+      return { success: false, error: message };
     }
 
     try {
@@ -714,10 +727,13 @@ export async function deleteChurchFromSupabase(churchIdOrName: string, token?: s
     } catch (cacheError) {
       console.warn('Could not clear the local church cache after deletion:', cacheError);
     }
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('Error in deleteChurchFromSupabase:', err);
-    return false;
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Could not reach the server. Check the portal-db Edge Function logs and retry.',
+    };
   }
 }
 

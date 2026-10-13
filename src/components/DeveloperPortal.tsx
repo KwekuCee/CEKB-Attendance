@@ -898,9 +898,9 @@ function Churches({ a, act, token, load, setNotice }: any) {
     const targetName = deleteTarget.name;
     const targetId = deleteTarget.id;
     try {
-      const deleted = await deleteChurchFromSupabase(targetId || targetName, token);
-      if (!deleted) {
-        setNotice(`Could not delete "${targetName}". Please verify the church-deletion migration is applied and retry.`);
+      const result = await deleteChurchFromSupabase(targetId || targetName, token);
+      if (!result.success) {
+        setNotice(`Could not delete "${targetName}": ${result.error || 'The server rejected the request.'}`);
         setTimeout(() => setNotice(''), 5000);
         return;
       }
