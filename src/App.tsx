@@ -929,7 +929,7 @@ export default function App() {
         </div>
 
         {/* View Router */}
-        <main className="dashboard-main flex-1 overflow-y-auto pb-24 md:pb-8 relative">
+        <main className="dashboard-main flex-1 min-h-0 overflow-y-auto pb-6 md:pb-8 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
