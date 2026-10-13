@@ -19,6 +19,14 @@ function withActionablePortalError(data: any, action: unknown) {
       },
     };
   }
+  if (action === 'devAction' && data?.error === 'Unknown operation') {
+    return {
+      ...data,
+      error: {
+        message: 'The deployed portal-db function does not support this Developer action yet. Deploy the latest portal-db Supabase Edge Function, then try again.',
+      },
+    };
+  }
   return data;
 }
 

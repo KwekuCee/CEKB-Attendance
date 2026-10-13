@@ -79,11 +79,12 @@ test('portal-db routes Sender ID actions and registration from the admin UI', as
 });
 
 test('Developer can soft-delete a Sender ID request without implying provider deletion', async () => {
-  const [edgeFunction, developerPortal, schema, migration] = await Promise.all([
+  const [edgeFunction, developerPortal, schema, migration, rawPortal] = await Promise.all([
     readFile(new URL('../supabase/functions/portal-db/index.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/components/DeveloperPortal.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/data/supabase_schema.ts', import.meta.url), 'utf8'),
     readFile(new URL('../supabase/migrations/20261013160000_soft_delete_sender_id_requests.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/rawPortal.ts', import.meta.url), 'utf8'),
   ]);
 
   assert.match(edgeFunction, /if \(op === 'deleteSenderId'\)/);
@@ -96,4 +97,6 @@ test('Developer can soft-delete a Sender ID request without implying provider de
   assert.match(schema, /deleted_at TIMESTAMPTZ/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ/);
   assert.match(migration, /deleted_at IS NULL/);
+  assert.match(rawPortal, /action === 'devAction' && data\?\.error === 'Unknown operation'/);
+  assert.match(rawPortal, /Deploy the latest portal-db Supabase Edge Function/);
 });
