@@ -58,6 +58,12 @@ import { TopHeader } from './components/TopHeader';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { DashboardWalkthrough, hasSeenWalkthrough, getWalkthroughStorageKey } from './components/DashboardWalkthrough';
+import { ResetPasswordScreen } from './components/ResetPasswordScreen';
+import { EmailVerifiedScreen } from './components/EmailVerifiedScreen';
+import { useToast } from './context/ToastContext';
+import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
+import { getMemberAttendanceCount } from './utils/memberStatus';
+
 const PublicPortal = lazy(() => import('./components/PublicPortal').then(m => ({ default: m.PublicPortal })));
 const DashboardOverview = lazy(() => import('./components/DashboardOverview').then(m => ({ default: m.DashboardOverview })));
 const GroupOverview = lazy(() => import('./components/GroupOverview').then(m => ({ default: m.GroupOverview })));
@@ -70,20 +76,15 @@ const AnnouncementModal = lazy(() => import('./components/AnnouncementModal').th
 const AttendanceView = lazy(() => import('./components/AttendanceView').then(m => ({ default: m.AttendanceView })));
 const LeaderDirectory = lazy(() => import('./components/LeaderDirectory').then(m => ({ default: m.LeaderDirectory })));
 const LeaderRegistration = lazy(() => import('./components/LeaderRegistration').then(m => ({ default: m.LeaderRegistration })));
-import { ResetPasswordScreen } from './components/ResetPasswordScreen';
-import { EmailVerifiedScreen } from './components/EmailVerifiedScreen';
 const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
 const DatabaseSchemaView = lazy(() => import('./components/DatabaseSchemaView').then(m => ({ default: m.DatabaseSchemaView })));
 const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
 const CellReportsView = lazy(() => import('./components/CellReportsView').then(m => ({ default: m.CellReportsView })));
 const EvangelismView = lazy(() => import('./components/EvangelismView').then(m => ({ default: m.EvangelismView })));
-import { useToast } from './context/ToastContext';
 const LeaderHierarchyManager = lazy(() => import('./components/LeaderHierarchyManager').then(m => ({ default: m.LeaderHierarchyManager })));
 const LeaderHome = lazy(() => import('./components/LeaderHome').then(m => ({ default: m.LeaderHome })));
 const UsherScansCard = lazy(() => import('./components/UsherScansCard').then(m => ({ default: m.UsherScansCard })));
 const ViewLoader = () => <div className="view-loader" role="status" aria-label="Loading"><span /></div>;
-import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
-import { getMemberAttendanceCount } from './utils/memberStatus';
 
 export default function App() {
   const toast = useToast();
