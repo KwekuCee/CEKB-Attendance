@@ -372,7 +372,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
 
   // --------------------------------------------------------------- form view
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       {/* Header */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-5 md:p-6 shadow-sm space-y-5">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">

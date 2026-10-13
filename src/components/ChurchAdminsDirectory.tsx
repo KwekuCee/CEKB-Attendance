@@ -42,7 +42,7 @@ export const ChurchAdminsDirectory: React.FC<ChurchAdminsDirectoryProps> = ({
   });
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 w-full space-y-6">
       {/* Header */}
       <div>
         <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-200">
