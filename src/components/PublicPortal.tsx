@@ -583,7 +583,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       accountRole: isGroupPastorCode ? 'Superadmin' : 'Church Pastor'
     };
 
-    await onAddChurchAdmin(newAdmin, newBranch);
+    await onAddChurchAdmin(newAdmin, newBranch as any);
     if (isGroupPastorCode) {
       let claimed = false;
       for (let i = 0; i < 5 && !claimed; i++) {
