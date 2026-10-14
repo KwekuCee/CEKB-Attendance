@@ -4,7 +4,6 @@ import { PasswordInput } from './PasswordInput';
 import { ChurchLogo } from './ChurchLogo';
 import { rawPortal } from '../lib/rawPortal';
 import { FEATURES, ROLE_LABELS, FEATURE_ROLES, isFeatureOn, type FeatureMatrix } from '../lib/features';
-import { SUPABASE_SQL_SCHEMA, SUPABASE_UPDATE_SQL } from '../data/supabase_schema';
 import { deleteChurchFromSupabase } from '../lib/supabaseService';
 
 const DEV_TOKEN_KEY = 'cekb_dev_token';
@@ -43,7 +42,7 @@ const NAV: { group: string; items: { id: Tab; label: string; icon: string }[] }[
     group: 'Platform & Operations',
     items: [
       { id: 'services', label: 'Service Programs', icon: 'event' },
-      { id: 'storage', label: 'Database & SQL Schema', icon: 'database' },
+      { id: 'storage', label: 'Database & Storage', icon: 'database' },
       { id: 'audit', label: 'Audit Logs', icon: 'receipt_long' },
       { id: 'health', label: 'System Health', icon: 'monitor_heart' },
       { id: 'settings', label: 'Settings & Matrix', icon: 'settings' },
@@ -2075,10 +2074,14 @@ function Messaging({ a, act }: any) {
           </select>
         </div>
 
-        <Table
+        <PagedTable
+          key={`${q}|${channelFilter}|${statusFilter}`}
           head={['Timestamp', 'Channel', 'Template / Purpose', 'Recipient', 'Status', 'Church', 'Inspect']}
           empty="No messages match your criteria."
-          rows={filteredMessages.map((msg: any) => {
+          items={filteredMessages}
+          pageSize={10}
+          noun="messages"
+          render={(msg: any) => {
             const isSms = msg.template?.includes('sms') || msg.channel === 'sms';
             const ok = msg.status === 'sent' || msg.status === 'delivered';
             return [
@@ -2096,7 +2099,7 @@ function Messaging({ a, act }: any) {
                 Inspect
               </Button>,
             ];
-          })}
+          }}
         />
       </Card>
 
@@ -2557,10 +2560,13 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
 
           <div>
             <h3 className="font-semibold mb-2">SMS campaigns (recipient-level data remains private to the sending account)</h3>
-            <Table
+            <PagedTable
               head={['Sender ID', 'Recipients', 'Pages', 'Estimate / actual credits', 'Delivery', 'Status', 'Actions']}
               empty="No SMS campaigns have been sent."
-              rows={(mnotifyData?.campaigns || []).map((campaign: any) => [
+              items={mnotifyData?.campaigns || []}
+              pageSize={5}
+              noun="campaigns"
+              render={(campaign: any) => [
                 campaign.sender_name,
                 fmt(campaign.recipient_count),
                 fmt(campaign.total_pages),
@@ -2568,23 +2574,26 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
                 `${campaign.delivery?.delivered || 0} delivered / ${campaign.delivery?.failed || 0} failed / ${campaign.delivery?.pending || 0} pending`,
                 <Badge ok={campaign.status === 'sent'}>{campaign.status}</Badge>,
                 campaign.provider_campaign_id && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'refreshCampaign', id: campaign.id }, 'Delivery status refreshed')}>Refresh report</Button>,
-              ])}
+              ]}
             />
           </div>
 
           <div>
             <h3 className="font-semibold mb-2">Sender ID admin alerts</h3>
-            <Table
+            <PagedTable
               head={['Created', 'Destination', 'Status', 'Attempts', 'Error', 'Action']}
               empty="No sender-ID admin alerts."
-              rows={(mnotifyData?.alerts || []).map((alert: any) => [
+              items={mnotifyData?.alerts || []}
+              pageSize={5}
+              noun="alerts"
+              render={(alert: any) => [
                 when(alert.created_at),
                 alert.recipient,
                 <Badge ok={alert.status === 'sent'}>{alert.status}</Badge>,
                 alert.attempts,
                 alert.error_message || '—',
                 alert.status === 'failed' && <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => void act({ op: 'retrySenderAlert', id: alert.sender_id_request_id }, 'Admin alert retried')}>Retry</Button>,
-              ])}
+              ]}
             />
           </div>
         </div>
@@ -2896,18 +2905,6 @@ function Storage({ a, token, reload, notify }: any) {
   const [busyBackup, setBusyBackup] = useState(false);
   const [busyRestore, setBusyRestore] = useState(false);
   const [passphrase, setPassphrase] = useState('');
-  const [schemaMode, setSchemaMode] = useState<'update' | 'full'>('update');
-  const [copied, setCopied] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const activeSql = schemaMode === 'update' ? SUPABASE_UPDATE_SQL : SUPABASE_SQL_SCHEMA;
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(activeSql);
-    setCopied(true);
-    notify?.('SQL script copied to clipboard! Paste it into Supabase SQL editor.');
-    setTimeout(() => setCopied(false), 3000);
-  };
 
   const handleDownloadSql = () => {
     const filename = schemaMode === 'update' ? 'cekb-updates.sql' : 'cekb-full-schema.sql';
@@ -3022,56 +3019,6 @@ function Storage({ a, token, reload, notify }: any) {
         <Tile label="Integrity" value={ok ? 'Healthy' : 'Needs review'} />
       </div>
 
-      {/* SQL Editor / Schema Pull-up Card */}
-      <Card
-        title="Supabase SQL Editor & Database Update Script"
-        subtitle="Pull up the idempotent SQL schema update script directly into your SQL editor anytime without manual prompting or coding."
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-xl bg-muted p-1">
-              <button
-                type="button"
-                onClick={() => setSchemaMode('update')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
-                  schemaMode === 'update' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                New Updates SQL (SMS & Autonomy)
-              </button>
-              <button
-                type="button"
-                onClick={() => setSchemaMode('full')}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
-                  schemaMode === 'full' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                Complete Full Schema SQL
-              </button>
-            </div>
-            <Button variant="secondary" onClick={handleDownloadSql}>
-              <span className="material-symbols-outlined text-base mr-1">download</span>
-              Download .sql
-            </Button>
-            <Button variant="primary" onClick={handleCopySql}>
-              <span className="material-symbols-outlined text-base mr-1">
-                {copied ? 'check' : 'content_copy'}
-              </span>
-              {copied ? 'Copied!' : 'Copy SQL to Clipboard'}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-xs text-muted-foreground flex items-center justify-between gap-4">
-            <div>
-              <strong>Quick instructions for Supabase:</strong> Open your Supabase Dashboard → Click <strong>SQL Editor</strong> in the left sidebar → Click <strong>New query</strong> → Paste this script → Click <strong>Run</strong>. Safe and idempotent.
-            </div>
-          </div>
-          <pre className="max-h-96 overflow-auto rounded-2xl border border-border bg-muted/60 p-4 text-xs font-mono leading-relaxed select-all">
-            {activeSql}
-          </pre>
-        </div>
-      </Card>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card title="Churches by storage footprint">
@@ -3152,6 +3099,30 @@ function Storage({ a, token, reload, notify }: any) {
 /* ========================================================================== */
 /*                                9. AUDIT LOGS                               */
 /* ========================================================================== */
+
+function PagedTable({ head, empty, items, pageSize, render, noun }: { head: string[]; empty: string; items: any[]; pageSize: number; render: (item: any) => any[]; noun: string }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
+  return (
+    <>
+      <Table head={head} empty={empty} rows={pageItems.map(render)} />
+      {items.length > pageSize && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>
+            Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, items.length)} of {fmt(items.length)} {noun} ({pageSize} per page)
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" disabled={safePage <= 1} onClick={() => setPage(Math.max(1, safePage - 1))}>Previous</Button>
+            <span className="px-2 font-semibold text-foreground tabular-nums">Page {safePage} of {totalPages}</span>
+            <Button variant="secondary" disabled={safePage >= totalPages} onClick={() => setPage(Math.min(totalPages, safePage + 1))}>Next</Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 function Audit({ a }: any) {
   const PAGE_SIZE = 10;

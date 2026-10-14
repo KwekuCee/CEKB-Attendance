@@ -2296,19 +2296,28 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     }
     if (!sender) return json({ success: false, error: { message: 'Sender ID request was already removed or could not be found.' } }, 404);
 
-    const { data: removed, error: removeError } = await admin.from('sender_id_requests')
-      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select('id')
-      .maybeSingle();
-    if (removeError) {
-      console.error(`Sender ID removal failed for ${sender.sender_name}:`, removeError.message);
-      return json({ success: false, error: { message: 'Could not remove this Sender ID request. Confirm the Sender ID cleanup migration is applied.' } }, 500);
+    // Permanently remove the request and every record linked to it.
+    const { data: campaigns } = await admin.from('sms_campaigns').select('id').eq('sender_id_request_id', id);
+    const campaignIds = (campaigns || []).map((c: any) => c.id);
+    const steps: Array<[string, any]> = [];
+    if (campaignIds.length) {
+      steps.push(['sms_recipients', admin.from('sms_recipients').delete().in('campaign_id', campaignIds)]);
     }
-    if (!removed) return json({ success: false, error: { message: 'Sender ID request was already removed.' } }, 409);
+    for (const [label, promise] of steps) {
+      const { error } = await promise;
+      if (error) { console.error(`Sender ID delete (${label}) failed:`, error.message); return json({ success: false, error: { message: 'Could not delete this Sender ID.' } }, 500); }
+    }
+    for (const table of ['sms_campaigns', 'admin_alerts', 'sender_id_status_history']) {
+      const { error } = await admin.from(table).delete().eq('sender_id_request_id', id);
+      if (error) { console.error(`Sender ID delete (${table}) failed:`, error.message); return json({ success: false, error: { message: 'Could not delete this Sender ID.' } }, 500); }
+    }
+    const { error: removeError } = await admin.from('sender_id_requests').delete().eq('id', id);
+    if (removeError) {
+      console.error(`Sender ID delete failed for ${sender.sender_name}:`, removeError.message);
+      return json({ success: false, error: { message: 'Could not delete this Sender ID.' } }, 500);
+    }
 
-    const { error: auditError } = await log(`Removed Sender ID request "${sender.sender_name}" from the portal. The mNotify registration was not changed.`, 'Messaging');
+    const { error: auditError } = await log(`Permanently deleted Sender ID "${sender.sender_name}" and its campaigns and alerts from the portal. The mNotify registration was not changed.`, 'Messaging');
     if (auditError) console.error('Could not write Sender ID removal audit log:', auditError.message);
     return json({ success: true, deletedSenderId: sender.sender_name, providerDeleted: false });
   }
