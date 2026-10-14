@@ -890,6 +890,7 @@ export default function App() {
             onNavigate={setCurrentView}
             onSelectMemberForCard={setSelectedMemberForCard}
             onOpenAnnouncement={() => setShowAnnouncementModal(true)}
+            onStartWalkthrough={() => setShowWalkthrough(true)}
           />
         </div>
 

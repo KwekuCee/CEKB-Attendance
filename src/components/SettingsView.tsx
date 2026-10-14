@@ -40,6 +40,7 @@ interface SettingsViewProps {
   settingsTab: SettingsTab;
   onAddAuditLog?: (log: AuditLogItem) => void;
   onUpdateUser?: (updated: Partial<AuthSessionUser>) => void;
+  onStartPageTour?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -54,7 +55,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateServiceTypes,
   settingsTab,
   onAddAuditLog,
-  onUpdateUser
+  onUpdateUser,
+  onStartPageTour
 }) => {
   const isSuperadmin = user.role === 'Superadmin';
   const activeTab = settingsTab;
@@ -490,6 +492,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
+            {onStartPageTour && (
+              <button
+                onClick={onStartPageTour}
+                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer shrink-0 active:scale-98"
+                title="Tour this page step-by-step"
+              >
+                <span className="material-symbols-outlined text-[17px]">tour</span>
+                <span>Tour Page</span>
+              </button>
+            )}
+
             <button
               onClick={handleSaveSettings}
               className="bg-blue-700 hover:bg-blue-800 text-white font-black text-xs py-2.5 px-5 rounded-xl shadow-lg  transition-all flex items-center gap-2 cursor-pointer shrink-0 active:scale-98"
@@ -502,7 +515,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Tab Content Cards */}
-      <div className="space-y-6">
+      <div data-tour="settings-tabs" className="space-y-6">
         {activeTab === 'messaging' && canSendAdminSms && <AdminSmsUpdates user={user} />}
         {activeTab === 'messaging' && (['Superadmin', 'Church Admin', 'Church Pastor'] as string[]).includes(user.role) && (
           <SenderSmsWorkspace />

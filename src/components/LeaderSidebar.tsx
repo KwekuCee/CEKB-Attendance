@@ -106,6 +106,7 @@ export const LeaderSidebar: React.FC<LeaderSidebarProps> = ({
               key={item.id}
               variant="ghost"
               className="sidebar-menu-item"
+              data-tour={item.id === 'cell_report' ? 'leader-cell-report' : `leader-${item.id}`}
               aria-current={currentTab === item.id ? 'page' : undefined}
               onClick={() => handleNav(item.id)}
             >
@@ -156,6 +157,7 @@ export const LeaderSidebar: React.FC<LeaderSidebarProps> = ({
             <Button
               variant="ghost"
               className="sidebar-signout text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 p-1.5 rounded-lg transition"
+              data-tour="leader-signout"
               onClick={onLogout}
               aria-label="Sign Out"
               title="Sign Out"

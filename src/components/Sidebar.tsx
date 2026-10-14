@@ -77,7 +77,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = allNavItems.filter(item => isFeatureOn(matrix, user?.role, item.id));
   const canManageMessaging = user?.role === 'Superadmin' || user?.role === 'Church Admin' || user?.role === 'Church Pastor';
   const menuItem = (id: ViewType, label: string, icon: string) => (
-    <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
+    <Button
+      key={id}
+      variant="ghost"
+      className="sidebar-menu-item"
+      data-tour={`nav-${id}`}
+      aria-current={currentView === id ? 'page' : undefined}
+      onClick={() => navigate(id)}
+    >
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
       <span className="sidebar-menu-label">{label}</span>
     </Button>
@@ -129,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Button
             variant="ghost"
             className="sidebar-menu-item"
+            data-tour="nav-settings"
             aria-current={settingsIsActive ? 'page' : undefined}
             aria-expanded={settingsExpanded}
             aria-controls="sidebar-settings-submenu"
@@ -141,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
           >
-            <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">settings</span></span>
+            <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{settingsExpanded ? 'tune' : 'settings'}</span></span>
             <span className="sidebar-menu-label">Settings</span>
             <span className="material-symbols-outlined sidebar-settings-chevron" aria-hidden="true">
               {settingsExpanded ? 'expand_less' : 'expand_more'}
@@ -189,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="sidebar-avatar"
             />
             <div className="sidebar-account-details"><strong>{user?.name || 'Administrator'}</strong><span>{isSuperadmin ? 'Group pastor' : (user?.role as string) === 'Church Pastor' ? 'Church pastor' : 'Church administrator'}</span></div>
-            <Button variant="ghost" className="sidebar-signout" onClick={onLogout} aria-label="Sign Out" title="Sign Out"><span className="material-symbols-outlined" aria-hidden="true">logout</span></Button>
+            <Button variant="ghost" className="sidebar-signout" data-tour="nav-signout" onClick={onLogout} aria-label="Sign Out" title="Sign Out"><span className="material-symbols-outlined" aria-hidden="true">logout</span></Button>
           </div>
           <a className="sidebar-credit" href="https://primehaven.tech" target="_blank" rel="noopener noreferrer">Developed by Prime Haven</a>
         </div>

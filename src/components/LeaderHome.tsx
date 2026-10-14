@@ -184,7 +184,7 @@ export const LeaderHome: React.FC<Props> = ({
               ) : (
                 <>
                   {/* High-Level Attendance Metrics */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div data-tour="leader-attendance" className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                       { label: 'Group Attendance', val: node?.groupTotal || 0, icon: 'trending_up', color: 'text-blue-600' },
                       { label: "Today's Check-ins", val: node?.groupToday || 0, icon: 'event_available', color: 'text-emerald-600' },

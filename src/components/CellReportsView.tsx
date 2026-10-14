@@ -8,6 +8,7 @@ interface CellReportsViewProps {
   user: UserProfile | AuthSessionUser;
   churches: ChurchBranch[];
   onNavigate: (view: ViewType) => void;
+  onStartPageTour?: () => void;
 }
 
 const card = 'bg-white border border-slate-200/90 rounded-2xl shadow-sm';
@@ -86,7 +87,7 @@ function printReport(report: CellReport) {
  * Branch admins only ever receive their own branch's reports (enforced server
  * side); the group account sees every branch and can filter.
  */
-export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches: registeredChurches, onNavigate }) => {
+export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches: registeredChurches, onNavigate, onStartPageTour }) => {
   const isSuperadmin = user.role === 'Superadmin';
   const [reports, setReports] = useState<CellReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,6 +184,15 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches
           </p>
         </div>
         <div className="flex gap-2">
+          {onStartPageTour && (
+            <button
+              onClick={onStartPageTour}
+              className="flex items-center gap-1.5 border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs px-3.5 py-2 rounded-xl cursor-pointer"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[16px]">tour</span> Tour Page
+            </button>
+          )}
           <button
             onClick={handleExportList}
             disabled={!filtered.length}
@@ -200,7 +210,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div data-tour="cell-reports-summary" className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Reports', value: filtered.length, icon: 'assignment' },
           { label: 'Total attendance', value: totals.attendance, icon: 'groups' },
@@ -238,7 +248,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches
       )}
 
       {/* Filters */}
-      <div className={`${card} p-4 flex flex-wrap gap-2 items-center`}>
+      <div data-tour="cell-reports-filters" className={`${card} p-4 flex flex-wrap gap-2 items-center`}>
         {isSuperadmin && (
           <select value={churchFilter} onChange={e => setChurchFilter(e.target.value)} className={inputClass}>
             <option value="">All branches</option>
@@ -271,7 +281,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, churches
       </div>
 
       {/* List */}
-      <div className={`${card} overflow-x-auto`}>
+      <div data-tour="cell-reports-table" className={`${card} overflow-x-auto`}>
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-500">
             <tr>

@@ -21,6 +21,7 @@ interface GroupOverviewProps {
   onUpdateChurchAdmin?: (admin: ChurchAdminAccount) => void;
   onDeleteChurchAdmin?: (adminId: string) => void;
   onImported?: (newMembers: Member[], newLeaders: Leader[]) => void;
+  onStartPageTour?: () => void;
 }
 
 export const GroupOverview: React.FC<GroupOverviewProps> = ({
@@ -37,7 +38,8 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
   onDeleteChurch,
   onUpdateChurchAdmin,
   onDeleteChurchAdmin,
-  onImported
+  onImported,
+  onStartPageTour
 }) => {
   const [activeTab, setActiveTab] = useState<'branches' | 'admins' | 'evangelism_totals'>('branches');
   const [editingChurch, setEditingChurch] = useState<ChurchBranch | null>(null);
@@ -187,7 +189,18 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div data-tour="group-overview-actions" className="flex items-center gap-3">
+          {onStartPageTour && (
+            <button
+              onClick={onStartPageTour}
+              className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 px-3.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[17px]">tour</span>
+              <span>Tour Page</span>
+            </button>
+          )}
+
           <button
             onClick={handleExportBackup}
             className="bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 font-bold text-xs py-2.5 px-4 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm"
@@ -266,7 +279,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Church Network & Admin Summary Table */}
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
+        <div data-tour="group-churches-table" className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
           <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50">
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1">

@@ -283,7 +283,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
           {/* 2. Superadmin Core Metrics (Group Wide) */}
           <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-members" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Total members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
@@ -325,7 +325,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <p className="text-xs text-slate-400 mt-1">Verified local church administrators</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-attendance" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Attendance today</span>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -468,7 +468,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <h1>Welcome, {user.name}</h1>
               <p className="dashboard-welcome-detail">Pastor {currentBranchPastor} <span>·</span> Your church, together</p>
             </div>
-            <div className="dashboard-welcome-actions">
+            <div className="dashboard-welcome-actions" data-tour="overview-actions">
               {(user.role as string) === 'Church Pastor'
                 ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
                 : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
@@ -503,7 +503,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           {/* 3. Church Branch Core Metrics */}
           <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Members */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-members" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -518,7 +518,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* Today's Attendance by Service Day */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-attendance" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Today's Attendance</span>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
@@ -541,7 +541,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* This Week's Members */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-firsttimers" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">This Week's Members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
@@ -556,7 +556,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* Leaders */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-leaders" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Leaders</span>
                 <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
@@ -578,7 +578,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           {/* 4. PCF & Cell Leaders Rosters */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* PCF Leaders List */}
-            <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
+            <div data-tour="overview-pcf-leaders" className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <div>
                   <h3 className="font-headline font-bold text-sm text-slate-900 flex items-center gap-2">
@@ -645,7 +645,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* Cell Leaders List */}
-            <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
+            <div data-tour="overview-cell-leaders" className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <div>
                   <h3 className="font-headline font-bold text-sm text-slate-900 flex items-center gap-2">

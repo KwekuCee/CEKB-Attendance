@@ -15,6 +15,7 @@ interface EvangelismViewProps {
   members?: Member[];
   churches?: ChurchBranch[];
   onAddMember?: (member: Member) => void;
+  onStartPageTour?: () => void;
 }
 
 export const EvangelismView: React.FC<EvangelismViewProps> = ({
@@ -23,6 +24,7 @@ export const EvangelismView: React.FC<EvangelismViewProps> = ({
   members = [],
   churches = [],
   onAddMember,
+  onStartPageTour,
 }) => {
   const toast = useToast();
   const [records, setRecords] = useState<EvangelismRecord[]>([]);
@@ -129,7 +131,19 @@ export const EvangelismView: React.FC<EvangelismViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-tour="evangelism-actions" className="flex flex-wrap items-center gap-2">
+          {onStartPageTour && (
+            <Button
+              variant="secondary"
+              onClick={onStartPageTour}
+              className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5 shadow-xs"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[17px]">tour</span>
+              <span className="hidden sm:inline">Tour Page</span>
+            </Button>
+          )}
+
           <Button
             variant="secondary"
             onClick={() => downloadEvangelismTemplate('xlsx')}
@@ -151,7 +165,7 @@ export const EvangelismView: React.FC<EvangelismViewProps> = ({
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div data-tour="evangelism-stats" className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">Total Souls Won</span>
@@ -287,7 +301,7 @@ export const EvangelismView: React.FC<EvangelismViewProps> = ({
       </div>
 
       {/* Evangelism Contacts Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div data-tour="evangelism-table" className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-xs text-slate-500">
             <span className="material-symbols-outlined animate-spin text-xl text-blue-600 mb-1 block">

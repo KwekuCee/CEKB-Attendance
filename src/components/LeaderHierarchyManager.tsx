@@ -17,10 +17,11 @@ interface Props {
   attendance: AttendanceRecord[];
   canEdit: boolean;
   onUpdateLeader: (leader: Leader) => void | Promise<void>;
+  onStartPageTour?: () => void;
 }
 
 /** Church pastors arrange their leaders; everyone else sees the resulting totals. */
-export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, members, attendance, canEdit, onUpdateLeader }) => {
+export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, members, attendance, canEdit, onUpdateLeader, onStartPageTour }) => {
   const toast = useToast();
   const [saving, setSaving] = useState<string | null>(null);
   const own = useMemo(
@@ -43,13 +44,25 @@ export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, membe
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      <div className="dashboard-welcome">
+      <div className="dashboard-welcome flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <p className="dashboard-eyebrow">{church}</p>
           <h1>Leader hierarchy</h1>
           <p className="dashboard-welcome-detail">PCF leader → cell leaders → Bible study class teachers. Totals add up through every level.</p>
         </div>
+        {onStartPageTour && (
+          <button
+            onClick={onStartPageTour}
+            className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+            title="Tour this page step-by-step"
+          >
+            <span className="material-symbols-outlined text-[17px]">tour</span>
+            <span>Tour Page</span>
+          </button>
+        )}
       </div>
+
+      <div data-tour="hierarchy-tree" className="space-y-6">
 
       {canEdit && (
         <div className="grid gap-4 lg:grid-cols-3">
@@ -88,6 +101,7 @@ export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, membe
       )}
 
       <HierarchyAttendancePanel members={members} leaders={leaders} attendance={attendance} churchScope={church} />
+      </div>
     </div>
   );
 };

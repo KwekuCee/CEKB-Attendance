@@ -8,13 +8,15 @@ interface ChurchAdminsDirectoryProps {
   onNavigate: (view: ViewType) => void;
   onUpdateChurchAdmin?: (admin: ChurchAdminAccount) => void;
   onDeleteChurchAdmin?: (adminId: string) => void;
+  onStartPageTour?: () => void;
 }
 
 export const ChurchAdminsDirectory: React.FC<ChurchAdminsDirectoryProps> = ({
   churchAdmins,
   onNavigate,
   onUpdateChurchAdmin,
-  onDeleteChurchAdmin
+  onDeleteChurchAdmin,
+  onStartPageTour
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Active' | 'Pending Verification'>('All');
@@ -44,17 +46,30 @@ export const ChurchAdminsDirectory: React.FC<ChurchAdminsDirectoryProps> = ({
   return (
     <div className="p-4 md:p-8 w-full space-y-6">
       {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-200">
-          <span className="material-symbols-outlined text-[14px]">badge</span>
-          Registered Church Admins
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-200">
+            <span className="material-symbols-outlined text-[14px]">badge</span>
+            Registered Church Admins
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+            Church Admins Directory
+          </h1>
+          <p className="text-sm text-slate-500 mt-2">
+            Manage and monitor all registered church branch administrators across the group
+          </p>
         </div>
-        <h1 className="font-display text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-          Church Admins Directory
-        </h1>
-        <p className="text-sm text-slate-500 mt-2">
-          Manage and monitor all registered church branch administrators across the group
-        </p>
+
+        {onStartPageTour && (
+          <button
+            onClick={onStartPageTour}
+            className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 px-3.5 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            title="Tour this page step-by-step"
+          >
+            <span className="material-symbols-outlined text-[17px]">tour</span>
+            <span>Tour Page</span>
+          </button>
+        )}
       </div>
 
       {/* Stats Cards */}

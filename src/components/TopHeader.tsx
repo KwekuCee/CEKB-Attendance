@@ -10,6 +10,7 @@ interface TopHeaderProps {
   onNavigate: (view: ViewType) => void;
   onSelectMemberForCard?: (member: Member) => void;
   onOpenAnnouncement?: () => void;
+  onStartWalkthrough?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -20,7 +21,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onOpenMobileSidebar,
   onNavigate,
   onSelectMemberForCard,
-  onOpenAnnouncement
+  onOpenAnnouncement,
+  onStartWalkthrough
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -178,6 +180,18 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           >
             <span className="material-symbols-outlined text-[16px] text-blue-700 icon-fill">campaign</span>
             <span>Broadcast</span>
+          </button>
+        )}
+
+        {/* Guided Walkthrough Tour Button */}
+        {onStartWalkthrough && (
+          <button
+            onClick={onStartWalkthrough}
+            className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200/80 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+            title="Start Step-by-Step Walkthrough"
+          >
+            <span className="material-symbols-outlined text-[16px] text-blue-600">tour</span>
+            <span>Walkthrough</span>
           </button>
         )}
 

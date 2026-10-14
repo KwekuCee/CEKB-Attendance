@@ -31,6 +31,7 @@ interface LeaderDirectoryProps {
     transferredAttendance: AttendanceRecord[],
     transferredChildLeaders: Leader[]
   ) => Promise<void> | void;
+  onStartPageTour?: () => void;
 }
 
 export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
@@ -46,6 +47,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
   onUpdateLeader,
   onDeleteLeader,
   onMergeLeaders,
+  onStartPageTour,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('All');
@@ -151,7 +153,19 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0" data-tour="leaders-actions">
+          {onStartPageTour && (
+            <Button
+              variant="secondary"
+              onClick={onStartPageTour}
+              className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-blue-700 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center gap-1.5 shadow-xs"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[17px]">tour</span>
+              <span className="hidden sm:inline">Tour Page</span>
+            </Button>
+          )}
+
           <Button
             variant="secondary"
             onClick={() => {
@@ -285,7 +299,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
       )}
 
       {/* Filter Controls */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-3">
+      <div data-tour="leaders-filters" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
             search
@@ -332,7 +346,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
       </div>
 
       {/* Leaders Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div data-tour="leaders-section leaders-table" id="leaders-table-container" className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 md:p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div>
             <h3 className="font-headline text-base font-bold text-slate-900">All leaders</h3>

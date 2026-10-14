@@ -17,6 +17,7 @@ interface AnalyticsViewProps {
   leaders?: Leader[];
   onNavigate: (view: ViewType) => void;
   onAddAuditLog: (log: AuditLogItem) => void;
+  onStartPageTour?: () => void;
 }
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
@@ -26,7 +27,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   attendanceRecords = [],
   leaders = [],
   onNavigate,
-  onAddAuditLog
+  onAddAuditLog,
+  onStartPageTour
 }) => {
   const isSuperadmin = user?.role === 'Superadmin';
   const churchName = user?.church || '';
@@ -204,7 +206,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div data-tour="analytics-controls" className="flex flex-wrap items-center gap-2.5">
+          {onStartPageTour && (
+            <button
+              onClick={onStartPageTour}
+              className="flex items-center gap-1.5 border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[17px]">tour</span>
+              <span className="hidden sm:inline">Tour Page</span>
+            </button>
+          )}
+
           {/* Branch Filter - Only visible for Superadmin */}
           {isSuperadmin ? (
             <select
@@ -251,7 +264,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       </div>
 
       {/* Top 4 Metric Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div data-tour="analytics-charts" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <section className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm lg:col-span-2">
           <div className="flex flex-wrap justify-between gap-3">
             <div>

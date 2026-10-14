@@ -23,6 +23,7 @@ interface AttendanceViewProps {
   onUpdateAttendance?: (record: AttendanceRecord) => void;
   onDeleteAttendance?: (recordId: string) => void;
   onConfirmAttendance?: (record: AttendanceRecord) => void;
+  onStartPageTour?: () => void;
 }
 
 export const AttendanceView: React.FC<AttendanceViewProps> = ({
@@ -36,7 +37,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   leaders = [],
   onUpdateAttendance,
   onDeleteAttendance,
-  onConfirmAttendance
+  onConfirmAttendance,
+  onStartPageTour
 }) => {
   const toast = useToast();
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -221,7 +223,18 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div data-tour="attendance-actions" className="flex flex-wrap items-center gap-2.5">
+          {onStartPageTour && (
+            <button
+              onClick={onStartPageTour}
+              className="border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 px-3 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Tour this page step-by-step"
+            >
+              <span className="material-symbols-outlined text-[17px]">tour</span>
+              <span className="hidden sm:inline">Tour Page</span>
+            </button>
+          )}
+
           {onConfirmAttendance && (
             <button
               onClick={() => setShowManualPanel(v => !v)}
@@ -362,7 +375,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm p-4 md:p-6 space-y-4">
 
         {/* Filter Controls Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pb-4 border-b border-slate-100">
+        <div data-tour="attendance-controls" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pb-4 border-b border-slate-100">
 
           {/* Search Box */}
           <div className="relative lg:col-span-1">
@@ -451,7 +464,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div data-tour="attendance-table" className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[850px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
