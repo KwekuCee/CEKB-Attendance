@@ -4,6 +4,7 @@ import { AttendanceRecord, ChurchBranch, ViewType, Member, Leader } from '../typ
 import { useToast } from '../context/ToastContext';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
+import { PageGuideButton } from './PageGuideButton';
 
 interface AttendanceViewProps {
   attendanceRecords: AttendanceRecord[];
@@ -230,6 +231,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <PageGuideButton page="attendance" />
           {onConfirmAttendance && (
             <button
               onClick={() => setShowManualPanel(v => !v)}
@@ -370,7 +372,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm p-4 md:p-6 space-y-4">
 
         {/* Filter Controls Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pb-4 border-b border-slate-100">
+        <div data-tour="attendance-controls" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pb-4 border-b border-slate-100">
 
           {/* Search Box */}
           <div className="relative lg:col-span-1">
@@ -459,7 +461,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div data-tour="attendance-table" className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[850px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>

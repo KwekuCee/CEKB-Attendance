@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ViewType, UserProfile, Member, AuditLogItem } from '../types';
+import { PageGuideButton } from './PageGuideButton';
 
 interface TopHeaderProps {
   currentView: ViewType;
@@ -167,6 +168,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
           )}
         </div>
+
+        {/* Page Guide Button */}
+        <PageGuideButton page={currentView} label="Guide Me" />
 
         {/* Broadcast Announcement Button */}
         {onOpenAnnouncement && (

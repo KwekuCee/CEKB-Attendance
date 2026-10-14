@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { AuthSessionUser } from '../types';
 import { Member, ViewType, AuditLogItem, ChurchBranch } from '../types';
 import { isBirthdayInCurrentMonth, getBirthdayDayOfMonth, formatBirthdayDisplay } from '../utils/analyticsUtils';
+import { PageGuideButton } from './PageGuideButton';
 
 interface AnalyticsViewProps {
   user?: {
@@ -168,6 +169,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>{isSyncing ? 'Syncing...' : 'Sync DB'}</span>
           </button>
 
+          <PageGuideButton page="analytics" />
           <button
             onClick={handleExportAnalyticsCSV}
             className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all cursor-pointer"
@@ -206,7 +208,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       </div>
 
       {/* Main Grid Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div data-tour="analytics-charts" className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Left Column: Demographics & Occupations */}
         <div className="lg:col-span-8 space-y-6">

@@ -56,6 +56,8 @@ import { TopHeader } from './components/TopHeader';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { DashboardWalkthrough, hasSeenWalkthrough, getWalkthroughStorageKey } from './components/DashboardWalkthrough';
+import { WalkthroughProvider } from './context/WalkthroughContext';
+import { WalkthroughBeacon } from './components/WalkthroughBeacon';
 const PublicPortal = lazy(() => import('./components/PublicPortal').then(m => ({ default: m.PublicPortal })));
 const DashboardOverview = lazy(() => import('./components/DashboardOverview').then(m => ({ default: m.DashboardOverview })));
 const GroupOverview = lazy(() => import('./components/GroupOverview').then(m => ({ default: m.GroupOverview })));
@@ -740,46 +742,49 @@ export default function App() {
 
   if ((user?.role as string) === 'Usher') {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="px-4 py-2.5 bg-blue-700 text-white space-y-2">
-          <div className="flex justify-end">
-            <Button variant="inverse" onClick={() => setShowWalkthrough(true)}>
-              <span className="material-symbols-outlined">school</span>
-              <span>Watch Step-by-Step Walkthrough</span>
-            </Button>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-bold truncate">Signed in as {user.name}</div>
-              <div className="text-xs opacity-90 truncate">{user.church} · You've scanned {(attendanceRecords || []).filter(a => a?.verifiedBy === `${user.name} (QR Scanner)` && (a.date || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length} today</div>
+      <WalkthroughProvider currentView="qr_scanner" user={user}>
+        <div className="min-h-screen bg-slate-50">
+          <div className="px-4 py-2.5 bg-blue-700 text-white space-y-2">
+            <div className="flex justify-end">
+              <Button variant="inverse" onClick={() => setShowWalkthrough(true)}>
+                <span className="material-symbols-outlined">school</span>
+                <span>Watch Step-by-Step Walkthrough</span>
+              </Button>
             </div>
-            <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-bold truncate">Signed in as {user.name}</div>
+                <div className="text-xs opacity-90 truncate">{user.church} · You've scanned {(attendanceRecords || []).filter(a => a?.verifiedBy === `${user.name} (QR Scanner)` && (a.date || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length} today</div>
+              </div>
+              <Button variant="inverse" onClick={handleLogout}><span className="material-symbols-outlined">logout</span> Log out</Button>
+            </div>
           </div>
+          <Suspense fallback={<ViewLoader />}>
+          <QRScannerModal
+            members={members}
+            attendance={attendanceRecords}
+            serviceTypes={serviceTypes}
+            user={user}
+            onConfirmAttendance={handleConfirmAttendance}
+            onClose={() => {}}
+            onLogout={handleLogout}
+            onStartWalkthrough={() => setShowWalkthrough(true)}
+            onNavigate={() => {}}
+          />
+          </Suspense>
+          <DashboardWalkthrough
+            isOpen={showWalkthrough}
+            user={user}
+            onClose={() => setShowWalkthrough(false)}
+          />
         </div>
-        <Suspense fallback={<ViewLoader />}>
-        <QRScannerModal
-          members={members}
-          attendance={attendanceRecords}
-          serviceTypes={serviceTypes}
-          user={user}
-          onConfirmAttendance={handleConfirmAttendance}
-          onClose={() => {}}
-          onLogout={handleLogout}
-          onStartWalkthrough={() => setShowWalkthrough(true)}
-          onNavigate={() => {}}
-        />
-        </Suspense>
-        <DashboardWalkthrough
-          isOpen={showWalkthrough}
-          user={user}
-          onClose={() => setShowWalkthrough(false)}
-        />
-      </div>
+      </WalkthroughProvider>
     );
   }
 
   return (
-    <div className="dashboard-shell flex h-screen bg-background overflow-hidden font-body text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
+    <WalkthroughProvider currentView={currentView} onNavigate={setCurrentView} user={user}>
+      <div className="dashboard-shell flex h-screen bg-background overflow-hidden font-body text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
 
       {/* Navigation Sidebar */}
       <Sidebar
@@ -1038,6 +1043,8 @@ export default function App() {
       </AnimatePresence>
       </Suspense>
 
+      <WalkthroughBeacon currentView={currentView} user={user} />
+
       <DashboardWalkthrough
         isOpen={showWalkthrough}
         user={user}
@@ -1046,6 +1053,7 @@ export default function App() {
         onClose={() => setShowWalkthrough(false)}
       />
 
-    </div>
+      </div>
+    </WalkthroughProvider>
   );
 }

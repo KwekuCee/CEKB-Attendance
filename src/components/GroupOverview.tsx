@@ -4,6 +4,7 @@ import { ChurchBranch, AuditLogItem, ViewType, ChurchAdminAccount, Member, Leade
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { ImportDataPanel } from './ImportDataPanel';
+import { PageGuideButton } from './PageGuideButton';
 
 interface GroupOverviewProps {
   churches: ChurchBranch[];
@@ -153,7 +154,8 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <PageGuideButton page="group_overview" />
           <button
             onClick={handleExportBackup}
             className="bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 font-bold text-xs py-2.5 px-4 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm"
@@ -220,7 +222,7 @@ export const GroupOverview: React.FC<GroupOverviewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Church Network & Admin Summary Table */}
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
+        <div data-tour="group-churches-table" className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm">
           <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50">
             <div>
               <div className="flex items-center gap-2 mb-1">

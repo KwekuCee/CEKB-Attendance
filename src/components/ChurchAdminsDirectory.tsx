@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChurchAdminAccount, ViewType } from '../types';
 import { motion } from 'motion/react';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
+import { PageGuideButton } from './PageGuideButton';
 
 interface ChurchAdminsDirectoryProps {
   churchAdmins: ChurchAdminAccount[];
@@ -44,17 +45,22 @@ export const ChurchAdminsDirectory: React.FC<ChurchAdminsDirectoryProps> = ({
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-200">
-          <span className="material-symbols-outlined text-[14px]">badge</span>
-          Registered Church Admins
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mb-2 border border-blue-200">
+            <span className="material-symbols-outlined text-[14px]">badge</span>
+            Registered Church Admins
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+            Church Admins Directory
+          </h1>
+          <p className="text-sm text-slate-500 mt-2">
+            Manage and monitor all registered church branch administrators across the group
+          </p>
         </div>
-        <h1 className="font-display text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-          Church Admins Directory
-        </h1>
-        <p className="text-sm text-slate-500 mt-2">
-          Manage and monitor all registered church branch administrators across the group
-        </p>
+        <div className="shrink-0">
+          <PageGuideButton page="church_admins_directory" />
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -114,7 +120,7 @@ export const ChurchAdminsDirectory: React.FC<ChurchAdminsDirectoryProps> = ({
 
       {/* Admins List */}
       {filteredAdmins.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div data-tour="church-admins-table" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredAdmins.map((admin, index) => (
             <motion.div
               key={admin.id}

@@ -4,6 +4,7 @@ import { Member, RoleType, ViewType, ChurchBranch, Leader } from '../types';
 import { MemberPhoto } from './MemberPhoto';
 import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader, findLeaderByName } from '../utils/analyticsUtils';
+import { PageGuideButton } from './PageGuideButton';
 
 interface MemberDatabaseProps {
   members: Member[];
@@ -175,8 +176,10 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
 
         {/* Search, Filter, Export CSV */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Search Box with Real-Time Filtering by Name, Role, Phone */}
-          <div className="relative flex-1 sm:flex-none">
+          {/* Filters Container */}
+          <div className="flex flex-wrap items-center gap-2" data-tour="members-filters">
+            {/* Search Box with Real-Time Filtering by Name, Role, Phone */}
+            <div className="relative flex-1 sm:flex-none">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
               search
             </span>
@@ -305,24 +308,29 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
               </div>
             )}
           </div>
+          </div>
 
-          {/* Export CSV Button */}
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 font-bold text-xs rounded-xl transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            <span>Export CSV</span>
-          </button>
+          {/* Member Actions */}
+          <div className="flex items-center gap-2" data-tour="members-actions">
+            <PageGuideButton page="members" />
+            {/* Export CSV Button */}
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              <span>Export CSV</span>
+            </button>
 
-          {/* Add New Member Button */}
-          <button
-            onClick={() => onNavigate('register')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
-          >
-            <span className="material-symbols-outlined text-[18px]">person_add</span>
-            <span>New Member</span>
-          </button>
+            {/* Add New Member Button */}
+            <button
+              onClick={() => onNavigate('register')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+            >
+              <span className="material-symbols-outlined text-[18px]">person_add</span>
+              <span>New Member</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -401,7 +409,7 @@ export const MemberDatabase: React.FC<MemberDatabaseProps> = ({
       )}
 
       {/* Table Container */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm flex-1">
+      <div data-tour="members-table" className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col shadow-sm flex-1">
         <div className="overflow-x-auto flex-1">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead className="bg-slate-50/80 sticky top-0 z-10 border-b border-slate-200">

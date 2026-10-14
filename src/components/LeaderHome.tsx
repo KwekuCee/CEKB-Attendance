@@ -3,6 +3,9 @@ import { Leader, Member, AttendanceRecord, AuthSessionUser } from '../types';
 import { buildLeaderAttendanceTree, flattenLeaderNode } from '../utils/analyticsUtils';
 import { Button } from './Button';
 import { DashboardWalkthrough, hasSeenWalkthrough } from './DashboardWalkthrough';
+import { WalkthroughProvider } from '../context/WalkthroughContext';
+import { WalkthroughBeacon } from './WalkthroughBeacon';
+import { PageGuideButton } from './PageGuideButton';
 
 interface Props {
   user: AuthSessionUser;
@@ -37,19 +40,23 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
   const myMembers = me ? scoped.members.filter(m => m.invitedByLeaderId === me.id || (m.invitedBy || '').toLowerCase() === me.fullName.toLowerCase()) : [];
 
   return (
+    <WalkthroughProvider user={user} currentView="dashboard">
     <div className="dashboard-shell min-h-screen p-4 md:p-8">
       <div className="dashboard-workspace max-w-5xl mx-auto rounded-3xl p-4 md:p-8 space-y-6">
-        <div className="dashboard-welcome">
+        <div data-tour="leader-welcome" className="dashboard-welcome">
           <div>
             <p className="dashboard-eyebrow">{user.church}</p>
             <h1>Welcome, {user.name}</h1>
             <p className="dashboard-welcome-detail">{me ? `${me.leaderType} · ${me.cellOrPcfName || ''}` : 'Leader account'}</p>
           </div>
           <div className="flex flex-col items-stretch sm:items-end gap-2">
-            <Button variant="secondary" onClick={() => setShowWalkthrough(true)}>
-              <span className="material-symbols-outlined">school</span>
-              <span>Watch Step-by-Step Walkthrough</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <PageGuideButton page="dashboard" label="Guide Me" />
+              <Button variant="secondary" onClick={() => setShowWalkthrough(true)}>
+                <span className="material-symbols-outlined">school</span>
+                <span>Full Tour</span>
+              </Button>
+            </div>
             <div className="dashboard-welcome-actions flex flex-wrap items-center gap-2">
               <Button onClick={() => { window.location.href = '/cell-report'; }}>
                 <span className="material-symbols-outlined">assignment</span> Submit cell report
@@ -65,7 +72,7 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
           <p className="text-sm text-slate-600">We couldn't find your leader record yet. Ask your church admin to check your details.</p>
         ) : (
           <>
-            <div className="dashboard-metrics grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div data-tour="leader-metrics" className="dashboard-metrics grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 ['Whole group attendance', node?.groupTotal || 0],
                 ['Today', node?.groupToday || 0],
@@ -80,7 +87,7 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
             </div>
 
             {below.length > 0 && (
-              <section className="bg-white border border-slate-200 rounded-2xl p-4">
+              <section data-tour="leader-downstream" className="bg-white border border-slate-200 rounded-2xl p-4">
                 <h3 className="font-headline text-sm text-slate-900 mb-2">Leaders under you</h3>
                 <div className="divide-y divide-slate-100">
                   {below.map(n => (
@@ -93,7 +100,7 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
               </section>
             )}
 
-            <section className="bg-white border border-slate-200 rounded-2xl p-4">
+            <section data-tour="leader-members" className="bg-white border border-slate-200 rounded-2xl p-4">
               <h3 className="font-headline text-sm text-slate-900 mb-2">Your members ({myMembers.length})</h3>
               {myMembers.length === 0 ? <p className="text-xs text-slate-500">No members linked to you yet.</p> : (
                 <div className="divide-y divide-slate-100">
@@ -110,7 +117,7 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
         )}
 
         {/* Account Footer Card with Walkthrough Button directly above User & Logout */}
-        <section className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <section data-tour="leader-actions" className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="space-y-2">
             <Button variant="secondary" onClick={() => setShowWalkthrough(true)}>
               <span className="material-symbols-outlined">school</span>
@@ -138,6 +145,9 @@ export const LeaderHome: React.FC<Props> = ({ user, leaders, members, attendance
         user={user}
         onClose={() => setShowWalkthrough(false)}
       />
+
+      <WalkthroughBeacon user={user} currentView="dashboard" />
     </div>
+    </WalkthroughProvider>
   );
 };

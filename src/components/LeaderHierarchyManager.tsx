@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Leader, Member, AttendanceRecord } from '../types';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { useToast } from '../context/ToastContext';
+import { PageGuideButton } from './PageGuideButton';
 
 /** Which kind of leader each role reports to: BSCT → Cell Leader → PCF Leader. */
 const PARENT_TYPE: Record<string, string[]> = {
@@ -49,10 +50,13 @@ export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, membe
           <h1>Leader hierarchy</h1>
           <p className="dashboard-welcome-detail">PCF leader → cell leaders → Bible study class teachers. Totals add up through every level.</p>
         </div>
+        <div className="dashboard-welcome-actions">
+          <PageGuideButton page="hierarchy" />
+        </div>
       </div>
 
       {canEdit && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3" data-tour="hierarchy-editor">
           {groups.map(([type, title]) => {
             const list = own.filter(l => l.leaderType === type);
             const parents = own.filter(l => (PARENT_TYPE[type] || []).includes(l.leaderType));
@@ -87,7 +91,9 @@ export const LeaderHierarchyManager: React.FC<Props> = ({ church, leaders, membe
         </div>
       )}
 
-      <HierarchyAttendancePanel members={members} leaders={leaders} attendance={attendance} churchScope={church} />
+      <div data-tour="hierarchy-tree">
+        <HierarchyAttendancePanel members={members} leaders={leaders} attendance={attendance} churchScope={church} />
+      </div>
     </div>
   );
 };

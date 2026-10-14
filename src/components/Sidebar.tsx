@@ -56,7 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
   const navItems = allNavItems.filter(item => isFeatureOn(matrix, user?.role, item.id));
   const menuItem = (id: ViewType, label: string, icon: string) => (
-    <Button key={id} variant="ghost" className="sidebar-menu-item" aria-current={currentView === id ? 'page' : undefined} onClick={() => navigate(id)}>
+    <Button
+      key={id}
+      variant="ghost"
+      className="sidebar-menu-item"
+      data-tour={`nav-${id}`}
+      aria-current={currentView === id ? 'page' : undefined}
+      onClick={() => navigate(id)}
+    >
       <span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">{icon}</span></span>
       <span className="sidebar-menu-label">{label}</span>
     </Button>
@@ -79,8 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {navItems.map(item => menuItem(item.id, item.label, item.icon))}
         </nav>
         <div className="sidebar-utilities">
-          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && isFeatureOn(matrix, user?.role, 'scanner') && <Button className="sidebar-scanner-action" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
-          {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
+          {!isSuperadmin && (user?.role as string) !== 'Church Pastor' && isFeatureOn(matrix, user?.role, 'scanner') && <Button className="sidebar-scanner-action" data-tour="nav-scanner" onClick={() => navigate('qr_scanner')}><span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>Launch Scanner</Button>}
+          {isFeatureOn(matrix, user?.role, 'export') && <Button variant="ghost" className="sidebar-menu-item" data-tour="nav-export" onClick={exportRecords} title={isSuperadmin ? 'Export all church and attendance records' : 'Export branch records'}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">download</span></span><span className="sidebar-menu-label">{isSuperadmin ? 'Export records' : 'Export Branch Data'}</span></Button>}
           {isFeatureOn(matrix, user?.role, 'support') && <Button variant="ghost" className="sidebar-menu-item" onClick={() => setShowSupportChat(true)}><span className="sidebar-menu-icon"><span className="material-symbols-outlined" aria-hidden="true">help</span></span><span className="sidebar-menu-label">Admin Support</span></Button>}
           {menuItem('settings', 'Settings', 'settings')}
         </div>

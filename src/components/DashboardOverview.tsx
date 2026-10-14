@@ -9,6 +9,7 @@ import { InsightsPanel } from './InsightsPanel';
 import { Button } from './Button';
 import { HierarchyAttendancePanel } from './HierarchyAttendancePanel';
 import { ImportDataPanel } from './ImportDataPanel';
+import { PageGuideButton } from './PageGuideButton';
 
 
 interface DashboardOverviewProps {
@@ -270,12 +271,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <h1>Welcome, {user.name.startsWith('Pastor') ? user.name : `Pastor ${user.name}`}</h1>
               <p className="dashboard-welcome-detail">{churches.length} churches <span>·</span> {members.length} members <span>·</span> One family</p>
             </div>
-            <Button onClick={() => setShowBroadcastModal(true)}><span className="material-symbols-outlined">campaign</span> Message church admins</Button>
+            <div className="flex flex-wrap items-center gap-2" data-tour="overview-actions">
+              <PageGuideButton page="dashboard" />
+              <Button onClick={() => setShowBroadcastModal(true)}><span className="material-symbols-outlined">campaign</span> Message church admins</Button>
+            </div>
           </div>
 
           {/* 2. Superadmin Core Metrics (Group Wide) */}
           <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-members" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Total members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
@@ -317,7 +321,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <p className="text-xs text-slate-400 mt-1">Verified local church administrators</p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-attendance" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Attendance today</span>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -333,7 +337,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           {/* 3. Church attendance */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
+          <div data-tour="overview-trend" className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
             <div className="border-b border-slate-100 pb-3">
               <h3 className="font-headline font-bold text-base text-slate-900">
                 Church attendance
@@ -460,7 +464,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <h1>Welcome, {user.name}</h1>
               <p className="dashboard-welcome-detail">Pastor {currentBranchPastor} <span>·</span> Your church, together</p>
             </div>
-            <div className="dashboard-welcome-actions">
+            <div className="dashboard-welcome-actions flex flex-wrap items-center gap-2" data-tour="overview-actions">
+              <PageGuideButton page="dashboard" />
               {(user.role as string) === 'Church Pastor'
                 ? <Button onClick={() => onNavigate('hierarchy')}><span className="material-symbols-outlined">account_tree</span> Leader hierarchy</Button>
                 : <Button onClick={() => onNavigate('qr_scanner')}><span className="material-symbols-outlined">qr_code_scanner</span> Open scanner</Button>}
@@ -489,7 +494,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           {/* 3. Church Branch Core Metrics */}
           <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Members */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-members" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -504,7 +509,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* Today's Attendance by Service Day */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-attendance" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">Today's Attendance</span>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
@@ -527,7 +532,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* This Week's Members */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
+            <div data-tour="metric-firsttimers" className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-sm transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 ">This Week's Members</span>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
@@ -699,7 +704,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           {/* 4b. Attendance per Leader + Total Attendance */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
+          <div data-tour="overview-trend" className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
             <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-100 pb-3">
               <h3 className="font-headline font-bold text-base text-slate-900 flex items-center gap-2">
                 <span className="material-symbols-outlined text-blue-700 text-[20px]">groups_3</span>

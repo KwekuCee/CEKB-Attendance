@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import type { AuthSessionUser, UserProfile, CellReport, ViewType } from '../types';
 import { fetchCellReports, GRID_ROWS, EVANGELISM_FIELDS } from '../lib/cellReports';
+import { PageGuideButton } from './PageGuideButton';
 
 interface CellReportsViewProps {
   user: UserProfile | AuthSessionUser;
@@ -179,7 +180,8 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
               : `Reports submitted by leaders of ${user.church || 'your branch'}.`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <PageGuideButton page="cell_reports" />
           <button
             onClick={handleExportList}
             disabled={!filtered.length}
@@ -196,6 +198,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
         </div>
       </div>
 
+      <div data-tour="cell-reports-container" className="space-y-6">
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
@@ -316,6 +319,7 @@ export const CellReportsView: React.FC<CellReportsViewProps> = ({ user, onNaviga
             ))}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Read-only report viewer */}

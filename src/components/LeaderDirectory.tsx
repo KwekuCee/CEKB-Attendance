@@ -5,6 +5,7 @@ import { EditRecordModal, ConfirmDeleteDialog } from './EditRecordModal';
 import { getGroupNamesForLeader } from '../utils/analyticsUtils';
 import { IncompleteLeadersPanel } from './IncompleteLeadersPanel';
 import { isIncompleteLeader } from '../utils/importUtils';
+import { PageGuideButton } from './PageGuideButton';
 
 interface LeaderDirectoryProps {
   leaders: Leader[];
@@ -96,13 +97,16 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => onNavigate('leader_registration')}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer shrink-0"
-        >
-          <span className="material-symbols-outlined text-[18px]">person_add</span>
-          <span>Register New Leader</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0" data-tour="leaders-actions">
+          <PageGuideButton page="leaders" />
+          <button
+            onClick={() => onNavigate('leader_registration')}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer shrink-0"
+          >
+            <span className="material-symbols-outlined text-[18px]">person_add</span>
+            <span>Register New Leader</span>
+          </button>
+        </div>
       </div>
 
       {/* Promotion requests awaiting the group pastor */}
@@ -178,7 +182,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
       )}
 
       {/* Filter Controls */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-3">
+      <div data-tour="leaders-filters" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
             search
@@ -225,7 +229,7 @@ export const LeaderDirectory: React.FC<LeaderDirectoryProps> = ({
       </div>
 
       {/* Leaders Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div data-tour="leaders-table" className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 md:p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div>
             <h3 className="font-headline text-base font-bold text-slate-900">All leaders</h3>

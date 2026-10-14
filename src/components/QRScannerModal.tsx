@@ -314,7 +314,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       <div className="scanner-layout absolute inset-0 flex flex-col z-10 pointer-events-none">
         <div className="scanner-top-mask shrink-0" />
 
-        <div className="scanner-viewfinder flex shrink-0">
+        <div data-tour="scanner-viewfinder" className="scanner-viewfinder flex shrink-0">
           <div className="flex-1 bg-slate-950/60" />
 
           {/* Target Scanning Box */}
@@ -338,7 +338,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
           </span>
 
           {/* Service picker + manual lookup */}
-          <div className="scanner-controls mt-4 pointer-events-auto w-full px-4 max-w-md space-y-2">
+          <div data-tour="scanner-controls" className="scanner-controls mt-4 pointer-events-auto w-full px-4 max-w-md space-y-2">
             <select
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value)}
@@ -418,7 +418,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
       </div>
 
       {/* Top Overlay Bar */}
-      <header className="absolute top-0 left-0 w-full z-30 px-4 pt-4 pb-3 flex justify-between items-center gap-2 bg-gradient-to-b from-slate-950/90 to-transparent">
+      <header data-tour="scanner-actions" className="absolute top-0 left-0 w-full z-30 px-4 pt-4 pb-3 flex justify-between items-center gap-2 bg-gradient-to-b from-slate-950/90 to-transparent">
         <div className="flex items-center gap-2">
           {onLogout ? (
             <Button variant="inverse" onClick={onLogout} className="scanner-logout" aria-label="Log out">

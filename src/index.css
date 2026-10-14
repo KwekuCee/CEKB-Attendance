@@ -596,3 +596,20 @@ button:focus-visible, a:focus-visible { outline: 3px solid hsl(var(--ring) / .5)
   .dev-shell .dev-sidebar { top: 0; left: 0; bottom: 0; border-radius: 0 24px 24px 0; transform: translateX(-100%); transition: transform .3s ease; }
   .dev-shell .dev-sidebar.is-open { transform: translateX(0); }
 }
+
+/* Interactive Walkthrough Spotlight */
+@keyframes spotlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.72), 0 0 16px 3px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.78), 0 0 32px 8px rgba(59, 130, 246, 0.9);
+  }
+}
+
+.walkthrough-spotlight-box {
+  animation: spotlight-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+

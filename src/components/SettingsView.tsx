@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { motion } from 'motion/react';
 import { UserProfile, AuthSessionUser, ChurchBranch, ViewType, AuditLogItem, Member, Leader, AttendanceRecord, ChurchAdminAccount } from '../types';
+import { PageGuideButton } from './PageGuideButton';
 import {
   isSupabaseConfigured,
   saveSupabaseCredentials,
@@ -506,7 +507,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <PageGuideButton page="settings" />
             <button
               onClick={handleSaveSettings}
               className="bg-blue-700 hover:bg-blue-800 text-white font-black text-xs py-2.5 px-5 rounded-xl shadow-lg  transition-all flex items-center gap-2 cursor-pointer shrink-0 active:scale-98"
@@ -519,7 +521,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+      <div data-tour="settings-tabs" className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('supabase')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'supabase'
