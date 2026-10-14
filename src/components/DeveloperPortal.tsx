@@ -2906,17 +2906,7 @@ function Storage({ a, token, reload, notify }: any) {
   const [busyRestore, setBusyRestore] = useState(false);
   const [passphrase, setPassphrase] = useState('');
 
-  const handleDownloadSql = () => {
-    const filename = schemaMode === 'update' ? 'cekb-updates.sql' : 'cekb-full-schema.sql';
-    const blob = new Blob([activeSql], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const el = document.createElement('a');
-    el.href = url;
-    el.download = filename;
-    el.click();
-    URL.revokeObjectURL(url);
-    notify?.(`Downloaded ${filename}`);
-  };
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleBackup = async () => {
     if (!token) return;
