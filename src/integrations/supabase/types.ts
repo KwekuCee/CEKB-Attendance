@@ -795,6 +795,7 @@ export type Database = {
       }
       members: {
         Row: {
+          cell_leader: string | null
           church_id: string | null
           church_name: string | null
           created_at: string
@@ -811,6 +812,7 @@ export type Database = {
           location: string | null
           marital_status: string | null
           occupation: string | null
+          pcf_leader: string | null
           phone: string | null
           photo_url: string | null
           role: string | null
@@ -819,6 +821,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cell_leader?: string | null
           church_id?: string | null
           church_name?: string | null
           created_at?: string
@@ -835,6 +838,7 @@ export type Database = {
           location?: string | null
           marital_status?: string | null
           occupation?: string | null
+          pcf_leader?: string | null
           phone?: string | null
           photo_url?: string | null
           role?: string | null
@@ -843,6 +847,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cell_leader?: string | null
           church_id?: string | null
           church_name?: string | null
           created_at?: string
@@ -859,6 +864,7 @@ export type Database = {
           location?: string | null
           marital_status?: string | null
           occupation?: string | null
+          pcf_leader?: string | null
           phone?: string | null
           photo_url?: string | null
           role?: string | null
@@ -1067,6 +1073,7 @@ export type Database = {
           church_id: string | null
           church_name: string | null
           created_at: string
+          deleted_at: string | null
           id: string
           notification_sent_at: string | null
           purpose: string
@@ -1088,6 +1095,7 @@ export type Database = {
           church_id?: string | null
           church_name?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           notification_sent_at?: string | null
           purpose: string
@@ -1109,6 +1117,7 @@ export type Database = {
           church_id?: string | null
           church_name?: string | null
           created_at?: string
+          deleted_at?: string | null
           id?: string
           notification_sent_at?: string | null
           purpose?: string

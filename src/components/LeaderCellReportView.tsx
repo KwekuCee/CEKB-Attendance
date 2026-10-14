@@ -92,8 +92,8 @@ export const LeaderCellReportView: React.FC<LeaderCellReportViewProps> = ({
 
     setIsSubmitting(true);
     const { data, error } = await submitCellReport(user.church, reportCode, submission, {
-      leaderCode: leader?.leaderCode || leader?.id,
-      phone: leader?.contact || user.phone,
+      leaderCode: leader?.leaderCode || leader?.id || '',
+      phone: leader?.contact || user.phone || '',
     });
     setIsSubmitting(false);
 
