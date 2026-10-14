@@ -23,6 +23,25 @@ export default defineConfig(() => {
       allowedHosts: true as const,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/functions/v1': {
+          target: 'https://bouwuqpzplazpwuwyphq.supabase.co',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 3000,
+      allowedHosts: true as const,
+      proxy: {
+        '/functions/v1': {
+          target: 'https://bouwuqpzplazpwuwyphq.supabase.co',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
     build: {
       rollupOptions: {

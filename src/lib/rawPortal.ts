@@ -2,12 +2,14 @@
 import { getPortalToken, runLocalPortal } from './portalDb';
 
 const LOVABLE_SUPABASE_URL = 'https://bouwuqpzplazpwuwyphq.supabase.co';
-const RAW_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || LOVABLE_SUPABASE_URL;
-const URL = RAW_URL ? `${RAW_URL}/functions/v1/portal-db` : `${LOVABLE_SUPABASE_URL}/functions/v1/portal-db`;
+const CUSTOM_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
+const URL = CUSTOM_URL
+  ? `${CUSTOM_URL}/functions/v1/portal-db`
+  : (typeof window !== 'undefined' ? '/functions/v1/portal-db' : `${LOVABLE_SUPABASE_URL}/functions/v1/portal-db`);
 const KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 const ALLOW_LOCAL_FALLBACK =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_LOCAL_PORTAL === 'true') ||
-  (typeof process !== 'undefined' && process.env?.VITE_ENABLE_LOCAL_PORTAL === 'true');
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_LOCAL_PORTAL !== 'false') &&
+  (typeof process !== 'undefined' && process.env?.VITE_ENABLE_LOCAL_PORTAL !== 'false');
 
 function withActionablePortalError(data: any, action: unknown) {
   if (action === 'mnotifyUser' && data?.error?.message === 'Unknown request.') {
@@ -63,8 +65,11 @@ export async function rawPortal(payload: Record<string, unknown>, token?: string
     if (!data) return { success: false, error: { message: 'The server returned an invalid response.' } };
     return withActionablePortalError(data, payload.action);
   } catch (err: any) {
-    if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
-    console.error('portal-db request failed:', err?.message || err);
+    if (ALLOW_LOCAL_FALLBACK) {
+      console.warn('portal-db request failed, using local portal fallback:', err?.message || err);
+      return runLocalPortal(payload, token);
+    }
+    console.warn('portal-db request failed:', err?.message || err);
     return { success: false, error: { message: 'Could not reach the server. Please try again.' } };
   }
 }
