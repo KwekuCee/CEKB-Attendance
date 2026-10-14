@@ -89,7 +89,7 @@ test('Developer can soft-delete a Sender ID request without implying provider de
 
   assert.match(edgeFunction, /if \(op === 'deleteSenderId'\)/);
   assert.match(edgeFunction, /session\?\.role !== 'Developer'/);
-  assert.match(edgeFunction, /deleted_at: new Date\(\)\.toISOString\(\)/);
+  assert.match(edgeFunction, /from('sender_id_requests').delete()/);
   assert.match(edgeFunction, /providerDeleted: false/);
   assert.match(edgeFunction, /\.is\('deleted_at', null\)/);
   assert.match(developerPortal, /op: 'deleteSenderId'/);
