@@ -32,6 +32,14 @@ function withActionablePortalError(data: any, action: unknown) {
   return data;
 }
 
+async function readPortalResponse(res: Response) {
+  return res.json().catch(() => null);
+}
+
+function isMaintenanceResponse(data: any) {
+  return Boolean(data?.maintenance || data?.error?.maintenance || data?.error?.message?.toLowerCase?.().includes('maintenance'));
+}
+
 export async function rawPortal(payload: Record<string, unknown>, token?: string | null): Promise<any> {
   if (!URL) {
     if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
@@ -53,8 +61,14 @@ export async function rawPortal(payload: Record<string, unknown>, token?: string
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
+      const response = await readPortalResponse(res);
+      if (isMaintenanceResponse(response)) {
+        return withActionablePortalError(
+          response || { success: false, maintenance: true, error: { message: 'The system is under maintenance.' } },
+          payload.action,
+        );
+      }
       if (ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
-      const response = await res.json().catch(() => null);
       return withActionablePortalError(
         response || { success: false, error: { message: `The server rejected the request (${res.status}).` } },
         payload.action,

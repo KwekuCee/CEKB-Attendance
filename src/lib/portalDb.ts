@@ -1401,6 +1401,10 @@ export async function callPortal<T = any>(payload: Record<string, unknown>): Pro
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      if (body?.maintenance || body?.error?.maintenance || body?.error?.message?.toLowerCase?.().includes('maintenance')) {
+        return { data: null, error: typeof body?.error === 'string' ? { message: body.error } : (body?.error || { message: 'The system is under maintenance.' }) };
+      }
       console.warn('portal-db remote returned non-ok status, falling back to local portal:', res.status);
       return runLocalPortal(payload);
     }
