@@ -50,7 +50,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         id,
         type,
         title,
-        message,
+        message: message == null ? undefined : typeof message === "string" ? message : String((message as any)?.message ?? ""),
         duration,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
