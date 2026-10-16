@@ -628,13 +628,17 @@ export default function App() {
     setPromotionQueue(prev => prev.filter(p => p.leaderId !== duplicateLeader.id));
 
     // 5. Persist to Supabase / Backend
-    await mergeLeadersInSupabase(
+    const saved = await mergeLeadersInSupabase(
       primaryLeader,
       duplicateLeader.id,
       transferredMembers,
       transferredAttendance,
       transferredChildLeaders
     );
+    if (!saved) {
+      toast.showError('Merge not saved', 'The server could not save this merge. Please refresh and try again.');
+      return;
+    }
 
     // 6. Audit Log
     pushLog(
