@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from './Button';
 import { PasswordInput } from './PasswordInput';
@@ -134,7 +135,7 @@ export default function DeveloperPortal() {
       setToken(r.token);
       setPassword('');
     } else {
-      setError(r?.error || 'Sign-in failed.');
+      setError(errorText(r?.error, 'Sign-in failed.'));
     }
   };
 
@@ -2327,7 +2328,7 @@ function SmsHub({ a, act, sendAdminSms, mnotifyData, refreshMnotify }: any) {
       if (response?.success) {
         setSendResult(response.sms);
       } else {
-        setSendError(response?.error?.message || response?.error || 'Could not send the admin update.');
+        setSendError(errorText(response?.error, 'Could not send the admin update.'));
         setSendResult(response?.sms || null);
       }
     } catch {
