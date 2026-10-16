@@ -6,9 +6,8 @@
 
 const LOVABLE_SUPABASE_URL = 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const CUSTOM_SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
-const FUNCTIONS_BASE = CUSTOM_SUPABASE_URL
-  ? `${CUSTOM_SUPABASE_URL}/functions/v1/portal-db`
-  : (typeof window !== 'undefined' ? '/functions/v1/portal-db' : `${LOVABLE_SUPABASE_URL}/functions/v1/portal-db`);
+const BASE_URL = CUSTOM_SUPABASE_URL || LOVABLE_SUPABASE_URL;
+const FUNCTIONS_BASE = `${BASE_URL}/functions/v1/portal-db`;
 const ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
 import { supabase as cloudClient } from '../integrations/supabase/client';

@@ -3,9 +3,8 @@ import { getPortalToken, runLocalPortal } from './portalDb';
 
 const LOVABLE_SUPABASE_URL = 'https://bouwuqpzplazpwuwyphq.supabase.co';
 const CUSTOM_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
-const URL = CUSTOM_URL
-  ? `${CUSTOM_URL}/functions/v1/portal-db`
-  : (typeof window !== 'undefined' ? '/functions/v1/portal-db' : `${LOVABLE_SUPABASE_URL}/functions/v1/portal-db`);
+const BASE_URL = CUSTOM_URL || LOVABLE_SUPABASE_URL;
+const URL = `${BASE_URL}/functions/v1/portal-db`;
 const KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 const ALLOW_LOCAL_FALLBACK =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ENABLE_LOCAL_PORTAL !== 'false') &&
@@ -32,8 +31,27 @@ function withActionablePortalError(data: any, action: unknown) {
   return data;
 }
 
-async function readPortalResponse(res: Response) {
-  return res.json().catch(() => null);
+async function readPortalResponse(res: Response): Promise<any> {
+  const contentType = res.headers?.get('content-type') || '';
+  if (contentType.includes('json')) {
+    try {
+      return await res.json();
+    } catch (err: any) {
+      console.warn(`portal-db returned invalid JSON (${res.status}):`, err?.message || err);
+      return null;
+    }
+  }
+
+  try {
+    const text = await res.text();
+    console.warn(
+      `portal-db returned non-JSON response (${res.status}, ${contentType || 'unknown content-type'}):`,
+      text.slice(0, 300)
+    );
+  } catch (err: any) {
+    console.warn(`portal-db response could not be read (${res.status}):`, err?.message || err);
+  }
+  return null;
 }
 
 function isMaintenanceResponse(data: any) {
@@ -74,7 +92,7 @@ export async function rawPortal(payload: Record<string, unknown>, token?: string
         payload.action,
       );
     }
-    const data = await res.json().catch(() => null);
+    const data = await readPortalResponse(res);
     if (!data && ALLOW_LOCAL_FALLBACK) return runLocalPortal(payload, token);
     if (!data) return { success: false, error: { message: 'The server returned an invalid response.' } };
     return withActionablePortalError(data, payload.action);
