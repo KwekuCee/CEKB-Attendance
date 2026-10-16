@@ -6,8 +6,13 @@ import { setPortalToken } from '../lib/portalDb';
 // no sign-in, sign-up, check-in or reports. The server refuses those requests too.
 export function MaintenanceGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<any>(null);
+  const [checked, setChecked] = useState(false);
   useEffect(() => {
-    const check = () => rawPortal({ action: 'platformStatus' }, null).then((r) => r?.data && setStatus(r.data));
+    const check = () => rawPortal({ action: 'platformStatus' }, null)
+      .then((r) => {
+        if (r?.data) setStatus(r.data);
+      })
+      .finally(() => setChecked(true));
     check();
     const t = setInterval(check, 60000);
     return () => clearInterval(t);
@@ -18,6 +23,14 @@ export function MaintenanceGate({ children }: { children: React.ReactNode }) {
       try { localStorage.removeItem('gcyc_auth_session'); } catch { /* ignore */ }
     }
   }, [status?.maintenance]);
+  if (!checked) {
+    return (
+      <main className="maintenance-home min-h-screen flex flex-col items-center justify-center gap-5 p-8 text-center">
+        <img src="/icon-512.png" alt="CEKB logo" className="h-20 w-20 rounded-3xl bg-card p-2 shadow-xl" />
+        <p className="text-sm font-semibold opacity-80">Checking system status…</p>
+      </main>
+    );
+  }
   if (!status?.maintenance) return <>{children}</>;
   return (
     <main className="maintenance-home min-h-screen flex flex-col items-center justify-center gap-6 p-8 text-center">
