@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import { csvQ } from '../utils/csvSafe';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PasswordInput } from './PasswordInput';
@@ -1552,7 +1553,7 @@ function SenderSmsWorkspace() {
         idempotencyKey: pendingSend.current.key,
       });
       if (!result?.success) {
-        setError(result?.error?.message || result?.error || 'SMS was not accepted.');
+        setError(errorText(result?.error, 'SMS was not accepted.'));
       } else {
         pendingSend.current = null;
         setNotice(result.duplicate

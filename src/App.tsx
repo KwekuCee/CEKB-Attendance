@@ -1,3 +1,4 @@
+import { errorText } from './utils/errorText';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -665,7 +666,7 @@ export default function App() {
       target?.name,
     );
     if (!result.success) {
-      toast.showError('Church deletion failed', result.error || 'The church and its records were not deleted.');
+      toast.showError('Church deletion failed', errorText(result.error, 'The church and its records were not deleted.'));
       return false;
     }
 

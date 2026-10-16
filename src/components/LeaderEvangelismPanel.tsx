@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { AuthSessionUser, EvangelismRecord, Leader, Member } from '../types';
 import { Button } from './Button';
@@ -104,7 +105,7 @@ export const LeaderEvangelismPanel: React.FC<LeaderEvangelismPanelProps> = ({
     setIsParsing(false);
 
     if (!res.success || res.records.length === 0) {
-      setUploadError(res.error || 'Failed to parse file. Please verify column headers.');
+      setUploadError(errorText(res.error, 'Failed to parse file. Please verify column headers.'));
       setParsedPreview([]);
     } else {
       setParsedPreview(res.records);

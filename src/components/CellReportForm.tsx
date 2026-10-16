@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Leader } from '../types';
@@ -158,7 +159,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
     const { data, error } = await verifyReportCode(church, code.trim().toUpperCase(), loginInfo());
     setIsVerifying(false);
     if (error || !data?.ok) {
-      setGateError(error || (mode === 'leader' ? 'That leader code and phone number do not match.' : 'That access code is not correct for this church.'));
+      setGateError(errorText(error, mode === 'leader' ? 'That leader code and phone number do not match.' : 'That access code is not correct for this church.'));
       return;
     }
     if (data.leader) {
@@ -226,7 +227,7 @@ export const CellReportForm: React.FC<CellReportFormProps> = ({ churchOptions, l
     const { data, error } = await submitCellReport(church, code.trim().toUpperCase(), payload, loginInfo());
     setIsSubmitting(false);
     if (error || !data?.ok) {
-      setSubmitError(error || 'The report could not be saved. Please try again.');
+      setSubmitError(errorText(error, 'The report could not be saved. Please try again.'));
       return;
     }
     setSubmitted(true);

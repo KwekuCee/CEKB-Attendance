@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useState } from 'react';
 import { Button } from './Button';
 import { verifyReportCode } from '../lib/cellReports';
@@ -36,7 +37,7 @@ export const CellReportCodeModal: React.FC<CellReportCodeModalProps> = ({
     setIsVerifying(false);
 
     if (verifyErr || !data?.ok) {
-      setError(verifyErr || `That access code is not correct for ${churchName}. Please check with your Church Administrator or Pastor.`);
+      setError(errorText(verifyErr, `That access code is not correct for ${churchName}. Please check with your Church Administrator or Pastor.`));
       return;
     }
 
