@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useState, useMemo, useEffect } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { renderQrPass, saveQrPass, QrPassResult, SaveOutcome } from '../utils/qrPass';
@@ -644,7 +645,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           setUnverifiedEmail(loginIdentifier.trim());
           setLoginError('Please confirm your email address before signing in. Check your inbox for the confirmation link.');
         } else {
-          setLoginError(result.error || 'Authentication failed. Please verify your credentials and try again.');
+          setLoginError(errorText(result.error, 'Authentication failed. Please verify your credentials and try again.'));
         }
         setIsLoggingIn(false);
         return;

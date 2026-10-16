@@ -1,3 +1,4 @@
+import { errorText } from '../utils/errorText';
 import React, { useState } from 'react';
 import type { AuthSessionUser, Leader } from '../types';
 import { Button } from './Button';
@@ -98,7 +99,7 @@ export const LeaderCellReportView: React.FC<LeaderCellReportViewProps> = ({
     setIsSubmitting(false);
 
     if (error || !data) {
-      setSubmitError(error || 'Failed to submit report. Please try again.');
+      setSubmitError(errorText(error, 'Failed to submit report. Please try again.'));
       return;
     }
 
