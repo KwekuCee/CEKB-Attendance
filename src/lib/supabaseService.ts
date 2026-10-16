@@ -408,10 +408,12 @@ export async function mergeLeadersInSupabase(
     const { rawPortal } = await import('./rawPortal');
     const result: any = await rawPortal({
       action: 'mergeLeaders', primaryId: mergedLeader.id, duplicateId: duplicateLeaderId,
-      primary: { email: mergedLeader.email, contact: (mergedLeader as any).contact, location: (mergedLeader as any).location, cellOrPcfName: (mergedLeader as any).cellOrPcfName },
+      primary: { email: mergedLeader.email, contact: (mergedLeader as any).contact, location: (mergedLeader as any).location, cellOrPcfName: (mergedLeader as any).cellOrPcfName, fullName: mergedLeader.fullName },
+      memberIds: transferredMembers.map((m) => m.id),
+      attendanceIds: transferredAttendance.map((a) => a.id),
     });
     if (!result?.success) throw new Error(result?.error?.message || 'Merge failed');
-    void transferredMembers; void transferredAttendance; void transferredChildLeaders;
+    void transferredChildLeaders;
     return true;
   } catch (err) {
     console.error('Error in mergeLeadersInSupabase:', err);

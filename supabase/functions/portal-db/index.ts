@@ -1318,11 +1318,25 @@ async function handleMergeLeaders(body: any, session: Session | null) {
   for (const [k, v] of Object.entries({ email: p.email, contact: p.contact, location: p.location, cell_or_pcf_name: p.cellOrPcfName })) {
     if (typeof v === 'string' && v.trim()) patch[k] = v.trim().slice(0, 200);
   }
-  await admin.from('leaders').update(patch).eq('id', primaryId);
-  await admin.from('members').update({ invited_by_leader_id: primaryId, invited_by_name: primary.full_name }).eq('invited_by_leader_id', duplicateId);
+  const finalName = typeof p.fullName === 'string' && p.fullName.trim() ? p.fullName.trim().slice(0, 200) : primary.full_name;
+  patch.full_name = finalName;
+  const { error: patchError } = await admin.from('leaders').update(patch).eq('id', primaryId);
+  if (patchError) return json({ error: { message: 'Could not update the kept leader.' } }, 500);
+  const church = String(primary.church_name || '');
+  const ids = (list: unknown) => (Array.isArray(list) ? list.map(String).filter(Boolean).slice(0, 5000) : []);
+  const memberUpdate = { invited_by_leader_id: primaryId, invited_by_name: finalName };
+  await admin.from('members').update(memberUpdate).eq('invited_by_leader_id', duplicateId);
+  for (const oldName of new Set([duplicate.full_name, primary.full_name].filter(Boolean))) {
+    await admin.from('members').update(memberUpdate).ilike('church_name', church).ilike('invited_by_name', oldName);
+    await admin.from('attendance_records').update({ leader_name: finalName }).ilike('church_name', church).ilike('leader_name', oldName);
+  }
+  const memberIds = ids(body?.memberIds);
+  if (memberIds.length) await admin.from('members').update(memberUpdate).in('id', memberIds).ilike('church_name', church);
+  const attendanceIds = ids(body?.attendanceIds);
+  if (attendanceIds.length) await admin.from('attendance_records').update({ leader_name: finalName }).in('id', attendanceIds).ilike('church_name', church);
   await admin.from('leaders').update({ parent_leader_id: primaryId }).eq('parent_leader_id', duplicateId);
   await admin.from('promotion_queue').delete().eq('leader_id', duplicateId);
-  await admin.from('cell_reports').update({ leader_id: primaryId, leader_name: primary.full_name }).eq('leader_id', duplicateId);
+  await admin.from('cell_reports').update({ leader_id: primaryId, leader_name: finalName }).eq('leader_id', duplicateId);
   const { error } = await admin.from('leaders').delete().eq('id', duplicateId);
   if (error) return json({ error: { message: 'Could not remove the duplicate leader.' } }, 500);
   await admin.from('audit_logs').insert({ actor: session.user_name || session.role, action: `Merged leader '${duplicate.full_name}' into '${primary.full_name}'`, category: 'Leader', church_name: primary.church_name, icon: 'merge_type' });
