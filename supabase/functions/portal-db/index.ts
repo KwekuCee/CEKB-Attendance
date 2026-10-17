@@ -12,6 +12,13 @@ import { summarizeDeveloperAccounts } from '../_shared/developer-analytics.ts';
 import { getPlatformConfig, type PlatformConfig } from '../_shared/platform.ts';
 import { estimateSmsCost } from '../_shared/smsPricing.ts';
 import { buildAttendanceCodeSms } from '../_shared/attendance-code-sms.ts';
+import {
+  computeBillingStatus,
+  formatPeriod,
+  formatPeriodLabel,
+  DEFAULT_BILLING_SETTINGS,
+  type BillingSettings,
+} from '../_shared/billing.ts';
 // Server-side data gateway for the CEKB portal.
 //
 // The database tables are locked to the service role, so the browser can never
@@ -73,6 +80,8 @@ const PROTECTED_COLUMNS: Record<string, string[]> = {
   service_types: ['created_at', 'updated_at'],
   attendance_records: ['is_late'],
   audit_logs: ['id', 'created_at'],
+  church_subscriptions: ['paid_at', 'created_at', 'updated_at'],
+  payment_transactions: ['id', 'created_at', 'updated_at'],
 };
 /** Extra columns visitors may never set. */
 const ANON_PROTECTED: Record<string, string[]> = {
@@ -80,6 +89,8 @@ const ANON_PROTECTED: Record<string, string[]> = {
   leaders: ['is_appointed', 'parent_leader_id', 'onboarding_completed', 'onboarding_completed_at'],
   members: ['foundation_class'],
   attendance_records: ['verified_by'],
+  church_subscriptions: ['status', 'payment_reference'],
+  payment_transactions: ['status'],
 };
 
 /** Tables only a Superadmin may change. */
@@ -102,6 +113,8 @@ const ALLOWED_TABLES = new Set([
   'evangelism_records',
   'email_send_log',
   'request_rate_limits',
+  'church_subscriptions',
+  'payment_transactions',
 ]);
 
 /** Read-only system tables only the group account may see. */
@@ -125,6 +138,8 @@ const BRANCH_SCOPED = new Set([
   'cell_reports',
   'evangelism_records',
   'user_profiles',
+  'church_subscriptions',
+  'payment_transactions',
 ]);
 
 /** Ushers can only look people up and record check-ins. */
@@ -237,6 +252,32 @@ async function createSession(user: {
   return token;
 }
 
+async function checkChurchBillingLocked(churchName?: string | null): Promise<boolean> {
+  if (!churchName) return false;
+  const { data: bSetting } = await admin
+    .from('admin_settings')
+    .select('setting_value')
+    .eq('setting_key', 'billing')
+    .maybeSingle();
+
+  const settings: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...(bSetting?.setting_value || {}) };
+  if (!settings.enabled) return false;
+
+  const { data: subs } = await admin
+    .from('church_subscriptions')
+    .select('period')
+    .ilike('church_name', churchName.trim())
+    .eq('status', 'paid');
+
+  const paidPeriods = (subs || []).map((s: any) => s.period);
+  const status = computeBillingStatus({
+    date: new Date(),
+    paidPeriods,
+    settings,
+  });
+  return status.locked;
+}
+
 // ---------------------------------------------------------------- query action
 
 interface QueryRequest {
@@ -308,6 +349,14 @@ async function handleQuery(body: QueryRequest, session: Session | null) {
   if (session?.role === 'Developer') {
     const ok = table === 'admin_settings' || table === 'service_types';
     if (!ok) return json({ error: { message: 'The developer account only sees totals, not personal records.' } }, 403);
+  }
+
+  // If the church subscription is locked, church pastor and church admin cannot access dashboard data actions
+  if ((session?.role === 'Church Admin' || session?.role === 'Church Pastor') && table !== 'church_subscriptions') {
+    const isLocked = await checkChurchBillingLocked(session.church_name);
+    if (isLocked) {
+      return json({ success: false, locked: true, error: { message: 'Subscription payment required to access church admin features.' } }, 402);
+    }
   }
 
   // Only church pastors (and the group account) may change the leader hierarchy.
@@ -2576,6 +2625,106 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     await log('Purged expired sessions', 'Security');
     return json({ success: true });
   }
+
+  if (op === 'getBillingSettings') {
+    const { data } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'billing').maybeSingle();
+    const settings: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...(data?.setting_value || {}) };
+    const hasApiKey = Boolean(Deno.env.get('MOOLRE_API_KEY')?.trim());
+    const hasApiUser = Boolean(Deno.env.get('MOOLRE_API_USER')?.trim());
+    const hasAccountNumber = Boolean(Deno.env.get('MOOLRE_ACCOUNT_NUMBER')?.trim());
+    return json({
+      success: true,
+      settings,
+      credentialsStatus: {
+        configured: hasApiKey && hasApiUser && hasAccountNumber,
+        hasApiKey,
+        hasApiUser,
+        hasAccountNumber,
+      },
+    });
+  }
+
+  if (op === 'saveBillingSettings') {
+    const s = body.settings;
+    if (!s || typeof s !== 'object') return json({ error: 'Invalid settings object' }, 400);
+    const toSave: BillingSettings = {
+      enabled: Boolean(s.enabled),
+      monthlyFee: Math.max(0, Number(s.monthlyFee) || 150),
+      graceDays: Math.max(0, Math.min(31, Number(s.graceDays) || 5)),
+      testMode: Boolean(s.testMode),
+    };
+    await admin.from('admin_settings').upsert({
+      setting_key: 'billing',
+      setting_value: toSave,
+      is_global: true,
+      setting_type: 'json',
+    }, { onConflict: 'setting_key' });
+    await log(`Updated Moolre billing settings (enabled: ${toSave.enabled}, fee: GH₵ ${toSave.monthlyFee}, grace: ${toSave.graceDays}d, testMode: ${toSave.testMode})`, 'Settings');
+    return json({ success: true, settings: toSave });
+  }
+
+  if (op === 'getRevenueSummary') {
+    const page = Math.max(1, Number(body.page) || 1);
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    const now = new Date();
+    const currentPeriod = formatPeriod(now.getUTCFullYear(), now.getUTCMonth());
+
+    const [
+      { data: allPaid },
+      { data: thisMonthPaid },
+      { data: activeChurches },
+      { data: monthSubs },
+      { data: paymentsPage, count: totalPayments }
+    ] = await Promise.all([
+      admin.from('payment_transactions').select('amount').eq('status', 'paid'),
+      admin.from('payment_transactions').select('amount').eq('status', 'paid').eq('period', currentPeriod),
+      admin.from('churches').select('id, name').neq('status', 'Inactive'),
+      admin.from('church_subscriptions').select('church_name').eq('period', currentPeriod).eq('status', 'paid'),
+      admin.from('payment_transactions')
+        .select('id, church_name, period, amount, status, created_at', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1),
+    ]);
+
+    const totalCollected = (allPaid || []).reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+    const thisMonthCollected = (thisMonthPaid || []).reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+
+    const paidChurchesSet = new Set((monthSubs || []).map((r: any) => String(r.church_name || '').toLowerCase()));
+    const totalActive = (activeChurches || []).length;
+    const paidChurchesCount = paidChurchesSet.size;
+    const unpaidChurchesCount = Math.max(0, totalActive - paidChurchesCount);
+
+    return json({
+      success: true,
+      data: {
+        totalCollected,
+        thisMonthCollected,
+        currentPeriod,
+        currentPeriodLabel: formatPeriodLabel(currentPeriod),
+        totalChurches: totalActive,
+        paidChurchesCount,
+        unpaidChurchesCount,
+        payments: (paymentsPage || []).map((p: any) => ({
+          id: p.id,
+          churchName: p.church_name,
+          period: p.period,
+          periodLabel: formatPeriodLabel(p.period),
+          amount: Number(p.amount) || 0,
+          status: p.status,
+          createdAt: p.created_at,
+        })),
+        pagination: {
+          page,
+          limit,
+          total: totalPayments || 0,
+          totalPages: Math.ceil((totalPayments || 0) / limit) || 1,
+        },
+      },
+    });
+  }
+
   return json({ error: 'Unknown operation' }, 400);
 }
 
@@ -2605,6 +2754,44 @@ async function handleClaimGroupPastor(body: any) {
   await admin.from('user_profiles').update({ role: 'Superadmin' }).eq('id', row.id);
   await admin.from('audit_logs').insert({ actor: 'System', action: `Group pastor appointed via group code: ${email}`, category: 'System', icon: 'verified' });
   return json({ success: true });
+}
+
+async function handleBillingStatus(session: Session | null, body: any) {
+  if (!session) return json({ error: { message: 'Authentication required' } }, 401);
+  const church = session.church_name || body?.church || '';
+  if (!church && session.role !== 'Developer') {
+    return json({ error: { message: 'Church branch required' } }, 400);
+  }
+
+  const { data: bSetting } = await admin
+    .from('admin_settings')
+    .select('setting_value')
+    .eq('setting_key', 'billing')
+    .maybeSingle();
+
+  const settings: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...(bSetting?.setting_value || {}) };
+
+  const { data: subs } = await admin
+    .from('church_subscriptions')
+    .select('period, status, amount, paid_at')
+    .ilike('church_name', church.trim())
+    .eq('status', 'paid');
+
+  const paidPeriods = (subs || []).map((s: any) => s.period);
+  const status = computeBillingStatus({
+    date: new Date(),
+    paidPeriods,
+    settings,
+  });
+
+  return json({
+    success: true,
+    billing: {
+      ...status,
+      churchName: church,
+      paidHistory: subs || [],
+    },
+  });
 }
 
 // ------------------------------------------------------------------- dispatch
@@ -2699,6 +2886,8 @@ Deno.serve(async (req) => {
         if (limited) return limited;
         return await handleClaimGroupPastor(body);
       }
+      case 'billingStatus':
+        return await handleBillingStatus(session, body);
       case 'upload':
         return await handleUpload(body, session);
       case 'signedUrl':

@@ -14,7 +14,8 @@ BEGIN
         'request_rate_limits', 'email_verification_tokens', 'church_report_codes',
         'email_send_log', 'email_send_state',
         'email_unsubscribe_tokens', 'suppressed_emails', 'app_cron_tokens', 'sms_templates',
-        'sender_id_requests', 'sender_id_status_history', 'admin_alerts', 'sms_campaigns', 'sms_recipients'
+        'sender_id_requests', 'sender_id_status_history', 'admin_alerts', 'sms_campaigns', 'sms_recipients',
+        'church_subscriptions', 'payment_transactions'
     ]
     LOOP
         IF to_regclass(format('public.%I', table_name)) IS NULL THEN
@@ -160,6 +161,50 @@ INSERT INTO public.admin_settings (setting_key, setting_value, setting_type, is_
 VALUES ('mnotify_management', '{"adminPhone":"+233550160237","alertSenderId":"CEKBU DEV","unitRate":null,"lowBalanceThreshold":100}'::jsonb, 'json', true)
 ON CONFLICT (setting_key) DO NOTHING;
 `;
+
+const MOOLRE_BILLING_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS public.church_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    church_id UUID,
+    church_name TEXT NOT NULL,
+    period TEXT NOT NULL,
+    amount NUMERIC(10, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+    paid_at TIMESTAMPTZ,
+    payment_reference TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (church_name, period)
+);
+CREATE INDEX IF NOT EXISTS church_subs_name_period ON public.church_subscriptions (LOWER(church_name), period);
+CREATE INDEX IF NOT EXISTS church_subs_status ON public.church_subscriptions (status);
+
+CREATE TABLE IF NOT EXISTS public.payment_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    church_id UUID,
+    church_name TEXT NOT NULL,
+    period TEXT NOT NULL,
+    amount NUMERIC(10, 2) NOT NULL,
+    moolre_reference TEXT,
+    external_ref TEXT NOT NULL UNIQUE,
+    channel TEXT NOT NULL,
+    masked_phone TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+    payer_email TEXT,
+    raw_response JSONB,
+    session_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pay_trans_church ON public.payment_transactions (LOWER(church_name), created_at DESC);
+CREATE INDEX IF NOT EXISTS pay_trans_external_ref ON public.payment_transactions (external_ref);
+CREATE INDEX IF NOT EXISTS pay_trans_status ON public.payment_transactions (status);
+
+INSERT INTO public.admin_settings (setting_key, setting_value, setting_type, is_global)
+VALUES ('billing', '{"enabled": false, "monthlyFee": 150, "graceDays": 5, "testMode": true}'::jsonb, 'json', true)
+ON CONFLICT (setting_key) DO NOTHING;
+`;
+
 
 /**
  * COMPLETE POSTGRESQL / SUPABASE DATABASE SCHEMA FOR
@@ -648,7 +693,7 @@ BEFORE DELETE ON public.churches
 FOR EACH ROW EXECUTE FUNCTION public.handle_church_deletion_safety();
 
 CREATE INDEX IF NOT EXISTS idx_churches_status ON public.churches(status);
-` + MNOTIFY_MANAGEMENT_SCHEMA_SQL + SERVICE_ROLE_LOCKDOWN_SQL;
+` + MNOTIFY_MANAGEMENT_SCHEMA_SQL + MOOLRE_BILLING_SCHEMA_SQL + SERVICE_ROLE_LOCKDOWN_SQL;
 
 export const SUPABASE_UPDATE_SQL = `-- ============================================================================
 -- CEKB RECENT UPDATES SQL SCRIPT (RUN THIS IN YOUR SUPABASE SQL EDITOR)
@@ -809,4 +854,4 @@ CREATE INDEX IF NOT EXISTS idx_evangelism_records_church ON public.evangelism_re
 CREATE INDEX IF NOT EXISTS idx_evangelism_records_leader_id ON public.evangelism_records(leader_id);
 CREATE INDEX IF NOT EXISTS idx_evangelism_records_status ON public.evangelism_records(status);
 CREATE INDEX IF NOT EXISTS idx_evangelism_records_date_won ON public.evangelism_records(date_won);
-` + MNOTIFY_MANAGEMENT_SCHEMA_SQL + SERVICE_ROLE_LOCKDOWN_SQL;
+` + MNOTIFY_MANAGEMENT_SCHEMA_SQL + MOOLRE_BILLING_SCHEMA_SQL + SERVICE_ROLE_LOCKDOWN_SQL;

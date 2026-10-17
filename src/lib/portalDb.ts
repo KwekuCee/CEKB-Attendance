@@ -11,6 +11,15 @@ const FUNCTIONS_BASE = `${BASE_URL}/functions/v1/portal-db`;
 const ANON_KEY = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) || (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) || '';
 
 import { supabase as cloudClient } from '../integrations/supabase/client';
+import {
+  computeBillingStatus,
+  formatPeriod,
+  formatPeriodLabel,
+  normalizeNetworkChannel,
+  maskPhoneNumber,
+  validateGhanaPhone,
+  type BillingSettings,
+} from '../../supabase/functions/_shared/billing';
 
 const TOKEN_KEY = 'gcyc_portal_token';
 const LOCAL_DB_KEY = 'cekb_local_portal_db_v1';
@@ -159,12 +168,22 @@ function getDefaultLocalStore(): LocalDbStore {
       audit_logs: [],
       announcements: [],
       promotion_queue: [],
-      admin_settings: [],
+      admin_settings: [
+        {
+          id: 'set-billing-1',
+          setting_key: 'billing',
+          setting_value: { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true },
+          setting_type: 'json',
+          is_global: true,
+        },
+      ],
       cell_reports: [],
       report_codes: [],
       email_send_log: [],
       portal_sessions: [],
       evangelism_records: [],
+      church_subscriptions: [],
+      payment_transactions: [],
     },
     photos: {},
   };
@@ -336,6 +355,153 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       return { success: true };
     }
     return { success: false, error: 'Pastor account not found.' };
+  }
+
+  if (action === 'billingStatus') {
+    const church = session?.church_name || payload.church || '';
+    const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
+    const settings: BillingSettings = { ...bSetting };
+    const churchSubs = (store.tables.church_subscriptions || [])
+      .filter((s: any) => String(s.church_name || '').toLowerCase() === String(church).toLowerCase() && s.status === 'paid');
+    const paidPeriods = churchSubs.map((s: any) => s.period);
+    const status = computeBillingStatus({
+      date: new Date(),
+      paidPeriods,
+      settings,
+    });
+    return {
+      success: true,
+      billing: {
+        ...status,
+        churchName: church,
+        paidHistory: churchSubs,
+      },
+    };
+  }
+
+  if (action === 'moolreInitiate') {
+    const churchName = String(payload.churchName || session?.church_name || '').trim();
+    const period = String(payload.period || '');
+    const phone = String(payload.phone || '');
+    const network = String(payload.network || 'MTN');
+
+    const phoneVal = validateGhanaPhone(phone);
+    if (!phoneVal.valid) {
+      return { success: false, error: { message: phoneVal.error || 'Invalid phone number.' } };
+    }
+
+    const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
+    const amount = Number(bSetting.monthlyFee) || 150;
+    const { channelName } = normalizeNetworkChannel(network);
+    const maskedPhone = maskPhoneNumber(phoneVal.formatted);
+    const externalRef = `CEKB-${period}-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const tx = {
+      id: `tx-${Date.now()}`,
+      church_name: churchName,
+      period,
+      amount,
+      external_ref: externalRef,
+      channel: channelName,
+      masked_phone: maskedPhone,
+      status: 'pending',
+      payer_email: session?.user_email || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    store.tables.payment_transactions = [tx, ...(store.tables.payment_transactions || [])];
+    saveLocalStore(store);
+
+    const needsOtp = channelName === 'Telecel';
+    return {
+      success: true,
+      externalRef,
+      amount,
+      period,
+      churchName,
+      maskedPhone,
+      channel: channelName,
+      testMode: true,
+      needsOtp,
+      sessionId: needsOtp ? `sim-${externalRef}` : undefined,
+      promptSent: !needsOtp,
+      message: needsOtp
+        ? 'Telecel Cash requires a verification token. Please enter your approval token.'
+        : `Approval prompt sent to ${maskedPhone}. Please authorize GH₵ ${amount} on your phone.`,
+    };
+  }
+
+  if (action === 'moolreVerifyOtp') {
+    const externalRef = String(payload.externalRef || '');
+    const otpCode = String(payload.otpCode || '');
+    const tx = (store.tables.payment_transactions || []).find((t: any) => t.external_ref === externalRef);
+    if (!tx) return { success: false, error: { message: 'Transaction not found.' } };
+    if (otpCode.length < 4) return { success: false, error: { message: 'Enter a valid OTP code.' } };
+
+    const now = new Date().toISOString();
+    tx.status = 'paid';
+    tx.updated_at = now;
+
+    const subs = store.tables.church_subscriptions || [];
+    const existingSub = subs.find((s: any) => s.church_name.toLowerCase() === tx.church_name.toLowerCase() && s.period === tx.period);
+    if (existingSub) {
+      existingSub.status = 'paid';
+      existingSub.paid_at = now;
+      existingSub.payment_reference = externalRef;
+    } else {
+      subs.push({
+        id: `sub-${Date.now()}`,
+        church_name: tx.church_name,
+        period: tx.period,
+        amount: tx.amount,
+        status: 'paid',
+        paid_at: now,
+        payment_reference: externalRef,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+    store.tables.church_subscriptions = subs;
+    saveLocalStore(store);
+    return { success: true, status: 'paid', message: 'OTP verified. Payment confirmed!' };
+  }
+
+  if (action === 'moolreStatus') {
+    const externalRef = String(payload.externalRef || '');
+    const tx = (store.tables.payment_transactions || []).find((t: any) => t.external_ref === externalRef);
+    if (!tx) return { success: false, error: { message: 'Transaction not found.' } };
+    if (tx.status === 'paid') return { success: true, status: 'paid', period: tx.period, churchName: tx.church_name };
+
+    const createdMs = new Date(tx.created_at).getTime();
+    if (Date.now() - createdMs > 2500) {
+      const now = new Date().toISOString();
+      tx.status = 'paid';
+      tx.updated_at = now;
+
+      const subs = store.tables.church_subscriptions || [];
+      const existingSub = subs.find((s: any) => s.church_name.toLowerCase() === tx.church_name.toLowerCase() && s.period === tx.period);
+      if (existingSub) {
+        existingSub.status = 'paid';
+        existingSub.paid_at = now;
+        existingSub.payment_reference = externalRef;
+      } else {
+        subs.push({
+          id: `sub-${Date.now()}`,
+          church_name: tx.church_name,
+          period: tx.period,
+          amount: tx.amount,
+          status: 'paid',
+          paid_at: now,
+          payment_reference: externalRef,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+      store.tables.church_subscriptions = subs;
+      saveLocalStore(store);
+      return { success: true, status: 'paid', period: tx.period, churchName: tx.church_name };
+    }
+    return { success: true, status: 'pending' };
   }
 
   if (action === 'login') {
@@ -1261,6 +1427,93 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     if (op === 'purgeSessions') {
       return { success: true };
     }
+
+    if (op === 'getBillingSettings') {
+      const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
+      return {
+        success: true,
+        settings: bSetting,
+        credentialsStatus: {
+          configured: false,
+          hasApiKey: false,
+          hasApiUser: false,
+          hasAccountNumber: false,
+        },
+      };
+    }
+
+    if (op === 'saveBillingSettings') {
+      const s = payload.settings || {};
+      const toSave = {
+        enabled: Boolean(s.enabled),
+        monthlyFee: Math.max(0, Number(s.monthlyFee) || 150),
+        graceDays: Math.max(0, Math.min(31, Number(s.graceDays) || 5)),
+        testMode: Boolean(s.testMode),
+      };
+      const list = store.tables.admin_settings || [];
+      const existing = list.find((r: any) => r.setting_key === 'billing');
+      if (existing) existing.setting_value = toSave;
+      else list.push({ id: `set-billing-${Date.now()}`, setting_key: 'billing', setting_value: toSave, is_global: true });
+      store.tables.admin_settings = list;
+      saveLocalStore(store);
+      return { success: true, settings: toSave };
+    }
+
+    if (op === 'getRevenueSummary') {
+      const page = Math.max(1, Number(payload.page) || 1);
+      const limit = 10;
+      const offset = (page - 1) * limit;
+
+      const now = new Date();
+      const currentPeriod = formatPeriod(now.getUTCFullYear(), now.getUTCMonth());
+
+      const allPaid = (store.tables.payment_transactions || []).filter((t: any) => t.status === 'paid');
+      const thisMonthPaid = allPaid.filter((t: any) => t.period === currentPeriod);
+      const activeChurches = (store.tables.churches || []).filter((c: any) => c.status !== 'Inactive');
+      const monthSubs = (store.tables.church_subscriptions || []).filter((s: any) => s.period === currentPeriod && s.status === 'paid');
+
+      const totalCollected = allPaid.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+      const thisMonthCollected = thisMonthPaid.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+
+      const paidChurchesSet = new Set(monthSubs.map((r: any) => String(r.church_name || '').toLowerCase()));
+      const totalActive = activeChurches.length;
+      const paidChurchesCount = paidChurchesSet.size;
+      const unpaidChurchesCount = Math.max(0, totalActive - paidChurchesCount);
+
+      const sortedPayments = [...(store.tables.payment_transactions || [])].sort((a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const paymentsPage = sortedPayments.slice(offset, offset + limit);
+
+      return {
+        success: true,
+        data: {
+          totalCollected,
+          thisMonthCollected,
+          currentPeriod,
+          currentPeriodLabel: formatPeriodLabel(currentPeriod),
+          totalChurches: totalActive,
+          paidChurchesCount,
+          unpaidChurchesCount,
+          payments: paymentsPage.map((p: any) => ({
+            id: p.id,
+            churchName: p.church_name,
+            period: p.period,
+            periodLabel: formatPeriodLabel(p.period),
+            amount: Number(p.amount) || 0,
+            status: p.status,
+            createdAt: p.created_at,
+          })),
+          pagination: {
+            page,
+            limit,
+            total: sortedPayments.length,
+            totalPages: Math.ceil(sortedPayments.length / limit) || 1,
+          },
+        },
+      };
+    }
+
     return { success: true };
   }
 
@@ -1269,6 +1522,24 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     const op = String(payload.op || 'select');
     if (!store.tables[table]) store.tables[table] = [];
     let rows = [...store.tables[table]];
+
+    // If church subscription is locked, church pastor and church admin cannot access dashboard data actions
+    if ((session?.role === 'Church Admin' || session?.role === 'Church Pastor') && table !== 'church_subscriptions') {
+      const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
+      if (bSetting.enabled) {
+        const churchSubs = (store.tables.church_subscriptions || [])
+          .filter((s: any) => String(s.church_name || '').toLowerCase() === String(session.church_name || '').toLowerCase() && s.status === 'paid')
+          .map((s: any) => s.period);
+        const billingStatus = computeBillingStatus({
+          date: new Date(),
+          paidPeriods: churchSubs,
+          settings: bSetting,
+        });
+        if (billingStatus.locked) {
+          return { data: null, locked: true, error: { message: 'Subscription payment required to access church admin features.' } };
+        }
+      }
+    }
 
     // Enforce leader hierarchy protection: only Church Pastor and Superadmin can modify hierarchy fields
     if (session && table === 'leaders' && op !== 'select' && session.role !== 'Church Pastor' && session.role !== 'Superadmin') {

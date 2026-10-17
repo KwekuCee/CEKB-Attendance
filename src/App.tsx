@@ -64,6 +64,11 @@ import { EmailVerifiedScreen } from './components/EmailVerifiedScreen';
 import { useToast } from './context/ToastContext';
 import { getGroupNamesForLeader, findLeaderByName } from './utils/analyticsUtils';
 import { getMemberAttendanceCount } from './utils/memberStatus';
+import { BillingPrompt } from './components/BillingPrompt';
+import { BillingLockScreen } from './components/BillingLockScreen';
+import { PaymentModal } from './components/PaymentModal';
+import { rawPortal } from './lib/rawPortal';
+import type { BillingStatus } from '../supabase/functions/_shared/billing';
 
 const PublicPortal = lazy(() => import('./components/PublicPortal').then(m => ({ default: m.PublicPortal })));
 const DashboardOverview = lazy(() => import('./components/DashboardOverview').then(m => ({ default: m.DashboardOverview })));
@@ -137,6 +142,24 @@ export default function App() {
     { id: 'srv-3', name: 'Special Service', active: true },
   ]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  const fetchBilling = async (targetUser?: AuthSessionUser) => {
+    const current = targetUser || user;
+    if (current && (current.role === 'Church Admin' || current.role === 'Church Pastor')) {
+      try {
+        const res = await rawPortal({ action: 'billingStatus', church: current.church });
+        if (res?.success && res.billing) {
+          setBillingStatus(res.billing);
+        }
+      } catch (e) {
+        console.warn('Failed to load billing status', e);
+      }
+    } else {
+      setBillingStatus(null);
+    }
+  };
 
   // Compute top leaders dynamically from live leaders in database
   const topLeaders = useMemo(() => {
@@ -219,6 +242,7 @@ export default function App() {
             };
           });
         }
+        await fetchBilling(user);
       } catch (err) {
         console.error('Error loading data from Supabase:', err);
       } finally {
@@ -711,9 +735,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-
     clearStoredSession();
     signOutFromSupabase();
+    setBillingStatus(null);
+    setShowPaymentModal(false);
     setIsLoggedIn(false);
     setCurrentView('home');
     toast.showInfo('Signed Out', 'You have been signed out successfully.');
@@ -725,6 +750,7 @@ export default function App() {
     setIsLoggedIn(true);
     setCurrentView('dashboard');
     setDataVersion(v => v + 1);
+    fetchBilling(newUserSession);
     if (!hasSeenWalkthrough(newUserSession)) {
       setShowWalkthrough(true);
     }
@@ -901,6 +927,16 @@ export default function App() {
 
         {/* View Router */}
         <main className="dashboard-main flex-1 min-h-0 overflow-y-auto pb-6 md:pb-8 relative">
+          {billingStatus?.due && !billingStatus?.locked && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
+            <div className="px-4 md:px-8 pt-4">
+              <BillingPrompt
+                billing={billingStatus}
+                churchName={user?.church || ''}
+                onPay={() => setShowPaymentModal(true)}
+              />
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
@@ -1137,6 +1173,34 @@ export default function App() {
         onNavigate={setCurrentView}
         onClose={() => setShowWalkthrough(false)}
       />
+
+      {/* Full-Screen Lock Screen when Church Subscription is overdue past grace days */}
+      {billingStatus?.locked && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
+        <BillingLockScreen
+          billing={billingStatus}
+          churchName={user?.church || ''}
+          onPay={() => setShowPaymentModal(true)}
+          onLogout={handleLogout}
+          onRefresh={() => fetchBilling(user)}
+        />
+      )}
+
+      {/* Mobile Money Payment Modal */}
+      {billingStatus && showPaymentModal && (
+        <PaymentModal
+          billing={billingStatus}
+          churchName={user?.church || ''}
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={async () => {
+            await fetchBilling(user);
+            toast.showSuccess(
+              'Subscription Paid',
+              `Payment confirmed! Access unlocked for ${billingStatus.periodLabel || billingStatus.period}.`
+            );
+          }}
+        />
+      )}
 
     </div>
   );

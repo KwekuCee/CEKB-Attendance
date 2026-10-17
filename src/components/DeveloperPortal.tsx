@@ -70,15 +70,27 @@ export default function DeveloperPortal() {
   const [tab, setTab] = useState<Tab>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const [revenueData, setRevenueData] = useState<any>(null);
+  const [billingConfig, setBillingConfig] = useState<any>(null);
+
+  const fetchRevenuePage = async (page = 1) => {
+    if (!token) return;
+    const r = await rawPortal({ action: 'devAction', op: 'getRevenueSummary', page }, token);
+    if (r?.success) setRevenueData(r.data);
+  };
 
   const load = async (t: string) => {
-    const [s, an] = await Promise.all([
+    const [s, an, rev, bill] = await Promise.all([
       rawPortal({ action: 'devStats' }, t),
       rawPortal({ action: 'devAnalytics' }, t),
+      rawPortal({ action: 'devAction', op: 'getRevenueSummary', page: 1 }, t),
+      rawPortal({ action: 'devAction', op: 'getBillingSettings' }, t),
     ]);
     if (s?.data) {
       setStats(s.data);
       setA(an?.data || null);
+      if (rev?.success) setRevenueData(rev.data);
+      if (bill?.success) setBillingConfig(bill.settings);
     } else {
       sessionStorage.removeItem(DEV_TOKEN_KEY);
       setToken(null);
@@ -294,7 +306,7 @@ export default function DeveloperPortal() {
           </div>
         ) : (
           <>
-            {tab === 'overview' && <Overview s={stats} a={a} setTab={setTab} />}
+            {tab === 'overview' && <Overview s={stats} a={a} setTab={setTab} revenueData={revenueData} onPageChange={fetchRevenuePage} />}
             {tab === 'churches' && <Churches a={a} act={act} token={token} load={load} setNotice={setNotice} />}
             {tab === 'registrations' && <Registrations a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
@@ -314,7 +326,7 @@ export default function DeveloperPortal() {
             )}
             {tab === 'audit' && <Audit a={a} />}
             {tab === 'health' && <Health s={stats} a={a} act={act} />}
-            {tab === 'settings' && <Settings a={a} act={act} />}
+            {tab === 'settings' && <Settings a={a} act={act} billingConfig={billingConfig} />}
           </>
         )}
       </main>
@@ -646,7 +658,142 @@ const Badge = ({
 /*                                1. OVERVIEW                                 */
 /* ========================================================================== */
 
-function Overview({ s, a, setTab }: any) {
+function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: number) => void }) {
+  const [page, setPage] = useState(1);
+  const rev = data || {
+    totalCollected: 0,
+    thisMonthCollected: 0,
+    paidChurchesCount: 0,
+    unpaidChurchesCount: 0,
+    totalChurches: 0,
+    payments: [],
+    pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+  };
+
+  const handlePage = (newPage: number) => {
+    setPage(newPage);
+    onPageChange?.(newPage);
+  };
+
+  return (
+    <Card
+      title="Monthly subscription revenue (Moolre Mobile Money)"
+      subtitle="Aggregated totals and collections across church branches (totals only — payer personal details protected)"
+    >
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-border bg-card/60 p-4">
+            <span className="text-xs font-semibold text-muted-foreground block">Total Collected (All Time)</span>
+            <span className="text-xl sm:text-2xl font-black font-serif text-primary mt-1 block">
+              GH₵ {Number(rev.totalCollected || 0).toLocaleString()}
+            </span>
+          </div>
+          <div className="rounded-2xl border border-border bg-card/60 p-4">
+            <span className="text-xs font-semibold text-muted-foreground block">
+              This Month ({rev.currentPeriodLabel || rev.currentPeriod || 'Current'})
+            </span>
+            <span className="text-xl sm:text-2xl font-black font-serif text-emerald-600 dark:text-emerald-400 mt-1 block">
+              GH₵ {Number(rev.thisMonthCollected || 0).toLocaleString()}
+            </span>
+          </div>
+          <div className="rounded-2xl border border-border bg-card/60 p-4">
+            <span className="text-xs font-semibold text-muted-foreground block">Paid Churches</span>
+            <span className="text-xl sm:text-2xl font-black font-serif text-blue-600 dark:text-blue-400 mt-1 block">
+              {rev.paidChurchesCount || 0}
+            </span>
+            <span className="text-[11px] text-muted-foreground">For active period</span>
+          </div>
+          <div className="rounded-2xl border border-border bg-card/60 p-4">
+            <span className="text-xs font-semibold text-muted-foreground block">Unpaid Churches</span>
+            <span className="text-xl sm:text-2xl font-black font-serif text-amber-600 dark:text-amber-400 mt-1 block">
+              {rev.unpaidChurchesCount || 0}
+            </span>
+            <span className="text-[11px] text-muted-foreground">Out of {rev.totalChurches || 0} branches</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-bold">Recent Payment Transactions</h4>
+            <span className="text-xs text-muted-foreground">
+              Showing 10 per page · {rev.pagination?.total || 0} total
+            </span>
+          </div>
+
+          {rev.payments && rev.payments.length > 0 ? (
+            <div className="overflow-x-auto rounded-2xl border border-border">
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/60 text-left font-semibold text-muted-foreground">
+                    <th className="p-3">Church Branch</th>
+                    <th className="p-3">Period</th>
+                    <th className="p-3">Amount</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {rev.payments.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-muted/40 transition">
+                      <td className="p-3 font-semibold">{p.churchName}</td>
+                      <td className="p-3 text-muted-foreground">{p.periodLabel || p.period}</td>
+                      <td className="p-3 font-mono font-bold text-primary">GH₵ {Number(p.amount || 0).toFixed(2)}</td>
+                      <td className="p-3 text-muted-foreground">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '—'}</td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          p.status === 'paid'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            : p.status === 'pending'
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                        }`}>
+                          <span className="material-symbols-outlined text-xs">
+                            {p.status === 'paid' ? 'check_circle' : p.status === 'pending' ? 'schedule' : 'cancel'}
+                          </span>
+                          <span className="capitalize">{p.status}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
+              No subscription payment records yet.
+            </div>
+          )}
+
+          {rev.pagination && rev.pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between pt-3">
+              <span className="text-xs text-muted-foreground">
+                Page {rev.pagination.page} of {rev.pagination.totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={rev.pagination.page <= 1}
+                  onClick={() => handlePage(rev.pagination.page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={rev.pagination.page >= rev.pagination.totalPages}
+                  onClick={() => handlePage(rev.pagination.page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Overview({ s, a, setTab, revenueData, onPageChange }: any) {
   const [range, setRange] = useState<30 | 90>(30);
   const series = a.series.slice(-range).map((d: any) => ({ label: d.date.slice(5), value: d.count }));
   const active = a.churches.filter((c: any) => c.active),
@@ -697,6 +844,9 @@ function Overview({ s, a, setTab }: any) {
           </Button>
         </div>
       )}
+
+      {/* Subscription Revenue (Moolre Mobile Money) */}
+      <RevenueCard data={revenueData} onPageChange={onPageChange} />
 
       <Card
         title="Check-in trend"
@@ -3274,7 +3424,7 @@ function Health({ s, a, act }: any) {
 /*                    11. PLATFORM SETTINGS & MATRIX                          */
 /* ========================================================================== */
 
-function Settings({ a, act }: any) {
+function Settings({ a, act, billingConfig }: any) {
   const [p, setP] = useState<any>(() => ({
     platformName: 'CEKB Group',
     tagline: 'Every presence counts.',
@@ -3303,6 +3453,20 @@ function Settings({ a, act }: any) {
     auditRetentionDays: 365,
     ...(a.platform || {}),
   }));
+
+  const [billing, setBilling] = useState(() => ({
+    enabled: false,
+    monthlyFee: 150,
+    graceDays: 5,
+    testMode: true,
+    ...(billingConfig || {}),
+  }));
+
+  useEffect(() => {
+    if (billingConfig) {
+      setBilling((prev: any) => ({ ...prev, ...billingConfig }));
+    }
+  }, [billingConfig]);
 
   const [matrix, setMatrix] = useState<FeatureMatrix>(() => a.featureMatrix || {});
 
@@ -3417,6 +3581,87 @@ function Settings({ a, act }: any) {
               </select>
             </label>
             {field('maxChurches', 'Church limit', 'number')}
+          </div>
+        </Card>
+
+        <Card title="Monthly payments (Moolre)">
+          <div className="space-y-4 text-sm">
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <div>
+                <span className="font-semibold block">Monthly payments (Moolre)</span>
+                <span className="text-xs text-muted-foreground block">
+                  Pastors and Admins see payment prompt from the last day of each month.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={!!billing.enabled}
+                onChange={(e) => setBilling((b: any) => ({ ...b, enabled: e.target.checked }))}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Monthly subscription fee (GH₵)</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={billing.monthlyFee ?? 150}
+                onChange={(e) => setBilling((b: any) => ({ ...b, monthlyFee: Number(e.target.value) }))}
+                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold">Grace period (days after 1st of month)</span>
+              <input
+                type="number"
+                min="1"
+                max="28"
+                value={billing.graceDays ?? 5}
+                onChange={(e) => setBilling((b: any) => ({ ...b, graceDays: Number(e.target.value) }))}
+                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+              />
+              <span className="text-xs text-muted-foreground block">
+                After {billing.graceDays ?? 5} days, unpaid church admin dashboards lock into payment screen.
+              </span>
+            </label>
+
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer pt-2 border-t border-border">
+              <div>
+                <span className="font-semibold block">Test / Sandbox mode</span>
+                <span className="text-xs text-muted-foreground block">
+                  Simulates payment prompts and instant approvals without charging real Mobile Money.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={!!billing.testMode}
+                onChange={(e) => setBilling((b: any) => ({ ...b, testMode: e.target.checked }))}
+              />
+            </label>
+
+            <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">vpn_key</span>
+                Moolre Secrets Status
+              </p>
+              <p>
+                API credentials are protected via server environment secrets:
+                <code className="text-xs font-mono ml-1">MOOLRE_API_KEY</code>,
+                <code className="text-xs font-mono ml-1">MOOLRE_API_USER</code>,
+                <code className="text-xs font-mono ml-1">MOOLRE_ACCOUNT_NUMBER</code>.
+              </p>
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={() => act({ op: 'saveBillingSettings', settings: billing }, 'Billing settings saved')}
+            >
+              Save Billing Settings
+            </Button>
           </div>
         </Card>
       </div>
