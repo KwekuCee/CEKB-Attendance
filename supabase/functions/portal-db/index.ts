@@ -2888,6 +2888,24 @@ Deno.serve(async (req) => {
       }
       case 'billingStatus':
         return await handleBillingStatus(session, body);
+      case 'moolreInitiate':
+      case 'moolreVerifyOtp':
+      case 'moolreStatus': {
+        // Payment actions live in the moolre-payments function; forward them.
+        const map: Record<string, string> = { moolreInitiate: 'initiate', moolreVerifyOtp: 'verify-otp', moolreStatus: 'status' };
+        const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/moolre-payments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: req.headers.get('apikey') || '',
+            authorization: req.headers.get('authorization') || '',
+            'x-portal-session': req.headers.get('x-portal-session') || '',
+          },
+          body: JSON.stringify({ ...body, action: map[String(body.action)] }),
+        });
+        const text = await res.text();
+        return new Response(text, { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       case 'upload':
         return await handleUpload(body, session);
       case 'signedUrl':
