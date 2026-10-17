@@ -520,6 +520,45 @@ export type Database = {
           },
         ]
       }
+      church_subscriptions: {
+        Row: {
+          amount: number
+          church_id: string | null
+          church_name: string
+          created_at: string
+          id: string
+          paid_at: string | null
+          payment_reference: string | null
+          period: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          church_id?: string | null
+          church_name: string
+          created_at?: string
+          id?: string
+          paid_at?: string | null
+          payment_reference?: string | null
+          period: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          church_id?: string | null
+          church_name?: string
+          created_at?: string
+          id?: string
+          paid_at?: string | null
+          payment_reference?: string | null
+          period?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       churches: {
         Row: {
           created_at: string
@@ -913,6 +952,60 @@ export type Database = {
           id?: string
           token_hash?: string
           used_at?: string | null
+        }
+        Relationships: []
+      }
+      payment_transactions: {
+        Row: {
+          amount: number
+          channel: string
+          church_id: string | null
+          church_name: string
+          created_at: string
+          external_ref: string
+          id: string
+          masked_phone: string
+          moolre_reference: string | null
+          payer_email: string | null
+          period: string
+          raw_response: Json | null
+          session_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          channel: string
+          church_id?: string | null
+          church_name: string
+          created_at?: string
+          external_ref: string
+          id?: string
+          masked_phone: string
+          moolre_reference?: string | null
+          payer_email?: string | null
+          period: string
+          raw_response?: Json | null
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          channel?: string
+          church_id?: string | null
+          church_name?: string
+          created_at?: string
+          external_ref?: string
+          id?: string
+          masked_phone?: string
+          moolre_reference?: string | null
+          payer_email?: string | null
+          period?: string
+          raw_response?: Json | null
+          session_id?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
