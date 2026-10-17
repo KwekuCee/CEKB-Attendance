@@ -8,15 +8,65 @@ import {
   validateGhanaPhone,
   normalizeNetworkChannel,
   validateWebhookAmount,
+  calculateGhsFee,
+  FIXED_EXCHANGE_RATE,
   BillingSettings,
 } from '../supabase/functions/_shared/billing.ts';
 
 const baseSettings: BillingSettings = {
   enabled: true,
-  monthlyFee: 150,
+  monthlyFeeUsd: 50,
+  fixedExchangeRate: 11,
+  monthlyFee: 550,
   graceDays: 5,
   testMode: true,
+  exemptChurches: ['Makarios Church', 'Grace Chapel'],
 };
+
+test('Fixed exchange rate and USD to GHS fee calculation', () => {
+  assert.equal(FIXED_EXCHANGE_RATE, 11);
+  assert.equal(calculateGhsFee(50), 550);
+  assert.equal(calculateGhsFee(100), 1100);
+  assert.equal(calculateGhsFee(0), 0);
+});
+
+test('Free access exemption: exempt churches are never due or locked (case-insensitive)', () => {
+  // November 15, 2026 (way past grace days, unpaid)
+  const date = '2026-11-15T12:00:00Z';
+  
+  // Exact match
+  const status1 = computeBillingStatus({
+    date,
+    paidPeriods: [],
+    settings: baseSettings,
+    churchName: 'Makarios Church',
+  });
+  assert.equal(status1.exempt, true);
+  assert.equal(status1.due, false, 'Exempt church should not be due');
+  assert.equal(status1.locked, false, 'Exempt church should never be locked');
+
+  // Case-insensitive match with extra whitespace
+  const status2 = computeBillingStatus({
+    date,
+    paidPeriods: [],
+    settings: baseSettings,
+    churchName: '  makarios church  ',
+  });
+  assert.equal(status2.exempt, true);
+  assert.equal(status2.due, false);
+  assert.equal(status2.locked, false);
+
+  // Non-exempt church is locked after grace days
+  const status3 = computeBillingStatus({
+    date,
+    paidPeriods: [],
+    settings: baseSettings,
+    churchName: 'City Center Church',
+  });
+  assert.equal(status3.exempt, false);
+  assert.equal(status3.due, true);
+  assert.equal(status3.locked, true);
+});
 
 test('Due rule: on the last day of the month, next month is due but NOT locked', () => {
   // October 31, 2026: last day of October.
@@ -33,7 +83,8 @@ test('Due rule: on the last day of the month, next month is due but NOT locked',
   assert.equal(status.locked, false, 'Next month should not be locked in advance');
   assert.equal(status.period, '2026-11');
   assert.equal(status.periodLabel, 'November 2026');
-  assert.equal(status.amount, 150);
+  assert.equal(status.amount, 550);
+  assert.equal(status.amountUsd, 50);
 });
 
 test('Grace period rule: within grace days (1st to 5th), current month is due but NOT locked', () => {
@@ -115,12 +166,12 @@ test('Toggle off: turning billing off immediately clears due and locked states',
 });
 
 test('Webhook amount validation: matches expected subscription fee and catches underpayment spoofing', () => {
-  assert.equal(validateWebhookAmount(150, 150), true);
-  assert.equal(validateWebhookAmount(150, '150.00'), true);
-  assert.equal(validateWebhookAmount(150, 149.99), false, 'Underpayment by 1 pesewa must be rejected');
-  assert.equal(validateWebhookAmount(150, 50), false, 'Severe underpayment must be rejected');
-  assert.equal(validateWebhookAmount(150, 0), false);
-  assert.equal(validateWebhookAmount(150, 'abc'), false);
+  assert.equal(validateWebhookAmount(550, 550), true);
+  assert.equal(validateWebhookAmount(550, '550.00'), true);
+  assert.equal(validateWebhookAmount(550, 549.99), false, 'Underpayment by 1 pesewa must be rejected');
+  assert.equal(validateWebhookAmount(550, 50), false, 'Severe underpayment must be rejected');
+  assert.equal(validateWebhookAmount(550, 0), false);
+  assert.equal(validateWebhookAmount(550, 'abc'), false);
 });
 
 test('Phone masking: masks all but the last 4 digits for privacy', () => {
@@ -153,11 +204,13 @@ test('Period formatting and human-readable labels', () => {
   assert.equal(formatPeriodLabel('2027-01'), 'January 2027');
 });
 
-test('Copyable schemas and migration include church_subscriptions and payment_transactions with service_role lockdown', async () => {
+test('Copyable schemas and migration include church_subscriptions and payment_transactions with service_role lockdown and is_test partition', async () => {
   const { SUPABASE_SQL_SCHEMA, SUPABASE_UPDATE_SQL } = await import('../src/data/supabase_schema.js');
   for (const schema of [SUPABASE_SQL_SCHEMA, SUPABASE_UPDATE_SQL]) {
     assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.church_subscriptions'));
     assert.ok(schema.includes('CREATE TABLE IF NOT EXISTS public.payment_transactions'));
+    assert.ok(schema.includes('is_test BOOLEAN NOT NULL DEFAULT true'));
+    assert.ok(schema.includes('pay_trans_is_test'));
     assert.ok(schema.includes("'church_subscriptions'"));
     assert.ok(schema.includes("'payment_transactions'"));
   }

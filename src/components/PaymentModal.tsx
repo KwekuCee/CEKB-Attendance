@@ -222,8 +222,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <div>
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 block">Amount to pay</span>
                 <span className="text-xl sm:text-2xl font-black font-serif text-blue-700 dark:text-blue-400">
-                  GH₵ {billing.amount}.00
+                  ${billing.amountUsd ?? 50} (GH₵ {Number(billing.amount ?? 550).toFixed(2)})
                 </span>
+                <span className="text-[10px] text-muted-foreground block mt-0.5">Fixed Rate: 1 USD = 11 GHS</span>
               </div>
               <span className="rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 text-xs px-2.5 py-1 font-semibold">
                 1 Month Access
@@ -290,7 +291,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-lg">bolt</span>
-                    Pay GH₵ {billing.amount}
+                    Pay ${billing.amountUsd ?? 50} (GH₵ {Number(billing.amount ?? 550).toFixed(2)})
                   </>
                 )}
               </Button>
@@ -365,7 +366,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <h4 className="text-base sm:text-lg font-bold">Approve on Your Phone</h4>
               <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
                 A prompt has been sent to <strong className="text-slate-900 dark:text-slate-100">{maskedPhone}</strong>.
-                Enter your Mobile Money PIN to approve the GH₵ {billing.amount}.00 charge.
+                Enter your Mobile Money PIN to approve the ${billing.amountUsd ?? 50} (GH₵ {Number(billing.amount ?? 550).toFixed(2)}) charge.
               </p>
             </div>
 

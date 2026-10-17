@@ -20,6 +20,11 @@ export const BillingLockScreen: React.FC<BillingLockScreenProps> = ({
 }) => {
   const [checking, setChecking] = useState(false);
 
+  if (billing.exempt) return null;
+
+  const usd = billing.amountUsd ?? 50;
+  const ghs = billing.amount ?? 550;
+
   const handleRefresh = async () => {
     if (!onRefresh) return;
     setChecking(true);
@@ -70,9 +75,12 @@ export const BillingLockScreen: React.FC<BillingLockScreenProps> = ({
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-5 border border-slate-200/80 dark:border-slate-800/80 text-left space-y-3">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-slate-700/60">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Subscription Fee</span>
-            <span className="text-xl font-black font-serif text-blue-700 dark:text-blue-400">
-              GH₵ {billing.amount}.00
-            </span>
+            <div className="text-right">
+              <span className="text-xl font-black font-serif text-blue-700 dark:text-blue-400 block">
+                ${usd} (GH₵ {Number(ghs).toFixed(2)})
+              </span>
+              <span className="text-[10px] text-muted-foreground block font-medium">1 USD = 11 GHS (Fixed Rate)</span>
+            </div>
           </div>
 
           <div className="flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-300">

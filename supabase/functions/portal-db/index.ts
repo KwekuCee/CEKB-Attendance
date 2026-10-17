@@ -17,6 +17,8 @@ import {
   formatPeriod,
   formatPeriodLabel,
   DEFAULT_BILLING_SETTINGS,
+  FIXED_EXCHANGE_RATE,
+  calculateGhsFee,
   type BillingSettings,
 } from '../_shared/billing.ts';
 // Server-side data gateway for the CEKB portal.
@@ -263,10 +265,16 @@ async function checkChurchBillingLocked(churchName?: string | null): Promise<boo
   const settings: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...(bSetting?.setting_value || {}) };
   if (!settings.enabled) return false;
 
+  const trimmed = churchName.trim();
+  const exemptList = Array.isArray(settings.exemptChurches) ? settings.exemptChurches : [];
+  if (exemptList.some((c) => String(c || '').trim().toLowerCase() === trimmed.toLowerCase())) {
+    return false;
+  }
+
   const { data: subs } = await admin
     .from('church_subscriptions')
     .select('period')
-    .ilike('church_name', churchName.trim())
+    .ilike('church_name', trimmed)
     .eq('status', 'paid');
 
   const paidPeriods = (subs || []).map((s: any) => s.period);
@@ -274,6 +282,7 @@ async function checkChurchBillingLocked(churchName?: string | null): Promise<boo
     date: new Date(),
     paidPeriods,
     settings,
+    churchName: trimmed,
   });
   return status.locked;
 }
@@ -2647,11 +2656,16 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
   if (op === 'saveBillingSettings') {
     const s = body.settings;
     if (!s || typeof s !== 'object') return json({ error: 'Invalid settings object' }, 400);
+    const usd = Math.max(0, Number(s.monthlyFeeUsd) || 50);
+    const ghs = s.monthlyFee !== undefined && s.monthlyFee !== null ? Number(s.monthlyFee) : calculateGhsFee(usd);
     const toSave: BillingSettings = {
       enabled: Boolean(s.enabled),
-      monthlyFee: Math.max(0, Number(s.monthlyFee) || 150),
+      monthlyFeeUsd: usd,
+      fixedExchangeRate: FIXED_EXCHANGE_RATE,
+      monthlyFee: ghs,
       graceDays: Math.max(0, Math.min(31, Number(s.graceDays) || 5)),
       testMode: Boolean(s.testMode),
+      exemptChurches: Array.isArray(s.exemptChurches) ? s.exemptChurches : [],
     };
     await admin.from('admin_settings').upsert({
       setting_key: 'billing',
@@ -2659,11 +2673,46 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
       is_global: true,
       setting_type: 'json',
     }, { onConflict: 'setting_key' });
-    await log(`Updated Moolre billing settings (enabled: ${toSave.enabled}, fee: GH₵ ${toSave.monthlyFee}, grace: ${toSave.graceDays}d, testMode: ${toSave.testMode})`, 'Settings');
+    await log(`Updated Moolre billing settings (enabled: ${toSave.enabled}, fee: $${toSave.monthlyFeeUsd} / GH₵ ${toSave.monthlyFee}, grace: ${toSave.graceDays}d, testMode: ${toSave.testMode}, exempt: ${toSave.exemptChurches?.length || 0})`, 'Settings');
     return json({ success: true, settings: toSave });
   }
 
+  if (op === 'toggleChurchBillingExemption') {
+    const churchName = String(body.churchName || '').trim();
+    const exempt = Boolean(body.exempt);
+    if (!churchName) return json({ error: 'Church name required' }, 400);
+
+    const { data } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'billing').maybeSingle();
+    const current: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...(data?.setting_value || {}) };
+    let exemptList: string[] = Array.isArray(current.exemptChurches) ? [...current.exemptChurches] : [];
+
+    if (exempt) {
+      if (!exemptList.some(c => c.trim().toLowerCase() === churchName.toLowerCase())) {
+        exemptList.push(churchName);
+      }
+    } else {
+      exemptList = exemptList.filter(c => c.trim().toLowerCase() !== churchName.toLowerCase());
+    }
+
+    const updated: BillingSettings = {
+      ...current,
+      exemptChurches: exemptList,
+    };
+
+    await admin.from('admin_settings').upsert({
+      setting_key: 'billing',
+      setting_value: updated,
+      is_global: true,
+      setting_type: 'json',
+    }, { onConflict: 'setting_key' });
+
+    await log(`${exempt ? 'Granted' : 'Revoked'} billing free access exemption for church "${churchName}"`, 'Settings');
+    return json({ success: true, exempt, exemptChurches: exemptList, churchName, settings: updated });
+  }
+
   if (op === 'getRevenueSummary') {
+    const mode = body.mode === 'test' ? 'test' : 'real';
+    const isTestMode = mode === 'test';
     const page = Math.max(1, Number(body.page) || 1);
     const limit = 10;
     const offset = (page - 1) * limit;
@@ -2678,12 +2727,13 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
       { data: monthSubs },
       { data: paymentsPage, count: totalPayments }
     ] = await Promise.all([
-      admin.from('payment_transactions').select('amount').eq('status', 'paid'),
-      admin.from('payment_transactions').select('amount').eq('status', 'paid').eq('period', currentPeriod),
+      admin.from('payment_transactions').select('amount').eq('status', 'paid').eq('is_test', isTestMode),
+      admin.from('payment_transactions').select('amount').eq('status', 'paid').eq('period', currentPeriod).eq('is_test', isTestMode),
       admin.from('churches').select('id, name').neq('status', 'Inactive'),
       admin.from('church_subscriptions').select('church_name').eq('period', currentPeriod).eq('status', 'paid'),
       admin.from('payment_transactions')
-        .select('id, church_name, period, amount, status, created_at', { count: 'exact' })
+        .select('id, church_name, period, amount, status, is_test, created_at', { count: 'exact' })
+        .eq('is_test', isTestMode)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1),
     ]);
@@ -2699,6 +2749,8 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
     return json({
       success: true,
       data: {
+        mode,
+        isTestMode,
         totalCollected,
         thisMonthCollected,
         currentPeriod,
@@ -2713,6 +2765,7 @@ async function handleDevAction(body: any, session: Session | null, req: Request)
           periodLabel: formatPeriodLabel(p.period),
           amount: Number(p.amount) || 0,
           status: p.status,
+          isTest: Boolean(p.is_test),
           createdAt: p.created_at,
         })),
         pagination: {
@@ -2782,6 +2835,7 @@ async function handleBillingStatus(session: Session | null, body: any) {
     date: new Date(),
     paidPeriods,
     settings,
+    churchName: church,
   });
 
   return json({

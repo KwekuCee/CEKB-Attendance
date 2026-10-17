@@ -9,6 +9,7 @@ import { rateLimit } from '../_shared/rate-limit.ts';
 import { sendMail } from '../_shared/mailer.ts';
 import {
   DEFAULT_BILLING_SETTINGS,
+  calculateGhsFee,
   maskPhoneNumber,
   validateGhanaPhone,
   normalizeNetworkChannel,
@@ -225,7 +226,8 @@ Deno.serve(async (req) => {
         return json({ error: { message: 'Monthly subscription payments are currently disabled.' } }, 400);
       }
 
-      const amount = billingSettings.monthlyFee;
+      const amount = billingSettings.monthlyFee ?? calculateGhsFee(billingSettings.monthlyFeeUsd ?? 50);
+      const isTest = Boolean(billingSettings.testMode);
       const { channelCode, channelName } = normalizeNetworkChannel(network);
       const maskedPhone = maskPhoneNumber(phoneValidation.formatted);
       const externalRef = `CEKB-${period}-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -241,6 +243,7 @@ Deno.serve(async (req) => {
         masked_phone: maskedPhone,
         status: 'pending',
         payer_email: session.user_email || null,
+        is_test: isTest,
       });
 
       if (insErr) {

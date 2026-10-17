@@ -15,7 +15,10 @@ export const BillingPrompt: React.FC<BillingPromptProps> = ({
   onPay,
   onDismiss,
 }) => {
-  if (!billing.enabled || !billing.due || billing.locked) return null;
+  if (!billing.enabled || !billing.due || billing.locked || billing.exempt) return null;
+
+  const usd = billing.amountUsd ?? 50;
+  const ghs = billing.amount ?? 550;
 
   return (
     <div
@@ -39,7 +42,7 @@ export const BillingPrompt: React.FC<BillingPromptProps> = ({
               )}
             </div>
             <h4 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">
-              Your CEKB subscription for {billing.periodLabel || billing.period} is due — GH₵ {billing.amount}
+              Your CEKB subscription for {billing.periodLabel || billing.period} is due — ${usd} (GH₵ {Number(ghs).toFixed(2)})
             </h4>
             <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
               Pay via Mobile Money (MTN, Telecel, AirtelTigo) to ensure uninterrupted access for{' '}
@@ -60,7 +63,7 @@ export const BillingPrompt: React.FC<BillingPromptProps> = ({
           )}
           <Button variant="primary" onClick={onPay} className="shadow-md">
             <span className="material-symbols-outlined text-lg">credit_card</span>
-            Pay now (GH₵ {billing.amount})
+            Pay now · ${usd} (GH₵ {Number(ghs).toFixed(2)})
           </Button>
         </div>
       </div>

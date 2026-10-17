@@ -18,6 +18,9 @@ import {
   normalizeNetworkChannel,
   maskPhoneNumber,
   validateGhanaPhone,
+  FIXED_EXCHANGE_RATE,
+  calculateGhsFee,
+  DEFAULT_BILLING_SETTINGS,
   type BillingSettings,
 } from '../../supabase/functions/_shared/billing';
 
@@ -359,8 +362,8 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
 
   if (action === 'billingStatus') {
     const church = session?.church_name || payload.church || '';
-    const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
-    const settings: BillingSettings = { ...bSetting };
+    const bSetting = getSetting('billing') || { ...DEFAULT_BILLING_SETTINGS };
+    const settings: BillingSettings = { ...DEFAULT_BILLING_SETTINGS, ...bSetting };
     const churchSubs = (store.tables.church_subscriptions || [])
       .filter((s: any) => String(s.church_name || '').toLowerCase() === String(church).toLowerCase() && s.status === 'paid');
     const paidPeriods = churchSubs.map((s: any) => s.period);
@@ -368,6 +371,7 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       date: new Date(),
       paidPeriods,
       settings,
+      churchName: church,
     });
     return {
       success: true,
@@ -390,8 +394,9 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       return { success: false, error: { message: phoneVal.error || 'Invalid phone number.' } };
     }
 
-    const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
-    const amount = Number(bSetting.monthlyFee) || 150;
+    const bSetting = getSetting('billing') || { ...DEFAULT_BILLING_SETTINGS };
+    const amount = bSetting.monthlyFee ?? calculateGhsFee(bSetting.monthlyFeeUsd ?? 50);
+    const isTest = Boolean(bSetting.testMode);
     const { channelName } = normalizeNetworkChannel(network);
     const maskedPhone = maskPhoneNumber(phoneVal.formatted);
     const externalRef = `CEKB-${period}-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -406,6 +411,7 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       masked_phone: maskedPhone,
       status: 'pending',
       payer_email: session?.user_email || null,
+      is_test: isTest,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -1429,10 +1435,10 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
     }
 
     if (op === 'getBillingSettings') {
-      const bSetting = getSetting('billing') || { enabled: false, monthlyFee: 150, graceDays: 5, testMode: true };
+      const bSetting = getSetting('billing') || { ...DEFAULT_BILLING_SETTINGS };
       return {
         success: true,
-        settings: bSetting,
+        settings: { ...DEFAULT_BILLING_SETTINGS, ...bSetting },
         credentialsStatus: {
           configured: false,
           hasApiKey: false,
@@ -1444,11 +1450,16 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
 
     if (op === 'saveBillingSettings') {
       const s = payload.settings || {};
+      const usd = Math.max(0, Number(s.monthlyFeeUsd) || 50);
+      const ghs = s.monthlyFee !== undefined && s.monthlyFee !== null ? Number(s.monthlyFee) : calculateGhsFee(usd);
       const toSave = {
         enabled: Boolean(s.enabled),
-        monthlyFee: Math.max(0, Number(s.monthlyFee) || 150),
+        monthlyFeeUsd: usd,
+        fixedExchangeRate: FIXED_EXCHANGE_RATE,
+        monthlyFee: ghs,
         graceDays: Math.max(0, Math.min(31, Number(s.graceDays) || 5)),
         testMode: Boolean(s.testMode),
+        exemptChurches: Array.isArray(s.exemptChurches) ? s.exemptChurches : [],
       };
       const list = store.tables.admin_settings || [];
       const existing = list.find((r: any) => r.setting_key === 'billing');
@@ -1459,7 +1470,35 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       return { success: true, settings: toSave };
     }
 
+    if (op === 'toggleChurchBillingExemption') {
+      const churchName = String(payload.churchName || '').trim();
+      const exempt = Boolean(payload.exempt);
+      if (!churchName) return { success: false, error: 'Church name required' };
+      const current = getSetting('billing') || { ...DEFAULT_BILLING_SETTINGS };
+      let exemptList: string[] = Array.isArray(current.exemptChurches) ? [...current.exemptChurches] : [];
+      if (exempt) {
+        if (!exemptList.some((c: string) => c.toLowerCase() === churchName.toLowerCase())) {
+          exemptList.push(churchName);
+        }
+      } else {
+        exemptList = exemptList.filter((c: string) => c.toLowerCase() !== churchName.toLowerCase());
+      }
+      const updated = {
+        ...current,
+        exemptChurches: exemptList,
+      };
+      const list = store.tables.admin_settings || [];
+      const existing = list.find((r: any) => r.setting_key === 'billing');
+      if (existing) existing.setting_value = updated;
+      else list.push({ id: `set-billing-${Date.now()}`, setting_key: 'billing', setting_value: updated, is_global: true });
+      store.tables.admin_settings = list;
+      saveLocalStore(store);
+      return { success: true, exempt, exemptChurches: exemptList, churchName, settings: updated };
+    }
+
     if (op === 'getRevenueSummary') {
+      const mode = payload.mode === 'test' ? 'test' : 'real';
+      const isTestMode = mode === 'test';
       const page = Math.max(1, Number(payload.page) || 1);
       const limit = 10;
       const offset = (page - 1) * limit;
@@ -1467,7 +1506,9 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       const now = new Date();
       const currentPeriod = formatPeriod(now.getUTCFullYear(), now.getUTCMonth());
 
-      const allPaid = (store.tables.payment_transactions || []).filter((t: any) => t.status === 'paid');
+      const allPaid = (store.tables.payment_transactions || []).filter(
+        (t: any) => t.status === 'paid' && Boolean(t.is_test) === isTestMode
+      );
       const thisMonthPaid = allPaid.filter((t: any) => t.period === currentPeriod);
       const activeChurches = (store.tables.churches || []).filter((c: any) => c.status !== 'Inactive');
       const monthSubs = (store.tables.church_subscriptions || []).filter((s: any) => s.period === currentPeriod && s.status === 'paid');
@@ -1480,7 +1521,10 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       const paidChurchesCount = paidChurchesSet.size;
       const unpaidChurchesCount = Math.max(0, totalActive - paidChurchesCount);
 
-      const sortedPayments = [...(store.tables.payment_transactions || [])].sort((a: any, b: any) =>
+      const filteredTransactions = (store.tables.payment_transactions || []).filter(
+        (t: any) => Boolean(t.is_test) === isTestMode
+      );
+      const sortedPayments = [...filteredTransactions].sort((a: any, b: any) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       const paymentsPage = sortedPayments.slice(offset, offset + limit);
@@ -1488,6 +1532,8 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
       return {
         success: true,
         data: {
+          mode,
+          isTestMode,
           totalCollected,
           thisMonthCollected,
           currentPeriod,
@@ -1502,6 +1548,7 @@ export async function runLocalPortal(payload: Record<string, any>, explicitToken
             periodLabel: formatPeriodLabel(p.period),
             amount: Number(p.amount) || 0,
             status: p.status,
+            isTest: Boolean(p.is_test),
             createdAt: p.created_at,
           })),
           pagination: {

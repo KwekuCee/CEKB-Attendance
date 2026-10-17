@@ -1,30 +1,46 @@
 // Shared billing and subscription logic for Moolre payments in CEKB.
 // All date and time calculations use UTC (Ghana time is GMT+0).
 
+export const FIXED_EXCHANGE_RATE = 11; // 1 USD = 11 GHS
+
+export function calculateGhsFee(usd: number): number {
+  return Math.round(Math.max(0, Number(usd) || 0) * FIXED_EXCHANGE_RATE);
+}
+
 export interface BillingSettings {
   enabled: boolean;
-  monthlyFee: number; // in GH₵, e.g. 150
+  monthlyFeeUsd?: number; // in USD, e.g. 50
+  fixedExchangeRate?: number; // 1 USD = 11 GHS
+  monthlyFee: number; // in GH₵, e.g. 550
   graceDays: number; // e.g. 5 days after the 1st
   testMode: boolean; // true for sandbox/simulated payments
+  exemptChurches?: string[]; // list of church names with free access
 }
 
 export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
   enabled: false,
-  monthlyFee: 150,
+  monthlyFeeUsd: 50,
+  fixedExchangeRate: FIXED_EXCHANGE_RATE,
+  monthlyFee: 550,
   graceDays: 5,
   testMode: true,
+  exemptChurches: [],
 };
 
 export interface BillingStatus {
   enabled: boolean;
   due: boolean;
   locked: boolean;
-  amount: number;
+  exempt?: boolean;
+  amount: number; // GH₵
+  amountUsd?: number; // USD ($)
   period: string; // e.g. '2026-11'
   periodLabel: string; // e.g. 'November 2026'
   graceDays: number;
   daysRemaining?: number;
   isAdvanceNotice?: boolean;
+  churchName?: string;
+  paidHistory?: any[];
 }
 
 const MONTH_NAMES = [
@@ -58,40 +74,73 @@ export function computeBillingStatus({
   date,
   paidPeriods,
   settings,
+  churchName,
 }: {
   date: Date | string | number;
   paidPeriods: string[] | Set<string>;
   settings: BillingSettings;
+  churchName?: string;
 }): BillingStatus {
   const s = { ...DEFAULT_BILLING_SETTINGS, ...(settings || {}) };
   const paidSet = paidPeriods instanceof Set ? paidPeriods : new Set(paidPeriods || []);
 
-  if (!s.enabled) {
-    return {
-      enabled: false,
-      due: false,
-      locked: false,
-      amount: s.monthlyFee,
-      period: '',
-      periodLabel: '',
-      graceDays: s.graceDays,
-      daysRemaining: 0,
-    };
-  }
+  const feeUsd = s.monthlyFeeUsd ?? 50;
+  const feeGhs = s.monthlyFee ?? calculateGhsFee(feeUsd);
 
   const d = new Date(date);
   const year = d.getUTCFullYear();
   const month = d.getUTCMonth(); // 0-indexed
   const day = d.getUTCDate();
 
-  // Number of days in current month
-  const daysInCurrentMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const isLastDayOfMonth = day === daysInCurrentMonth;
-
   const currentPeriod = formatPeriod(year, month);
   const nextMonthYear = month === 11 ? year + 1 : year;
   const nextMonth = month === 11 ? 0 : month + 1;
   const nextPeriod = formatPeriod(nextMonthYear, nextMonth);
+
+  // Check if church has free access exemption
+  const exemptList = Array.isArray(s.exemptChurches) ? s.exemptChurches : [];
+  const isExempt = Boolean(
+    churchName &&
+    exemptList.some(
+      (c) => String(c || '').trim().toLowerCase() === String(churchName).trim().toLowerCase()
+    )
+  );
+
+  if (isExempt) {
+    return {
+      enabled: s.enabled,
+      due: false,
+      locked: false,
+      exempt: true,
+      amount: feeGhs,
+      amountUsd: feeUsd,
+      period: currentPeriod,
+      periodLabel: formatPeriodLabel(currentPeriod),
+      graceDays: s.graceDays,
+      daysRemaining: 0,
+      churchName,
+    };
+  }
+
+  if (!s.enabled) {
+    return {
+      enabled: false,
+      due: false,
+      locked: false,
+      exempt: false,
+      amount: feeGhs,
+      amountUsd: feeUsd,
+      period: '',
+      periodLabel: '',
+      graceDays: s.graceDays,
+      daysRemaining: 0,
+      churchName,
+    };
+  }
+
+  // Number of days in current month
+  const daysInCurrentMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const isLastDayOfMonth = day === daysInCurrentMonth;
 
   const isCurrentPaid = paidSet.has(currentPeriod);
 
@@ -104,11 +153,14 @@ export function computeBillingStatus({
         enabled: true,
         due: true,
         locked: true,
-        amount: s.monthlyFee,
+        exempt: false,
+        amount: feeGhs,
+        amountUsd: feeUsd,
         period: currentPeriod,
         periodLabel: formatPeriodLabel(currentPeriod),
         graceDays: s.graceDays,
         daysRemaining: 0,
+        churchName,
       };
     }
 
@@ -117,12 +169,15 @@ export function computeBillingStatus({
       enabled: true,
       due: !isNextPaid,
       locked: false, // advance notice on the last day, never locked yet
-      amount: s.monthlyFee,
+      exempt: false,
+      amount: feeGhs,
+      amountUsd: feeUsd,
       period: nextPeriod,
       periodLabel: formatPeriodLabel(nextPeriod),
       graceDays: s.graceDays,
       daysRemaining: s.graceDays + 1, // last day of month + grace days of next month
       isAdvanceNotice: true,
+      churchName,
     };
   }
 
@@ -133,11 +188,14 @@ export function computeBillingStatus({
       enabled: true,
       due: false,
       locked: false,
-      amount: s.monthlyFee,
+      exempt: false,
+      amount: feeGhs,
+      amountUsd: feeUsd,
       period: currentPeriod,
       periodLabel: formatPeriodLabel(currentPeriod),
       graceDays: s.graceDays,
       daysRemaining: 0,
+      churchName,
     };
   }
 
@@ -151,11 +209,14 @@ export function computeBillingStatus({
     enabled: true,
     due: true,
     locked,
-    amount: s.monthlyFee,
+    exempt: false,
+    amount: feeGhs,
+    amountUsd: feeUsd,
     period: currentPeriod,
     periodLabel: formatPeriodLabel(currentPeriod),
     graceDays: s.graceDays,
     daysRemaining,
+    churchName,
   };
 }
 

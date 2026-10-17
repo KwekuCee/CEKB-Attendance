@@ -72,18 +72,24 @@ export default function DeveloperPortal() {
   const [notice, setNotice] = useState('');
   const [revenueData, setRevenueData] = useState<any>(null);
   const [billingConfig, setBillingConfig] = useState<any>(null);
+  const [financesMode, setFinancesMode] = useState<'real' | 'test'>('real');
 
-  const fetchRevenuePage = async (page = 1) => {
+  const fetchRevenuePage = async (page = 1, mode: 'real' | 'test' = financesMode) => {
     if (!token) return;
-    const r = await rawPortal({ action: 'devAction', op: 'getRevenueSummary', page }, token);
+    const r = await rawPortal({ action: 'devAction', op: 'getRevenueSummary', page, mode }, token);
     if (r?.success) setRevenueData(r.data);
   };
 
-  const load = async (t: string) => {
+  const handleFinancesModeChange = async (newMode: 'real' | 'test') => {
+    setFinancesMode(newMode);
+    await fetchRevenuePage(1, newMode);
+  };
+
+  const load = async (t: string, currentMode: 'real' | 'test' = financesMode) => {
     const [s, an, rev, bill] = await Promise.all([
       rawPortal({ action: 'devStats' }, t),
       rawPortal({ action: 'devAnalytics' }, t),
-      rawPortal({ action: 'devAction', op: 'getRevenueSummary', page: 1 }, t),
+      rawPortal({ action: 'devAction', op: 'getRevenueSummary', page: 1, mode: currentMode }, t),
       rawPortal({ action: 'devAction', op: 'getBillingSettings' }, t),
     ]);
     if (s?.data) {
@@ -306,8 +312,28 @@ export default function DeveloperPortal() {
           </div>
         ) : (
           <>
-            {tab === 'overview' && <Overview s={stats} a={a} setTab={setTab} revenueData={revenueData} onPageChange={fetchRevenuePage} />}
-            {tab === 'churches' && <Churches a={a} act={act} token={token} load={load} setNotice={setNotice} />}
+            {tab === 'overview' && (
+              <Overview
+                s={stats}
+                a={a}
+                setTab={setTab}
+                revenueData={revenueData}
+                financesMode={financesMode}
+                onFinancesModeChange={handleFinancesModeChange}
+                onPageChange={fetchRevenuePage}
+              />
+            )}
+            {tab === 'churches' && (
+              <Churches
+                a={a}
+                act={act}
+                token={token}
+                load={load}
+                setNotice={setNotice}
+                billingConfig={billingConfig}
+                setBillingConfig={setBillingConfig}
+              />
+            )}
             {tab === 'registrations' && <Registrations a={a} act={act} />}
             {tab === 'growth' && <Growth s={stats} a={a} />}
             {tab === 'messaging' && <Messaging a={a} act={act} />}
@@ -658,7 +684,17 @@ const Badge = ({
 /*                                1. OVERVIEW                                 */
 /* ========================================================================== */
 
-function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: number) => void }) {
+function RevenueCard({
+  data,
+  mode = 'real',
+  onModeChange,
+  onPageChange,
+}: {
+  data: any;
+  mode?: 'real' | 'test';
+  onModeChange?: (mode: 'real' | 'test') => void;
+  onPageChange?: (page: number) => void;
+}) {
   const [page, setPage] = useState(1);
   const rev = data || {
     totalCollected: 0,
@@ -675,16 +711,67 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
     onPageChange?.(newPage);
   };
 
+  const isReal = mode === 'real';
+
   return (
     <Card
-      title="Monthly subscription revenue (Moolre Mobile Money)"
-      subtitle="Aggregated totals and collections across church branches (totals only — payer personal details protected)"
+      title={`Monthly subscription revenue (${isReal ? 'Real Finances' : 'Test Finances — Demo'})`}
+      subtitle={
+        isReal
+          ? 'Live real-money Mobile Money collections from church branches (totals only — payer personal details protected)'
+          : 'Sandbox demo transactions and simulated payment runs (isolated from live real collections)'
+      }
+      right={
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/80 border border-border">
+          <button
+            type="button"
+            onClick={() => onModeChange?.('real')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              isReal
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">payments</span>
+            <span>Real Finances (Live)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange?.('test')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              !isReal
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">science</span>
+            <span>Test Finances (Demo)</span>
+          </button>
+        </div>
+      }
     >
       <div className="space-y-6">
+        <div className="flex items-center justify-between pb-1">
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+              isReal
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">
+              {isReal ? 'verified' : 'bug_report'}
+            </span>
+            <span>{isReal ? 'Real Finances (Live Mobile Money)' : 'Test Finances (Sandbox Demo Mode)'}</span>
+          </span>
+        </div>
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-2xl border border-border bg-card/60 p-4">
-            <span className="text-xs font-semibold text-muted-foreground block">Total Collected (All Time)</span>
-            <span className="text-xl sm:text-2xl font-black font-serif text-primary mt-1 block">
+            <span className="text-xs font-semibold text-muted-foreground block">
+              Total {isReal ? 'Collected' : 'Simulated'} (All Time)
+            </span>
+            <span className={`text-xl sm:text-2xl font-black font-serif mt-1 block ${isReal ? 'text-primary' : 'text-amber-600 dark:text-amber-400'}`}>
               GH₵ {Number(rev.totalCollected || 0).toLocaleString()}
             </span>
           </div>
@@ -692,7 +779,7 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
             <span className="text-xs font-semibold text-muted-foreground block">
               This Month ({rev.currentPeriodLabel || rev.currentPeriod || 'Current'})
             </span>
-            <span className="text-xl sm:text-2xl font-black font-serif text-emerald-600 dark:text-emerald-400 mt-1 block">
+            <span className={`text-xl sm:text-2xl font-black font-serif mt-1 block ${isReal ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
               GH₵ {Number(rev.thisMonthCollected || 0).toLocaleString()}
             </span>
           </div>
@@ -729,6 +816,7 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
                     <th className="p-3">Period</th>
                     <th className="p-3">Amount</th>
                     <th className="p-3">Date</th>
+                    <th className="p-3">Mode</th>
                     <th className="p-3">Status</th>
                   </tr>
                 </thead>
@@ -739,6 +827,15 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
                       <td className="p-3 text-muted-foreground">{p.periodLabel || p.period}</td>
                       <td className="p-3 font-mono font-bold text-primary">GH₵ {Number(p.amount || 0).toFixed(2)}</td>
                       <td className="p-3 text-muted-foreground">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '—'}</td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          p.isTest
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        }`}>
+                          {p.isTest ? 'Demo' : 'Live'}
+                        </span>
+                      </td>
                       <td className="p-3">
                         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           p.status === 'paid'
@@ -760,7 +857,7 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
-              No subscription payment records yet.
+              No {isReal ? 'live' : 'test'} subscription payment records yet.
             </div>
           )}
 
@@ -793,7 +890,7 @@ function RevenueCard({ data, onPageChange }: { data: any; onPageChange?: (page: 
   );
 }
 
-function Overview({ s, a, setTab, revenueData, onPageChange }: any) {
+function Overview({ s, a, setTab, revenueData, financesMode, onFinancesModeChange, onPageChange }: any) {
   const [range, setRange] = useState<30 | 90>(30);
   const series = a.series.slice(-range).map((d: any) => ({ label: d.date.slice(5), value: d.count }));
   const active = a.churches.filter((c: any) => c.active),
@@ -845,8 +942,13 @@ function Overview({ s, a, setTab, revenueData, onPageChange }: any) {
         </div>
       )}
 
-      {/* Subscription Revenue (Moolre Mobile Money) */}
-      <RevenueCard data={revenueData} onPageChange={onPageChange} />
+      {/* Subscription Revenue (Moolre Mobile Money) with Segmented Switcher */}
+      <RevenueCard
+        data={revenueData}
+        mode={financesMode}
+        onModeChange={onFinancesModeChange}
+        onPageChange={onPageChange}
+      />
 
       <Card
         title="Check-in trend"
@@ -960,7 +1062,7 @@ function Overview({ s, a, setTab, revenueData, onPageChange }: any) {
 /*                     2. CHURCHES & BRANCHES (FULL CRUD)                     */
 /* ========================================================================== */
 
-function Churches({ a, act, token, load, setNotice }: any) {
+function Churches({ a, act, token, load, setNotice, billingConfig, setBillingConfig }: any) {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [showCreate, setShowCreate] = useState(false);
@@ -1150,74 +1252,119 @@ function Churches({ a, act, token, load, setNotice }: any) {
         </div>
 
         <Table
-          head={['Church & Zone', 'Staff accounts', 'Status', 'Members', 'Leaders', 'Check-ins (30d)', 'Actions']}
+          head={['Church & Zone', 'Staff accounts', 'Status', 'Members', 'Leaders', 'Check-ins (30d)', 'Free Access', 'Actions']}
           empty="No churches match your filter."
-          rows={list.map((c: any) => [
-            <div>
-              <strong className="block">{c.name}</strong>
-              <span className="text-xs text-muted-foreground">{c.zone || 'Zone 1 (Korle Bu)'}</span>
-            </div>,
-            <span className="tabular-nums">{fmt(c.staff)}</span>,
-            <select
-              className="rounded-lg border border-input bg-background px-2 py-1 text-xs font-semibold"
-              value={c.status}
-              onChange={async (e) => {
-                const newStatus = e.target.value;
-                await act(
-                  { op: 'setChurchStatus', id: c.id, name: c.name, status: newStatus },
-                  `${c.name} status updated to ${newStatus}`,
-                );
-                try {
-                  const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
-                  localStorage.setItem(
-                    'cekbu_churches',
-                    JSON.stringify(
-                      stored.map((item: any) =>
-                        item.id === c.id || (item.name && item.name.toLowerCase() === c.name.toLowerCase())
-                          ? { ...item, status: newStatus }
-                          : item
-                      )
-                    )
+          rows={list.map((c: any) => {
+            const isExempt = (billingConfig?.exemptChurches || []).some(
+              (ex: string) => String(ex || '').trim().toLowerCase() === String(c.name || '').trim().toLowerCase()
+            );
+            return [
+              <div>
+                <div className="flex items-center gap-2">
+                  <strong className="block">{c.name}</strong>
+                  {isExempt && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                      <span className="material-symbols-outlined text-[12px]">verified</span>
+                      Free Access
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">{c.zone || 'Zone 1 (Korle Bu)'}</span>
+              </div>,
+              <span className="tabular-nums">{fmt(c.staff)}</span>,
+              <select
+                className="rounded-lg border border-input bg-background px-2 py-1 text-xs font-semibold"
+                value={c.status}
+                onChange={async (e) => {
+                  const newStatus = e.target.value;
+                  await act(
+                    { op: 'setChurchStatus', id: c.id, name: c.name, status: newStatus },
+                    `${c.name} status updated to ${newStatus}`,
                   );
-                } catch {}
-              }}
-            >
-              {['Active', 'Inactive', 'Suspended'].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>,
-            fmt(c.members),
-            fmt(c.leaders),
-            fmt(c.checkins30),
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="secondary"
-                className="px-2.5 py-1 text-xs"
-                onClick={() => { setAssignAdminTarget(c); setSelectedAdminEmail(''); }}
-                title="Assign existing admin to this church by email"
+                  try {
+                    const stored = JSON.parse(localStorage.getItem('cekbu_churches') || '[]');
+                    localStorage.setItem(
+                      'cekbu_churches',
+                      JSON.stringify(
+                        stored.map((item: any) =>
+                          item.id === c.id || (item.name && item.name.toLowerCase() === c.name.toLowerCase())
+                            ? { ...item, status: newStatus }
+                            : item
+                        )
+                      )
+                    );
+                  } catch {}
+                }}
               >
-                <span className="material-symbols-outlined text-sm mr-1">link</span>
-                Assign Admin
-              </Button>
-              <Button
-                variant="secondary"
-                className="px-2.5 py-1 text-xs"
-                onClick={() => setEditChurch({ ...c })}
-                title="Edit church details"
+                {['Active', 'Inactive', 'Suspended'].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>,
+              fmt(c.members),
+              fmt(c.leaders),
+              fmt(c.checkins30),
+              <button
+                type="button"
+                onClick={async () => {
+                  const newExempt = !isExempt;
+                  // Optimistic state update
+                  setBillingConfig?.((prev: any) => {
+                    if (!prev) return prev;
+                    let list: string[] = Array.isArray(prev.exemptChurches) ? [...prev.exemptChurches] : [];
+                    if (newExempt) {
+                      if (!list.some((x: string) => x.toLowerCase() === c.name.toLowerCase())) list.push(c.name);
+                    } else {
+                      list = list.filter((x: string) => x.toLowerCase() !== c.name.toLowerCase());
+                    }
+                    return { ...prev, exemptChurches: list };
+                  });
+                  await act(
+                    { op: 'toggleChurchBillingExemption', churchName: c.name, exempt: newExempt },
+                    newExempt ? `Free access granted to "${c.name}"` : `Free access revoked for "${c.name}"`
+                  );
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                  isExempt
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 shadow-sm'
+                    : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
+                }`}
+                title={isExempt ? 'Click to revoke free access' : 'Click to grant free access'}
               >
-                <span className="material-symbols-outlined text-sm mr-1">edit</span>
-                Edit
-              </Button>
-              <Button
-                variant="ghost"
-                className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-                onClick={() => setDeleteTarget(c)}
-                title="Permanently delete church with all records"
-              >
-                <span className="material-symbols-outlined text-sm">delete</span>
-              </Button>
-            </div>,
-          ])}
+                <span className={`material-symbols-outlined text-sm ${isExempt ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                  {isExempt ? 'check_circle' : 'toggle_off'}
+                </span>
+                <span>{isExempt ? 'Active' : 'Inactive'}</span>
+              </button>,
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="secondary"
+                  className="px-2.5 py-1 text-xs"
+                  onClick={() => { setAssignAdminTarget(c); setSelectedAdminEmail(''); }}
+                  title="Assign existing admin to this church by email"
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">link</span>
+                  Assign Admin
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="px-2.5 py-1 text-xs"
+                  onClick={() => setEditChurch({ ...c })}
+                  title="Edit church details"
+                >
+                  <span className="material-symbols-outlined text-sm mr-1">edit</span>
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteTarget(c)}
+                  title="Permanently delete church with all records"
+                >
+                  <span className="material-symbols-outlined text-sm">delete</span>
+                </Button>
+              </div>,
+            ];
+          })}
         />
       </Card>
 
@@ -3602,15 +3749,31 @@ function Settings({ a, act, billingConfig }: any) {
             </label>
 
             <label className="block space-y-1">
-              <span className="text-sm font-semibold">Monthly subscription fee (GH₵)</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={billing.monthlyFee ?? 150}
-                onChange={(e) => setBilling((b: any) => ({ ...b, monthlyFee: Number(e.target.value) }))}
-                className="w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
-              />
+              <span className="text-sm font-semibold">Monthly subscription fee (USD $)</span>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={billing.monthlyFeeUsd ?? 50}
+                  onChange={(e) => {
+                    const val = Math.max(0, Number(e.target.value) || 0);
+                    setBilling((b: any) => ({
+                      ...b,
+                      monthlyFeeUsd: val,
+                      monthlyFee: Math.round(val * 11),
+                    }));
+                  }}
+                  className="w-full rounded-xl border border-input bg-background pl-8 pr-4 py-2 text-sm font-semibold"
+                />
+              </div>
+              <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-2.5 text-xs text-blue-700 dark:text-blue-300 font-medium flex items-center justify-between">
+                <span>Fixed Rate (1 USD = 11 GHS):</span>
+                <strong className="font-mono text-sm">
+                  ${billing.monthlyFeeUsd ?? 50} × GH₵ 11.00 = GH₵ {Math.round((billing.monthlyFeeUsd ?? 50) * 11)}.00
+                </strong>
+              </div>
             </label>
 
             <label className="block space-y-1">
@@ -3628,20 +3791,88 @@ function Settings({ a, act, billingConfig }: any) {
               </span>
             </label>
 
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer pt-2 border-t border-border">
-              <div>
-                <span className="font-semibold block">Test / Sandbox mode</span>
-                <span className="text-xs text-muted-foreground block">
-                  Simulates payment prompts and instant approvals without charging real Mobile Money.
+            {/* Mode switch: Clear toggle between Sandbox (Demo) and Live Mode */}
+            <div className="pt-2 border-t border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-semibold block text-sm">Payment Mode</span>
+                  <span className="text-xs text-muted-foreground block">
+                    {billing.testMode
+                      ? 'Sandbox Demo: simulates payments without charging real mobile money.'
+                      : 'Live Mode: real Mobile Money collections via Moolre.'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/80 border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setBilling((b: any) => ({ ...b, testMode: false }))}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                      !billing.testMode
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs">verified</span>
+                    Live Mode (Off)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBilling((b: any) => ({ ...b, testMode: true }))}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                      billing.testMode
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs">science</span>
+                    Sandbox Demo (On)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Master list of exempt churches visible as summary tags */}
+            <div className="pt-2 border-t border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Exempt Churches (Free Access)</span>
+                <span className="text-xs text-muted-foreground">
+                  {(billing.exemptChurches || []).length} exempt
                 </span>
               </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={!!billing.testMode}
-                onChange={(e) => setBilling((b: any) => ({ ...b, testMode: e.target.checked }))}
-              />
-            </label>
+              {(billing.exemptChurches || []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-muted/40 border border-border max-h-36 overflow-y-auto">
+                  {(billing.exemptChurches || []).map((chName: string) => (
+                    <span
+                      key={chName}
+                      className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                    >
+                      <span>{chName}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const updatedList = (billing.exemptChurches || []).filter(
+                            (c: string) => c.toLowerCase() !== chName.toLowerCase()
+                          );
+                          setBilling((b: any) => ({ ...b, exemptChurches: updatedList }));
+                          await act(
+                            { op: 'toggleChurchBillingExemption', churchName: chName, exempt: false },
+                            `Revoked free access for "${chName}"`
+                          );
+                        }}
+                        className="hover:bg-emerald-500/30 rounded-full h-4 w-4 inline-flex items-center justify-center text-[11px]"
+                        title={`Revoke free access for ${chName}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No churches currently have free access. Toggle directly in the Churches tab.
+                </p>
+              )}
+            </div>
 
             <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground space-y-1">
               <p className="font-semibold text-foreground flex items-center gap-1.5">
@@ -3658,7 +3889,21 @@ function Settings({ a, act, billingConfig }: any) {
 
             <Button
               variant="primary"
-              onClick={() => act({ op: 'saveBillingSettings', settings: billing }, 'Billing settings saved')}
+              onClick={() => {
+                const usd = Number(billing.monthlyFeeUsd ?? 50);
+                const ghs = Math.round(usd * 11);
+                act(
+                  {
+                    op: 'saveBillingSettings',
+                    settings: {
+                      ...billing,
+                      monthlyFeeUsd: usd,
+                      monthlyFee: ghs,
+                    },
+                  },
+                  'Billing settings saved'
+                );
+              }}
             >
               Save Billing Settings
             </Button>

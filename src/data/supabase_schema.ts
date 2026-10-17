@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
     masked_phone TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
     payer_email TEXT,
+    is_test BOOLEAN NOT NULL DEFAULT true,
     raw_response JSONB,
     session_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -199,9 +200,10 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
 CREATE INDEX IF NOT EXISTS pay_trans_church ON public.payment_transactions (LOWER(church_name), created_at DESC);
 CREATE INDEX IF NOT EXISTS pay_trans_external_ref ON public.payment_transactions (external_ref);
 CREATE INDEX IF NOT EXISTS pay_trans_status ON public.payment_transactions (status);
+CREATE INDEX IF NOT EXISTS pay_trans_is_test ON public.payment_transactions (is_test);
 
 INSERT INTO public.admin_settings (setting_key, setting_value, setting_type, is_global)
-VALUES ('billing', '{"enabled": false, "monthlyFee": 150, "graceDays": 5, "testMode": true}'::jsonb, 'json', true)
+VALUES ('billing', '{"enabled": false, "monthlyFeeUsd": 50, "monthlyFee": 550, "graceDays": 5, "testMode": true, "exemptChurches": []}'::jsonb, 'json', true)
 ON CONFLICT (setting_key) DO NOTHING;
 `;
 

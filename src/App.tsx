@@ -927,7 +927,7 @@ export default function App() {
 
         {/* View Router */}
         <main className="dashboard-main flex-1 min-h-0 overflow-y-auto pb-6 md:pb-8 relative">
-          {billingStatus?.due && !billingStatus?.locked && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
+          {billingStatus?.due && !billingStatus?.locked && !billingStatus?.exempt && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
             <div className="px-4 md:px-8 pt-4">
               <BillingPrompt
                 billing={billingStatus}
@@ -1175,7 +1175,7 @@ export default function App() {
       />
 
       {/* Full-Screen Lock Screen when Church Subscription is overdue past grace days */}
-      {billingStatus?.locked && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
+      {billingStatus?.locked && !billingStatus?.exempt && (user?.role === 'Church Admin' || user?.role === 'Church Pastor') && (
         <BillingLockScreen
           billing={billingStatus}
           churchName={user?.church || ''}
